@@ -1,24 +1,25 @@
+/// Stock sheet — all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sheet {
     pub width: u32,
     pub height: u32,
 }
 
+/// A rectangular piece to be cut from a sheet. `id`, `width`, `height` are obvious.
+/// `can_rotate` - when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
     pub id: u32,
     pub width: u32,
     pub height: u32,
-    /// Whether the piece may be rotated 90°. When false, it must be placed
-    /// in its original (width × height) orientation.
     pub can_rotate: bool,
 }
 
+/// A cutting problem: identical sheets, pieces to place, and a blade kerf (mm)
+/// subtracted at each guillotine split; boundary edges of the sheet are exempt.
 #[derive(Debug, Clone)]
 pub struct Problem {
     pub sheet: Sheet,
-    /// Blade kerf width in mm, subtracted from child rects at each guillotine split.
-    /// Boundary edges of the sheet do not consume kerf.
     pub kerf: u32,
     pub pieces: Vec<Piece>,
 }
