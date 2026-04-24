@@ -210,24 +210,7 @@ fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Piece, Problem, Sheet};
-
-    fn make_problem(sw: u32, sh: u32, kerf: u32, pieces: &[(u32, u32, bool)]) -> Problem {
-        Problem {
-            sheet: Sheet { width: sw, height: sh },
-            kerf,
-            pieces: pieces
-                .iter()
-                .enumerate()
-                .map(|(i, &(w, h, cr))| Piece {
-                    id: i as u32,
-                    width: w,
-                    height: h,
-                    can_rotate: cr,
-                })
-                .collect(),
-        }
-    }
+    use crate::parse::parse_problem;
 
     fn g(piece_id: usize, rotate: bool, point_selector: u32) -> Gene {
         Gene {
@@ -251,19 +234,7 @@ mod tests {
         // │             ├─────────────┤    │ free 100×10│               │
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
-
-        let problem = make_problem(
-            200,
-            150,
-            5,
-            &[
-                (120, 80, false), // P0
-                (60, 80, false),  // P1
-                (200, 60, false), // P2
-                (70, 100, true),  // P3
-                (60, 70, true),   // P4
-            ],
-        );
+        let problem = parse_problem("200x150:120x80n,60x80n,200x60n,70x100,60x70", 5).unwrap();
         let genome = vec![
             g(0, false, 0),
             g(1, false, 0),
