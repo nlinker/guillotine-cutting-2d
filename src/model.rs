@@ -5,8 +5,8 @@ pub struct Sheet {
     pub height: u32,
 }
 
-/// A rectangular piece to be cut from a sheet. `id`, `width`, `height` are obvious.
-/// `can_rotate` - when false, must be placed in original (width × height) orientation.
+/// A rectangular piece to be cut from a sheet.
+/// `can_rotate`: when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
     pub id: u32,
@@ -24,9 +24,11 @@ pub struct Problem {
     pub pieces: Vec<Piece>,
 }
 
+/// Position of a placed piece. `(x, y)` is the top-left corner of the piece on the sheet;
+/// `rotated` means the piece was placed as (height × width) instead of (width × height).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Placement {
-    pub sheet_index: usize,
+    pub sheet_idx: usize,
     pub piece_id: u32,
     pub x: u32,
     pub y: u32,
@@ -42,7 +44,7 @@ impl Solution {
     pub fn sheets_used(&self) -> usize {
         self.placements
             .iter()
-            .map(|p| p.sheet_index)
+            .map(|p| p.sheet_idx)
             .max()
             .map(|m| m + 1)
             .unwrap_or(0)
