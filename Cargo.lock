@@ -6,6 +6,8 @@ version = 4
 name = "cutting"
 version = "0.1.0"
 dependencies = [
+ "rand_core",
+ "rand_xoshiro",
  "thiserror",
 ]
 
@@ -25,6 +27,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+
+[[package]]
+name = "rand_xoshiro"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f0b2cc7bfeef8f0320ca45f88b00157a03c67137022d59393614352d6bf4312"
+dependencies = [
+ "rand_core",
 ]
 
 [[package]]

@@ -8,4 +8,6 @@ name = "cutting"
 path = "src/lib.rs"
 
 [dependencies]
+rand_core = "0.10"
+rand_xoshiro = "0.8"
 thiserror = "2"
