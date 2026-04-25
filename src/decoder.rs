@@ -1,4 +1,4 @@
-use crate::model::{Piece, Placement, Problem, Solution};
+use crate::model::{FreeRect, Piece, Placement, Problem, Solution};
 
 /// One element of the solution genome (V-vector encoding).
 /// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
@@ -17,17 +17,6 @@ pub struct Gene {
 /// of `0..problem.pieces.len()`.
 pub type Genome = Vec<Gene>;
 
-/// An available rectangle on a sheet. `(x, y)` is the top-left corner;
-/// `x` increases rightward, `y` increases downward. `(0, 0)` is the sheet's
-/// top-left corner.
-struct FreeRect {
-    sheet_idx: usize,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-}
-
 /// Decode a genome into placements using strict guillotine splitting (no merge).
 ///
 /// Pieces are placed in genome order. `point_selector % |free|` picks the
@@ -39,7 +28,6 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
     let mut free: Vec<FreeRect> = vec![sheet_rect(problem, 0)];
     let mut placements: Vec<Placement> = Vec::with_capacity(genome.len());
     let mut sheets_open: usize = 1;
-
     for gene in genome {
         let piece = &problem.pieces[gene.piece_idx];
 
@@ -64,8 +52,10 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
-
-    Solution { placements }
+    Solution {
+        placements,
+        leftovers: free,
+    }
 }
 
 fn open_new_sheet(
@@ -234,7 +224,7 @@ mod tests {
         // │             ├─────────────┤    │ free 100×10│               │
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
-        let problem = parse_problem("200x150:120x80n,60x80n,200x60n,70x100,60x70", 5).unwrap();
+        let problem = parse_problem("200x150:120x80n,60x80n,200x60n,70x100,60x70", 5).expect("Error parsing problem");
         let genome = vec![
             g(0, false, 0),
             g(1, false, 0),
@@ -251,5 +241,33 @@ mod tests {
         assert_eq!((p[2].sheet_idx, p[2].x, p[2].y, p[2].rotated), (1, 0, 0, false));
         assert_eq!((p[3].sheet_idx, p[3].x, p[3].y, p[3].rotated), (1, 0, 65, true));
         assert_eq!((p[4].sheet_idx, p[4].x, p[4].y, p[4].rotated), (0, 125, 85, true));
+    }
+
+    #[test]
+    fn objective_varies_by_point_selector() {
+        // Sheet 12×10, kerf=0. Two pieces: 6×5 (fixed) and 4×3 (fixed).
+        //
+        // After placing 6×5, free = [right=(6,0,6,10), bottom=(0,5,6,5)].
+        //
+        // Genome A (ps=0): places 4×3 in right=(6,0,6,10).
+        //   Leaves: bottom=(0,5,6,5) [usable: 6×5 fits → 30]
+        //         + right=(10,0,2,3) [unusable]
+        //         + bottom=(6,3,6,7) [usable: 6×5 fits → 42]
+        //   usable=72 → objective = 1×120 − 72 = 48
+        //
+        // Genome B (ps=1): places 4×3 in bottom=(0,5,6,5).
+        //   Leaves: right=(6,0,6,10) [usable: 6×5 fits → 60]
+        //         + right=(4,5,2,3)  [unusable]
+        //         + bottom=(0,8,6,2) [unusable]
+        //   usable=60 → objective = 1×120 − 60 = 60
+        //
+        // Genome A is better (48 < 60): placing the small piece in the tall right-hand
+        // rect consolidates leftover area into two usable rectangles instead of one.
+        let problem = parse_problem("12x10:6x5n,4x3n", 0).expect("Error parsing problem");
+        let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0)]);
+        let sol_b = decode(&problem, &vec![g(0, false, 0), g(1, false, 1)]);
+        assert_eq!(sol_a.objective(&problem), 48);
+        assert_eq!(sol_b.objective(&problem), 60);
+        assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
     }
 }

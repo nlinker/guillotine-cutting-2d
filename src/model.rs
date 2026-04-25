@@ -1,3 +1,5 @@
+pub type PieceId = u32;
+
 /// Stock sheet — all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sheet {
@@ -9,7 +11,7 @@ pub struct Sheet {
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
-    pub id: u32,
+    pub id: PieceId,
     pub width: u32,
     pub height: u32,
     pub can_rotate: bool,
@@ -29,15 +31,27 @@ pub struct Problem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Placement {
     pub sheet_idx: usize,
-    pub piece_id: u32,
+    pub piece_id: PieceId,
     pub x: u32,
     pub y: u32,
     pub rotated: bool,
 }
 
+/// An unused rectangle remaining after all pieces are placed. `(x, y)` is the top-left corner;
+/// `x` increases rightward, `y` increases downward.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FreeRect {
+    pub sheet_idx: usize,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct Solution {
     pub placements: Vec<Placement>,
+    pub leftovers: Vec<FreeRect>,
 }
 
 impl Solution {
@@ -48,5 +62,25 @@ impl Solution {
             .max()
             .map(|m| m + 1)
             .unwrap_or(0)
+    }
+
+    /// Lexicographic fitness: minimize sheets first, then maximize usable leftover area:
+    /// `objective = sheets_used * sheet_area - usable_leftover_area`
+    /// A leftover is usable if at least one problem piece fits in it (possibly rotated).
+    /// Lower is better.
+    pub fn objective(&self, problem: &Problem) -> i64 {
+        let sheet_area = problem.sheet.width as i64 * problem.sheet.height as i64;
+        let usable: i64 = self
+            .leftovers
+            .iter()
+            .map(|lr| {
+                let fits = problem.pieces.iter().any(|p| {
+                    (p.width <= lr.width && p.height <= lr.height)
+                        || (p.can_rotate && p.height <= lr.width && p.width <= lr.height)
+                });
+                if fits { lr.width as i64 * lr.height as i64 } else { 0 }
+            })
+            .sum();
+        self.sheets_used() as i64 * sheet_area - usable
     }
 }
