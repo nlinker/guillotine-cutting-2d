@@ -55,6 +55,72 @@ pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64
     }
 }
 
+/// CX (Cycle Crossover) for two genomes. No RNG required — cycle structure is
+/// fully determined by the two parents.
+///
+/// Traces cycles by following P2 values back to their positions in P1. Even cycles
+/// keep their parent source; odd cycles swap it. O(n): one pass to invert P1,
+/// one pass to trace all cycles.
+///
+/// Key property: within each cycle, {P1[i]} == {P2[i]}, so swapping sources
+/// never breaks the permutation invariant.
+///
+/// ```text
+/// pos:  0  1  2  3  4
+/// P1: [ 0  1  2  3  4 ]
+/// P2: [ 3  0  4  1  2 ]
+/// cy:   0  0  1  0  1    (cycle 0: even, cycle 1: odd)
+///
+/// C1: [ 0  1  4  3  2 ]   even → P1, odd → P2
+/// C2: [ 3  0  2  1  4 ]   even → P2, odd → P1
+/// ```
+pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
+    let n = p1.len();
+    debug_assert_eq!(n, p2.len());
+    if n < 2 {
+        return (p1.clone(), p2.clone());
+    }
+
+    // Inverse of p1: pos_in_p1[v] = i where p1[i].piece_idx == v
+    let mut pos_in_p1 = vec![0usize; n];
+    for (i, gene) in p1.iter().enumerate() {
+        pos_in_p1[gene.piece_idx] = i;
+    }
+
+    // Label each position with the parity of its cycle
+    let mut odd_cycle = vec![false; n];
+    let mut visited = vec![false; n];
+    let mut odd = false;
+    for start in 0..n {
+        if visited[start] {
+            continue;
+        }
+        let mut pos = start;
+        loop {
+            visited[pos] = true;
+            odd_cycle[pos] = odd;
+            pos = pos_in_p1[p2[pos].piece_idx];
+            if pos == start {
+                break;
+            }
+        }
+        odd = !odd;
+    }
+
+    // Even cycles: C1 ← P1, C2 ← P2 (already correct from clone)
+    // Odd cycles:  C1 ← P2, C2 ← P1
+    let mut c1 = p1.clone();
+    let mut c2 = p2.clone();
+    for i in 0..n {
+        if odd_cycle[i] {
+            c1[i] = p2[i];
+            c2[i] = p1[i];
+        }
+    }
+
+    (c1, c2)
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
@@ -139,6 +205,44 @@ mod tests {
         mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         assert_eq!(g1, g2);
+    }
+
+    #[test]
+    fn cx_known() {
+        // P1=[0,1,2,3,4], P2=[3,0,4,1,2]
+        // cycle 0 (even): positions {0,3,1} — trace: 0→pos_of(3)=3→pos_of(1)=1→pos_of(0)=0
+        // cycle 1 (odd):  positions {2,4}   — trace: 2→pos_of(4)=4→pos_of(2)=2
+        // C1 = [0,1,4,3,2],  C2 = [3,0,2,1,4]
+        let p1: Genome = (0..5usize).map(g).collect();
+        let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();
+        let (c1, c2) = cx_crossover(&p1, &p2);
+        assert_eq!(ids(&c1), [0, 1, 4, 3, 2]);
+        assert_eq!(ids(&c2), [3, 0, 2, 1, 4]);
+    }
+
+    #[test]
+    fn cx_produces_valid_permutations() {
+        let n = 7;
+        let p1: Genome = (0..n).map(g).collect();
+        let p2: Genome = [6, 2, 4, 0, 3, 5, 1].into_iter().map(g).collect();
+        let (c1, c2) = cx_crossover(&p1, &p2);
+        assert_eq!(sorted_ids(&c1), (0..n).collect::<Vec<_>>());
+        assert_eq!(sorted_ids(&c2), (0..n).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn cx_identity_parent_gives_self() {
+        // P1 = identity → cycles are all singletons, alternating parity
+        // Each position i: pos_in_p1[P2[i]] = P2[i] (since P1 is identity)
+        // So cycle of pos i is just {i}, parity alternates 0,1,0,1,...
+        // C1: even positions from P1, odd from P2
+        // C2: even positions from P2, odd from P1
+        let n = 6;
+        let p1: Genome = (0..n).map(g).collect();
+        let p2: Genome = [5, 4, 3, 2, 1, 0].into_iter().map(g).collect();
+        let (c1, c2) = cx_crossover(&p1, &p2);
+        assert_eq!(sorted_ids(&c1), (0..n).collect::<Vec<_>>());
+        assert_eq!(sorted_ids(&c2), (0..n).collect::<Vec<_>>());
     }
 
     #[test]
