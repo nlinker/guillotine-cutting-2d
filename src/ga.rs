@@ -1,6 +1,9 @@
 use rand_core::Rng;
 
-use crate::decoder::{Gene, Genome};
+use crate::{
+    decoder::{Gene, Genome, decode},
+    model::Problem,
+};
 
 /// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
@@ -137,6 +140,18 @@ pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individua
     ranked.into_iter().take(n_elite).cloned().collect()
 }
 
+/// Generates `size` random individuals for `problem`, each with a shuffled genome
+/// and a freshly computed objective.
+pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
+    (0..size)
+        .map(|_| {
+            let genome = random_genome(problem, rng);
+            let objective = decode(problem, &genome).objective(problem);
+            Individual { genome, objective }
+        })
+        .collect()
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
@@ -144,6 +159,23 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
 /// get random float in (0, 1)
 fn rng_01<R: Rng>(rng: &mut R) -> f64 {
     (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+}
+
+fn random_genome<R: Rng>(problem: &Problem, rng: &mut R) -> Genome {
+    let n = problem.pieces.len();
+    let mut indices: Vec<usize> = (0..n).collect();
+    for i in (1..n).rev() {
+        let j = (rng.next_u64() as usize) % (i + 1);
+        indices.swap(i, j);
+    }
+    indices
+        .into_iter()
+        .map(|piece_idx| Gene {
+            piece_idx,
+            rotate: rng.next_u64() & 1 != 0,
+            point_selector: rng.next_u64() as u32,
+        })
+        .collect()
 }
 
 fn build_child(donor: &Genome, filler: &Genome, lo: usize, hi: usize) -> Genome {
@@ -221,6 +253,28 @@ mod tests {
         mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         assert_eq!(g1, g2);
+    }
+
+    #[test]
+    fn init_population_size_and_valid_permutations() {
+        use crate::parse::parse_problem;
+        let problem = parse_problem("10x10:3x2,4x3,2x2n,5x1", 0).unwrap();
+        let n = problem.pieces.len();
+        let mut rng = Xoshiro256StarStar::seed_from_u64(99);
+        let pop = init_population(&problem, 20, &mut rng);
+        assert_eq!(pop.len(), 20);
+        for ind in &pop {
+            assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn init_population_is_deterministic() {
+        use crate::parse::parse_problem;
+        let problem = parse_problem("10x10:3x2,4x3,2x2n", 0).unwrap();
+        let pop1 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
     fn ind(piece_idx: usize, objective: i64) -> Individual {
