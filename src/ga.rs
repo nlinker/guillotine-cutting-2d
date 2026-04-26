@@ -140,6 +140,22 @@ pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individua
     ranked.into_iter().take(n_elite).cloned().collect()
 }
 
+/// Picks `k` individuals at random and returns the one with the lowest objective.
+/// Typical value: `k = 2` or `k = 3`.
+pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rng: &mut R) -> &'a Individual {
+    let n = individuals.len();
+    debug_assert!(k >= 1 && k <= n);
+    let first = (rng.next_u64() as usize) % n;
+    let mut best = &individuals[first];
+    for _ in 1..k {
+        let idx = (rng.next_u64() as usize) % n;
+        if individuals[idx].objective < best.objective {
+            best = &individuals[idx];
+        }
+    }
+    best
+}
+
 /// Generates `size` random individuals for `problem`, each with a shuffled genome
 /// and a freshly computed objective.
 pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
@@ -253,6 +269,22 @@ mod tests {
         mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         assert_eq!(g1, g2);
+    }
+
+    #[test]
+    fn tournament_full_k_returns_best() {
+        let pop = vec![ind(0, 30), ind(1, 10), ind(2, 20)];
+        let mut rng = Xoshiro256StarStar::seed_from_u64(1);
+        let winner = tournament_select(&pop, 3, &mut rng);
+        assert_eq!(winner.objective, 10);
+    }
+
+    #[test]
+    fn tournament_is_deterministic() {
+        let pop = vec![ind(0, 5), ind(1, 3), ind(2, 8), ind(3, 1)];
+        let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
+        let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
+        assert_eq!(w1.objective, w2.objective);
     }
 
     #[test]
