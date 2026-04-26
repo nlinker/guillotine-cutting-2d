@@ -168,6 +168,74 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
         .collect()
 }
 
+/// GA hyperparameters.
+///
+/// `n_elite`: best individuals carried unchanged each generation (default 1).
+/// `tournament_k`: tournament size for parent selection (default 2).
+/// `p_crossover`: probability of applying OX crossover; otherwise children are parent clones.
+#[derive(Debug, Clone)]
+pub struct GaConfig {
+    pub pop_size: usize,
+    pub n_generations: usize,
+    pub n_elite: usize,
+    pub tournament_k: usize,
+    pub p_crossover: f64,
+    pub p_swap: f64,
+    pub p_flip: f64,
+    pub p_point: f64,
+}
+
+/// Runs the GA for `config.n_generations` and returns the best `Individual` found.
+///
+/// Each generation: elite individuals are carried over unchanged; the remainder is
+/// filled by tournament selection → OX crossover (with probability `p_crossover`) →
+/// mutation → decode. The running best is tracked independently of elitism so that
+/// `n_elite = 0` still returns a valid result.
+pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
+    let mut pop = init_population(problem, config.pop_size, rng);
+    let mut best = select_elite(&pop, 1).into_iter().next().unwrap();
+
+    for _ in 0..config.n_generations {
+        let elite = select_elite(&pop, config.n_elite);
+        let mut next_pop = elite;
+
+        while next_pop.len() < config.pop_size {
+            let p1 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
+            let p2 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
+
+            let (mut g1, mut g2) = if rng_01(rng) < config.p_crossover {
+                ox_crossover(&p1, &p2, rng)
+            } else {
+                (p1, p2)
+            };
+
+            mutate(&mut g1, rng, config.p_swap, config.p_flip, config.p_point);
+            let obj1 = decode(problem, &g1).objective(problem);
+            next_pop.push(Individual {
+                genome: g1,
+                objective: obj1,
+            });
+
+            if next_pop.len() < config.pop_size {
+                mutate(&mut g2, rng, config.p_swap, config.p_flip, config.p_point);
+                let obj2 = decode(problem, &g2).objective(problem);
+                next_pop.push(Individual {
+                    genome: g2,
+                    objective: obj2,
+                });
+            }
+        }
+
+        pop = next_pop;
+        let gen_best = select_elite(&pop, 1).into_iter().next().unwrap();
+        if gen_best.objective < best.objective {
+            best = gen_best;
+        }
+    }
+
+    best
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
@@ -307,6 +375,37 @@ mod tests {
         let pop1 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         let pop2 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
+    }
+
+    fn default_config() -> GaConfig {
+        GaConfig {
+            pop_size: 20,
+            n_generations: 10,
+            n_elite: 1,
+            tournament_k: 2,
+            p_crossover: 0.8,
+            p_swap: 0.1,
+            p_flip: 0.05,
+            p_point: 0.05,
+        }
+    }
+
+    #[test]
+    fn run_ga_smoke() {
+        use crate::parse::parse_problem;
+        let problem = parse_problem("10x10:3x2,4x3,2x2n,5x1", 0).unwrap();
+        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
+        let _best = run_ga(&problem, &default_config(), &mut rng);
+    }
+
+    #[test]
+    fn run_ga_is_deterministic() {
+        use crate::parse::parse_problem;
+        let problem = parse_problem("10x10:3x2,4x3,2x2n,5x1", 0).unwrap();
+        let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
+        let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
+        assert_eq!(b1.objective, b2.objective);
+        assert_eq!(b1.genome, b2.genome);
     }
 
     fn ind(piece_idx: usize, objective: i64) -> Individual {
