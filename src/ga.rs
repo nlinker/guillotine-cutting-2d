@@ -32,8 +32,36 @@ pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, G
     ox_at(p1, p2, lo, hi)
 }
 
+/// Mutate a genome in-place. For each gene, independently:
+/// - with probability `p_swap`: swap it with a random other gene (preserves permutation)
+/// - with probability `p_flip`: flip `rotate`
+/// - with probability `p_point`: assign a new random `point_selector`
+pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64, p_point: f64) {
+    let n = genome.len();
+    if n < 2 {
+        return;
+    }
+    for i in 0..n {
+        if rng_01(rng) < p_swap {
+            let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
+            genome.swap(i, j);
+        }
+        if rng_01(rng) < p_flip {
+            genome[i].rotate = !genome[i].rotate;
+        }
+        if rng_01(rng) < p_point {
+            genome[i].point_selector = rng.next_u64() as u32;
+        }
+    }
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
+}
+
+/// get random float in (0, 1)
+fn rng_01<R: Rng>(rng: &mut R) -> f64 {
+    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
 fn build_child(donor: &Genome, filler: &Genome, lo: usize, hi: usize) -> Genome {
@@ -71,6 +99,46 @@ mod tests {
 
     fn ids(genome: &Genome) -> Vec<usize> {
         genome.iter().map(|g| g.piece_idx).collect()
+    }
+
+    fn sorted_ids(genome: &Genome) -> Vec<usize> {
+        let mut v = ids(genome);
+        v.sort_unstable();
+        v
+    }
+
+    #[test]
+    fn mutate_preserves_permutation() {
+        let n = 8;
+        let mut genome: Genome = (0..n).map(g).collect();
+        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(1), 1.0, 1.0, 1.0);
+        assert_eq!(sorted_ids(&genome), (0..n).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn mutate_no_op_at_zero_prob() {
+        let orig: Genome = (0..5usize).map(g).collect();
+        let mut genome = orig.clone();
+        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(2), 0.0, 0.0, 0.0);
+        assert_eq!(genome, orig);
+    }
+
+    #[test]
+    fn mutate_flips_all_rotate() {
+        let n = 4;
+        let mut genome: Genome = (0..n).map(g).collect();
+        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(3), 0.0, 1.0, 0.0);
+        assert!(genome.iter().all(|g| g.rotate));
+    }
+
+    #[test]
+    fn mutate_is_deterministic() {
+        let orig: Genome = (0..6usize).map(g).collect();
+        let mut g1 = orig.clone();
+        let mut g2 = orig.clone();
+        mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
+        mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
+        assert_eq!(g1, g2);
     }
 
     #[test]
