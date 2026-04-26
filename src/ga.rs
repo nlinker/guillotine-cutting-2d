@@ -2,6 +2,13 @@ use rand_core::Rng;
 
 use crate::decoder::{Gene, Genome};
 
+/// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.
+#[derive(Debug, Clone)]
+pub struct Individual {
+    pub genome: Genome,
+    pub objective: i64,
+}
+
 /// OX (Ordered Crossover) for two genomes.
 ///
 /// A random segment `[lo, hi)` is copied from each donor into the corresponding child;
@@ -121,6 +128,15 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
     (c1, c2)
 }
 
+/// Returns the `n_elite` individuals with the lowest objective (lower is better),
+/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
+/// Typical value: `n_elite = 1`.
+pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individual> {
+    let mut ranked: Vec<&Individual> = individuals.iter().collect();
+    ranked.sort_unstable_by_key(|ind| ind.objective);
+    ranked.into_iter().take(n_elite).cloned().collect()
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
@@ -205,6 +221,36 @@ mod tests {
         mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
         assert_eq!(g1, g2);
+    }
+
+    fn ind(piece_idx: usize, objective: i64) -> Individual {
+        Individual {
+            genome: vec![g(piece_idx)],
+            objective,
+        }
+    }
+
+    #[test]
+    fn elite_returns_best() {
+        let pop = vec![ind(0, 30), ind(1, 10), ind(2, 20)];
+        let elite = select_elite(&pop, 1);
+        assert_eq!(elite.len(), 1);
+        assert_eq!(elite[0].objective, 10);
+    }
+
+    #[test]
+    fn elite_top_k_sorted() {
+        let pop = vec![ind(0, 50), ind(1, 10), ind(2, 30), ind(3, 20)];
+        let elite = select_elite(&pop, 2);
+        assert_eq!(elite.iter().map(|e| e.objective).collect::<Vec<_>>(), [10, 20]);
+    }
+
+    #[test]
+    fn elite_n_exceeds_pop() {
+        let pop = vec![ind(0, 5), ind(1, 3)];
+        let elite = select_elite(&pop, 10);
+        assert_eq!(elite.len(), 2);
+        assert_eq!(elite[0].objective, 3);
     }
 
     #[test]
