@@ -1,172 +1,9 @@
-use rand_core::Rng;
+use rand::Rng;
 
 use crate::{
     decoder::{Gene, Genome, decode},
     model::Problem,
 };
-
-/// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.
-#[derive(Debug, Clone)]
-pub struct Individual {
-    pub genome: Genome,
-    pub objective: i64,
-}
-
-/// OX (Ordered Crossover) for two genomes.
-///
-/// A random segment `[lo, hi)` is copied from each donor into the corresponding child;
-/// the remaining positions are filled from the other parent in order starting at `hi`
-/// (wrapping), preserving relative order and skipping already-present `piece_idx` values.
-/// The full `Gene` (including `rotate` and `point_selector`) travels with its `piece_idx`.
-///
-/// ```text
-///          lo    hi
-///           ↓     ↓
-/// P1: [ 0 │ 1  2 │ 3  4 ]  ──→  C1: [ 4 │ 1  2 │ 3  0 ]
-/// P2: [ 3 │ 0  4 │ 1  2 ]  ──→  C2: [ 2 │ 0  4 │ 3  1 ]
-///
-///   C1 segment ← P1;  remaining ← P2 from hi, wrapping, skipping dupes
-///   C2 segment ← P2;  remaining ← P1 from hi, wrapping, skipping dupes
-/// ```
-///
-/// `p1` and `p2` must be the same length and their `piece_idx` values must be a
-/// permutation of `0..n`.
-pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
-    let n = p1.len();
-    debug_assert_eq!(n, p2.len());
-    if n < 2 {
-        return (p1.clone(), p2.clone());
-    }
-    let lo = (rng.next_u64() as usize) % (n - 1);
-    let hi = lo + 1 + (rng.next_u64() as usize) % (n - lo);
-    ox_at(p1, p2, lo, hi)
-}
-
-/// Mutate a genome in-place. For each gene, independently:
-/// - with probability `p_swap`: swap it with a random other gene (preserves permutation)
-/// - with probability `p_flip`: flip `rotate`
-/// - with probability `p_point`: assign a new random `point_selector`
-pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64, p_point: f64) {
-    let n = genome.len();
-    if n < 2 {
-        return;
-    }
-    for i in 0..n {
-        if rng_01(rng) < p_swap {
-            let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
-            genome.swap(i, j);
-        }
-        if rng_01(rng) < p_flip {
-            genome[i].rotate = !genome[i].rotate;
-        }
-        if rng_01(rng) < p_point {
-            genome[i].point_selector = rng.next_u64() as u32;
-        }
-    }
-}
-
-/// CX (Cycle Crossover) for two genomes. No RNG required — cycle structure is
-/// fully determined by the two parents.
-///
-/// Traces cycles by following P2 values back to their positions in P1. Even cycles
-/// keep their parent source; odd cycles swap it. O(n): one pass to invert P1,
-/// one pass to trace all cycles.
-///
-/// Key property: within each cycle, {P1[i]} == {P2[i]}, so swapping sources
-/// never breaks the permutation invariant.
-///
-/// ```text
-/// pos:  0  1  2  3  4
-/// P1: [ 0  1  2  3  4 ]
-/// P2: [ 3  0  4  1  2 ]
-/// cy:   0  0  1  0  1    (cycle 0: even, cycle 1: odd)
-///
-/// C1: [ 0  1  4  3  2 ]   even → P1, odd → P2
-/// C2: [ 3  0  2  1  4 ]   even → P2, odd → P1
-/// ```
-pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
-    let n = p1.len();
-    debug_assert_eq!(n, p2.len());
-    if n < 2 {
-        return (p1.clone(), p2.clone());
-    }
-
-    // Inverse of p1: pos_in_p1[v] = i where p1[i].piece_idx == v
-    let mut pos_in_p1 = vec![0usize; n];
-    for (i, gene) in p1.iter().enumerate() {
-        pos_in_p1[gene.piece_idx] = i;
-    }
-
-    // Label each position with the parity of its cycle
-    let mut odd_cycle = vec![false; n];
-    let mut visited = vec![false; n];
-    let mut odd = false;
-    for start in 0..n {
-        if visited[start] {
-            continue;
-        }
-        let mut pos = start;
-        loop {
-            visited[pos] = true;
-            odd_cycle[pos] = odd;
-            pos = pos_in_p1[p2[pos].piece_idx];
-            if pos == start {
-                break;
-            }
-        }
-        odd = !odd;
-    }
-
-    // Even cycles: C1 ← P1, C2 ← P2 (already correct from clone)
-    // Odd cycles:  C1 ← P2, C2 ← P1
-    let mut c1 = p1.clone();
-    let mut c2 = p2.clone();
-    for i in 0..n {
-        if odd_cycle[i] {
-            c1[i] = p2[i];
-            c2[i] = p1[i];
-        }
-    }
-
-    (c1, c2)
-}
-
-/// Returns the `n_elite` individuals with the lowest objective (lower is better),
-/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
-/// Typical value: `n_elite = 1`.
-pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individual> {
-    let mut ranked: Vec<&Individual> = individuals.iter().collect();
-    ranked.sort_unstable_by_key(|ind| ind.objective);
-    ranked.into_iter().take(n_elite).cloned().collect()
-}
-
-/// Picks `k` individuals at random and returns the one with the lowest objective.
-/// Typical value: `k = 2` or `k = 3`.
-pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rng: &mut R) -> &'a Individual {
-    let n = individuals.len();
-    debug_assert!(k >= 1 && k <= n);
-    let first = (rng.next_u64() as usize) % n;
-    let mut best = &individuals[first];
-    for _ in 1..k {
-        let idx = (rng.next_u64() as usize) % n;
-        if individuals[idx].objective < best.objective {
-            best = &individuals[idx];
-        }
-    }
-    best
-}
-
-/// Generates `size` random individuals for `problem`, each with a shuffled genome
-/// and a freshly computed objective.
-pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
-    (0..size)
-        .map(|_| {
-            let genome = random_genome(problem, rng);
-            let objective = decode(problem, &genome).objective(problem);
-            Individual { genome, objective }
-        })
-        .collect()
-}
 
 /// GA hyperparameters.
 ///
@@ -183,6 +20,13 @@ pub struct GaConfig {
     pub p_swap: f64,
     pub p_flip: f64,
     pub p_point: f64,
+}
+
+/// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.
+#[derive(Debug, Clone)]
+pub struct Individual {
+    pub genome: Genome,
+    pub objective: i64,
 }
 
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
@@ -236,13 +80,182 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
     best
 }
 
+/// OX (Ordered Crossover) for two genomes.
+///
+/// A random segment `[lo, hi)` is copied from each donor into the corresponding child;
+/// the remaining positions are filled from the other parent in order starting at `hi`
+/// (wrapping), preserving relative order and skipping already-present `piece_idx` values.
+/// The full `Gene` (including `rotate` and `point_selector`) travels with its `piece_idx`.
+///
+/// ```text
+///          lo    hi
+///           ↓     ↓
+/// P1: [ 0 │ 1  2 │ 3  4 ]  ──→  C1: [ 4 │ 1  2 │ 3  0 ]
+/// P2: [ 3 │ 0  4 │ 1  2 ]  ──→  C2: [ 2 │ 0  4 │ 3  1 ]
+///
+///   C1 segment ← P1;  remaining ← P2 from hi, wrapping, skipping dupes
+///   C2 segment ← P2;  remaining ← P1 from hi, wrapping, skipping dupes
+/// ```
+///
+/// `p1` and `p2` must be the same length and their `piece_idx` values must be a
+/// permutation of `0..n`.
+pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
+    let n = p1.len();
+    debug_assert_eq!(n, p2.len());
+    if n < 2 {
+        return (p1.clone(), p2.clone());
+    }
+    let lo = (rng.next_u64() as usize) % (n - 1);
+    let hi = lo + 1 + (rng.next_u64() as usize) % (n - lo);
+    ox_at(p1, p2, lo, hi)
+}
+
 fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
+    fn build_child(donor: &Genome, filler: &Genome, lo: usize, hi: usize) -> Genome {
+        let n = donor.len();
+        let mut in_segment = vec![false; n];
+        for gene in &donor[lo..hi] {
+            in_segment[gene.piece_idx] = true;
+        }
+        let fill_positions: Vec<usize> = (hi..n).chain(0..lo).collect();
+        let fill_genes: Vec<&Gene> = (0..n)
+            .map(|i| &filler[(hi + i) % n])
+            .filter(|g| !in_segment[g.piece_idx])
+            .collect();
+        let mut child = donor.clone();
+        for (pos, gene) in fill_positions.iter().zip(fill_genes.iter()) {
+            child[*pos] = **gene;
+        }
+        child
+    }
+    // p1 and p2 are symmetric wrt the crossover operation
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
 
-/// get random float in (0, 1)
-fn rng_01<R: Rng>(rng: &mut R) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+/// CX (Cycle Crossover) for two genomes. No RNG required — cycle structure is
+/// fully determined by the two parents.
+///
+/// Traces cycles by following P2 values back to their positions in P1. Even cycles
+/// keep their parent source; odd cycles swap it. O(n): one pass to invert P1,
+/// one pass to trace all cycles.
+///
+/// Key property: within each cycle, {P1[i]} == {P2[i]}, so swapping sources
+/// never breaks the permutation invariant.
+///
+/// ```text
+/// pos:  0  1  2  3  4
+/// P1: [ 0  1  2  3  4 ]
+/// P2: [ 3  0  4  1  2 ]
+/// cy:   0  0  1  0  1    (cycle 0: even, cycle 1: odd)
+///
+/// C1: [ 0  1  4  3  2 ]   even from P1, odd from P2
+/// C2: [ 3  0  2  1  4 ]   even from P2, odd from P1
+/// ```
+pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
+    let n = p1.len();
+    debug_assert_eq!(n, p2.len());
+    if n < 2 {
+        return (p1.clone(), p2.clone());
+    }
+
+    // Inverse of p1: pos_in_p1[v] = i where p1[i].piece_idx == v
+    let mut pos_in_p1 = vec![0usize; n];
+    for (i, gene) in p1.iter().enumerate() {
+        pos_in_p1[gene.piece_idx] = i;
+    }
+
+    // Label each position with the parity of its cycle
+    let mut odd_cycle = vec![false; n];
+    let mut visited = vec![false; n];
+    let mut odd = false;
+    for start in 0..n {
+        if visited[start] {
+            continue;
+        }
+        let mut pos = start;
+        loop {
+            visited[pos] = true;
+            odd_cycle[pos] = odd;
+            pos = pos_in_p1[p2[pos].piece_idx];
+            if pos == start {
+                break;
+            }
+        }
+        odd = !odd;
+    }
+
+    // Even cycles: C1 ← P1, C2 ← P2 (already correct from clone)
+    // Odd cycles:  C1 ← P2, C2 ← P1
+    let mut c1 = p1.clone();
+    let mut c2 = p2.clone();
+    for i in 0..n {
+        if odd_cycle[i] {
+            c1[i] = p2[i];
+            c2[i] = p1[i];
+        }
+    }
+
+    (c1, c2)
+}
+
+/// Mutate a genome in-place. For each gene, independently:
+/// - with probability `p_swap`: swap it with a random other gene (preserves permutation)
+/// - with probability `p_flip`: flip `rotate`
+/// - with probability `p_point`: assign a new random `point_selector`
+pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64, p_point: f64) {
+    let n = genome.len();
+    if n < 2 {
+        return;
+    }
+    for i in 0..n {
+        if rng_01(rng) < p_swap {
+            let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
+            genome.swap(i, j);
+        }
+        if rng_01(rng) < p_flip {
+            genome[i].rotate = !genome[i].rotate;
+        }
+        if rng_01(rng) < p_point {
+            genome[i].point_selector = rng.next_u64() as u32;
+        }
+    }
+}
+
+/// Returns the `n_elite` individuals with the lowest objective (lower is better),
+/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
+/// Typical value: `n_elite = 1`.
+pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individual> {
+    let mut ranked: Vec<&Individual> = individuals.iter().collect();
+    ranked.sort_unstable_by_key(|ind| ind.objective);
+    ranked.into_iter().take(n_elite).cloned().collect()
+}
+
+/// Picks `k` individuals at random and returns the one with the lowest objective.
+/// Typical value: `k = 2` or `k = 3`.
+pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rng: &mut R) -> &'a Individual {
+    let n = individuals.len();
+    debug_assert!(k >= 1 && k <= n);
+    let first = (rng.next_u64() as usize) % n;
+    let mut best = &individuals[first];
+    for _ in 1..k {
+        let idx = (rng.next_u64() as usize) % n;
+        if individuals[idx].objective < best.objective {
+            best = &individuals[idx];
+        }
+    }
+    best
+}
+
+/// Generates `size` random individuals for `problem`, each with a shuffled genome
+/// and a freshly computed objective.
+pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
+    (0..size)
+        .map(|_| {
+            let genome = random_genome(problem, rng);
+            let objective = decode(problem, &genome).objective(problem);
+            Individual { genome, objective }
+        })
+        .collect()
 }
 
 fn random_genome<R: Rng>(problem: &Problem, rng: &mut R) -> Genome {
@@ -262,27 +275,14 @@ fn random_genome<R: Rng>(problem: &Problem, rng: &mut R) -> Genome {
         .collect()
 }
 
-fn build_child(donor: &Genome, filler: &Genome, lo: usize, hi: usize) -> Genome {
-    let n = donor.len();
-    let mut in_segment = vec![false; n];
-    for gene in &donor[lo..hi] {
-        in_segment[gene.piece_idx] = true;
-    }
-    let fill_positions: Vec<usize> = (hi..n).chain(0..lo).collect();
-    let fill_genes: Vec<&Gene> = (0..n)
-        .map(|i| &filler[(hi + i) % n])
-        .filter(|g| !in_segment[g.piece_idx])
-        .collect();
-    let mut child = donor.clone();
-    for (pos, gene) in fill_positions.iter().zip(fill_genes.iter()) {
-        child[*pos] = **gene;
-    }
-    child
+/// get random float in (0, 1)
+fn rng_01<R: Rng>(rng: &mut R) -> f64 {
+    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
 #[cfg(test)]
 mod tests {
-    use rand_core::SeedableRng;
+    use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256StarStar;
 
     use super::*;
