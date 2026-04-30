@@ -105,12 +105,12 @@ fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u3
     } else {
         (piece.width, piece.height)
     };
-    if pw_a <= fr.width && ph_a <= fr.height {
+    if pw_a <= fr.w && ph_a <= fr.h {
         return Some((pw_a, ph_a, try_rotated));
     }
     if piece.can_rotate {
         let (pw_b, ph_b) = (ph_a, pw_a); // opposite orientation
-        if pw_b <= fr.width && ph_b <= fr.height {
+        if pw_b <= fr.w && ph_b <= fr.h {
             return Some((pw_b, ph_b, !try_rotated));
         }
     }
@@ -124,9 +124,9 @@ fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u3
 /// and the bottom child spans the full rect width (and vice versa).
 /// The blade kerf is subtracted from each internal cut; boundary edges are exempt.
 fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect> {
-    debug_assert!(pw <= fr.width && ph <= fr.height);
-    let lw = fr.width - pw; // right leftover before kerf
-    let lh = fr.height - ph; // bottom leftover before kerf
+    debug_assert!(pw <= fr.w && ph <= fr.h);
+    let lw = fr.w - pw; // right leftover before kerf
+    let lh = fr.h - ph; // bottom leftover before kerf
     let mut out = Vec::with_capacity(2);
     if lw <= lh {
         // right child: narrow (piece height); bottom child: full width:
@@ -142,8 +142,8 @@ fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect>
                 sheet_idx: fr.sheet_idx,
                 x: fr.x + pw + kerf,
                 y: fr.y,
-                width: lw - kerf,
-                height: ph,
+                w: lw - kerf,
+                h: ph,
             });
         }
         if lh > kerf {
@@ -151,8 +151,8 @@ fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect>
                 sheet_idx: fr.sheet_idx,
                 x: fr.x,
                 y: fr.y + ph + kerf,
-                width: fr.width,
-                height: lh - kerf,
+                w: fr.w,
+                h: lh - kerf,
             });
         }
     } else {
@@ -170,8 +170,8 @@ fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect>
                 sheet_idx: fr.sheet_idx,
                 x: fr.x + pw + kerf,
                 y: fr.y,
-                width: lw - kerf,
-                height: fr.height,
+                w: lw - kerf,
+                h: fr.h,
             });
         }
         if lh > kerf {
@@ -179,8 +179,8 @@ fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect>
                 sheet_idx: fr.sheet_idx,
                 x: fr.x,
                 y: fr.y + ph + kerf,
-                width: pw,
-                height: lh - kerf,
+                w: pw,
+                h: lh - kerf,
             });
         }
     }
@@ -192,8 +192,8 @@ fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
         sheet_idx,
         x: 0,
         y: 0,
-        width: problem.sheet.width,
-        height: problem.sheet.height,
+        w: problem.sheet.width,
+        h: problem.sheet.height,
     }
 }
 

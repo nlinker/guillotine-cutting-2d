@@ -44,8 +44,8 @@ pub struct FreeRect {
     pub sheet_idx: usize,
     pub x: u32,
     pub y: u32,
-    pub width: u32,
-    pub height: u32,
+    pub w: u32,
+    pub h: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -75,10 +75,9 @@ impl Solution {
             .iter()
             .map(|lr| {
                 let fits = problem.pieces.iter().any(|p| {
-                    (p.width <= lr.width && p.height <= lr.height)
-                        || (p.can_rotate && p.height <= lr.width && p.width <= lr.height)
+                    (p.width <= lr.w && p.height <= lr.h) || (p.can_rotate && p.height <= lr.w && p.width <= lr.h)
                 });
-                if fits { lr.width as i64 * lr.height as i64 } else { 0 }
+                if fits { lr.w as i64 * lr.h as i64 } else { 0 }
             })
             .sum();
         self.sheets_used() as i64 * sheet_area - usable
