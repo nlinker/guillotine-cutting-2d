@@ -99,8 +99,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
                 let extent = if vertical { fr.w } else { fr.h };
                 let lengths = cut_extent(extent, min_size, kerf, &cfg.weights, rng);
                 let mut offset = 0;
-                for i in 0..lengths.len() {
-                    let length = lengths[i];
+                for length in lengths {
                     let r = if vertical {
                         FreeRect {
                             sheet_idx,
