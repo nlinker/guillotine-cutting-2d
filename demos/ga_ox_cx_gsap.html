@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GA Crossover Visualizer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      background: #ffffff;
+      color: #1a1a18;
+      padding: 20px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body                  { background: #1a1a18; color: #e8e6df; }
+      .tab                  { color: #b4b2a9; }
+      .tab:hover            { color: #e8e6df; }
+      .tab.active           { color: #e8e6df; border-bottom-color: #e8e6df; }
+      .tabs                 { border-bottom-color: #3d3d3a; }
+      .row-label            { color: #6b6965; }
+      .idx                  { color: #6b6965; }
+      .explain              { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
+      .explain strong       { color: #e8e6df; }
+      .ctrl button          { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover    { background: #232320; }
+      .ctrl button.primary  { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .kbd                  { background: #232320; border-color: #3d3d3a; color: #6b6965; }
+      .sc                   { color: #6b6965; }
+      .pdot                 { background: #3d3d3a; }
+      .randrow label        { color: #b4b2a9; }
+      .randrow input        { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+    }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 0.5px solid #d3d1c7; margin-bottom: 14px; }
+    .tab  { padding: 7px 20px; cursor: pointer; font-size: 13px; color: #888780; border-bottom: 2px solid transparent; transition: color .15s; }
+    .tab:hover  { color: #1a1a18; }
+    .tab.active { color: #1a1a18; border-bottom: 2px solid #1a1a18; font-weight: 500; }
+
+    /* Chromosome grid */
+    .rows-wrap  { position: relative; margin-bottom: 8px; overflow: hidden; }
+    .arc-svg    { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 1; }
+    .rows       { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+    .chrom-row  { display: flex; align-items: center; gap: 8px; }
+    .row-label  { font-size: 11px; color: #888780; width: 26px; text-align: right; flex-shrink: 0; }
+    .genes      { display: flex; gap: 4px; }
+
+    /* Gene cards */
+    .gene { width:40px; height:40px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:500; border:1.5px solid transparent; flex-shrink:0; }
+    .gene-lifted { position: absolute !important; z-index: 100 !important; margin: 0 !important; }
+    .gene-ph     { flex-shrink: 0; }
+    .g1{background:#EEEDFE;color:#3C3489;border-color:#7F77DD;}
+    .g2{background:#E1F5EE;color:#085041;border-color:#1D9E75;}
+    .g3{background:#FAECE7;color:#712B13;border-color:#D85A30;}
+    .g4{background:#E6F1FB;color:#0C447C;border-color:#378ADD;}
+    .g5{background:#FAEEDA;color:#633806;border-color:#EF9F27;}
+    .g6{background:#FBEAF0;color:#72243E;border-color:#D4537E;}
+    .g7{background:#EAF3DE;color:#27500A;border-color:#639922;}
+    .g8{background:#F1EFE8;color:#444441;border-color:#888780;}
+    .g9{background:#FCEBEB;color:#501313;border-color:#E24B4A;}
+
+    /* Index row */
+    .idx-row { display: flex; gap: 4px; padding-left: 34px; margin-bottom: 2px; }
+    .idx     { width: 40px; text-align: center; font-size: 10px; color: #888780; }
+
+    /* Explain — fixed height so buttons never shift */
+    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 13px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; height: 64px; overflow: hidden; margin-bottom: 8px; }
+    .explain strong { color: #1a1a18; }
+
+    /* Tags */
+    .tag    { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+    .t-init { background: #F1EFE8; color: #444441; }
+    .t-seg  { background: #FAEEDA; color: #633806; }
+    .t-copy { background: #E1F5EE; color: #085041; }
+    .t-fill { background: #E6F1FB; color: #0C447C; }
+    .t-cx   { background: #EEEDFE; color: #3C3489; }
+    .t-done { background: #E1F5EE; color: #085041; }
+
+    /* Controls */
+    .ctrl               { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .ctrl button        { font-size: 12px; padding: 4px 12px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; cursor: pointer; transition: background .15s; }
+    .ctrl button:hover  { background: #f5f4f0; }
+    .ctrl button:disabled { opacity: .35; cursor: default; }
+    .ctrl button.primary       { background: #1a1a18; color: #ffffff; border-color: #1a1a18; }
+    .ctrl button.primary:hover { opacity: .85; }
+    .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
+    .sc  { font-size: 11px; color: #888780; margin-left: auto; }
+
+    /* Progress dots — fixed height so buttons never shift */
+    .progress { display: flex; gap: 3px; margin: 6px 0; min-height: 16px; align-items: center; }
+    .pdot      { width: 7px; height: 7px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; }
+    .pdot.done { background: #1D9E75; }
+    .pdot.cur  { background: #EF9F27; transform: scale(1.5); }
+
+    /* Random row */
+    .randrow       { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+    .randrow label { font-size: 12px; color: #444441; }
+    .randrow input { width: 44px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('ox')">OX &mdash; order crossover</div>
+  <div class="tab"        onclick="switchTab('cx')">CX &mdash; cycle crossover</div>
+</div>
+
+<div class="idx-row" id="idx-row"></div>
+<div class="rows-wrap" id="rows-wrap">
+  <svg class="arc-svg" id="arc-svg"></svg>
+  <div class="rows" id="rows"></div>
+</div>
+
+<div class="explain" id="explain">Press Start to begin the step-by-step animation.</div>
+<div class="progress" id="progress-row"></div>
+
+<div class="ctrl">
+  <button class="primary" onclick="startCurrent()">&#x27F3; Start</button>
+  <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
+  <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
+  <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+  <span class="sc" id="sc"></span>
+</div>
+
+<div class="randrow">
+  <label>Length:</label>
+  <input type="number" id="n-len" value="8" min="5" max="9"/>
+  <button onclick="randomize()">&#x1F3B2; Random</button>
+  <span id="ox-seg-wrap" style="display:flex;gap:4px;align-items:center;">
+    <label>Segment [</label>
+    <input type="number" id="ox-s1" value="2" min="0" max="7" style="width:38px"/>
+    <label>,</label>
+    <input type="number" id="ox-s2" value="5" min="1" max="8" style="width:38px"/>
+    <label>]</label>
+  </span>
+</div>
+
+<script>
+var curTab='ox', p1=[], p2=[], steps=[], stepIdx=-1, busy=false, autoRunning=false;
+// Stored params — set by generateNew(), replayed by startCurrent()
+var oxParams=null, cxParams=null;
+
+var GC=['','g1','g2','g3','g4','g5','g6','g7','g8','g9'];
+var shuffle=function(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;};
+var range=function(n){var r=[];for(var i=0;i<n;i++)r.push(i+1);return r;};
+var wait=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+var tween=function(el,vars){return new Promise(function(r){gsap.to(el,Object.assign({},vars,{onComplete:r}));});};
+var tweenAll=function(els,vars){return Promise.all(els.filter(Boolean).map(function(e){return tween(e,vars);}));};
+var gEl=function(r,c){return document.getElementById('g-'+r+'-'+c);};
+
+// Generate fresh random parents + segment params, store for deterministic replay
+function generateNew(){
+  var n=Math.max(5,Math.min(9,parseInt(document.getElementById('n-len').value)||8));
+  p1=shuffle(range(n)); p2=shuffle(range(n));
+  // OX: pre-roll segment bounds
+  var s1=Math.floor(Math.random()*(n-2));
+  var s2=s1+1+Math.floor(Math.random()*(n-s1-2));
+  oxParams={s1:s1,s2:s2};
+  document.getElementById('ox-s1').value=s1;
+  document.getElementById('ox-s2').value=s2;
+  // CX has no extra params — p1/p2 fully determine everything
+  cxParams={};
+}
+
+// ── DOM helpers ───────────────────────────────────────────────────
+function cleanFloating(){
+  var wrap=document.getElementById('rows-wrap');
+  Array.from(wrap.children).forEach(function(ch){
+    if(ch.classList.contains('gene'))ch.remove();
+    if(ch.classList.contains('gene-ph'))ch.remove();
+  });
+}
+
+function buildRows(arrs){
+  cleanFloating();
+  var rows=document.getElementById('rows'); rows.innerHTML='';
+  var labels=['P1','P2','O1'], ids=['r-p1','r-p2','r-o1'];
+  var n=arrs[0]?arrs[0].length:0;
+  arrs.forEach(function(arr,ri){
+    var row=document.createElement('div'); row.className='chrom-row';
+    var lbl=document.createElement('div'); lbl.className='row-label'; lbl.textContent=labels[ri];
+    var genes=document.createElement('div'); genes.className='genes'; genes.id=ids[ri];
+    arr.forEach(function(v,ci){
+      var d=document.createElement('div');
+      d.className='gene '+(v?GC[v]:'g8');
+      d.id='g-'+ri+'-'+ci; d.textContent=v||'';
+      if(!v){d.style.opacity='0.22';d.style.borderStyle='dashed';}
+      genes.appendChild(d);
+    });
+    row.appendChild(lbl); row.appendChild(genes); rows.appendChild(row);
+  });
+  var ir=document.getElementById('idx-row'); ir.innerHTML='';
+  for(var i=0;i<n;i++){var d=document.createElement('div');d.className='idx';d.textContent=i;ir.appendChild(d);}
+}
+
+function resetAll(){ gsap.set('[id^=g-]',{x:0,y:0,scale:1,opacity:1}); }
+function clearArc(){ document.getElementById('arc-svg').innerHTML=''; }
+
+function getPos(el){
+  var wrap=document.getElementById('rows-wrap');
+  var wr=wrap.getBoundingClientRect(), er=el.getBoundingClientRect();
+  return{x:er.left-wr.left, y:er.top-wr.top,
+         cx:er.left+er.width/2-wr.left, cy:er.top+er.height/2-wr.top,
+         t:er.top-wr.top, l:er.left-wr.left, r:er.right-wr.left, w:er.width, h:er.height};
+}
+
+function drawBracket(row,s1,s2,color){
+  var svg=document.getElementById('arc-svg');
+  var g1=gEl(row,s1), g2=gEl(row,s2); if(!g1||!g2)return;
+  var a=getPos(g1), b=getPos(g2);
+  var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d','M'+(a.l-2)+' '+(a.t+4)+' L'+(a.l-2)+' '+(a.t-2)+' L'+(b.r+2)+' '+(a.t-2)+' L'+(b.r+2)+' '+(a.t+4));
+  path.setAttribute('fill','none'); path.setAttribute('stroke',color);
+  path.setAttribute('stroke-width','1.5'); path.setAttribute('stroke-linecap','round');
+  svg.appendChild(path);
+}
+
+function drawArrow(fromEl,toEl,color){
+  var svg=document.getElementById('arc-svg'); if(!fromEl||!toEl)return;
+  var fp=getPos(fromEl), tp=getPos(toEl);
+  var id='a'+Math.random().toString(36).slice(2,7);
+  var defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+  var mk=document.createElementNS('http://www.w3.org/2000/svg','marker');
+  mk.setAttribute('id',id); mk.setAttribute('viewBox','0 0 8 8'); mk.setAttribute('refX','6');
+  mk.setAttribute('refY','4'); mk.setAttribute('markerWidth','5'); mk.setAttribute('markerHeight','5'); mk.setAttribute('orient','auto');
+  var mp=document.createElementNS('http://www.w3.org/2000/svg','path');
+  mp.setAttribute('d','M1 1L7 4L1 7'); mp.setAttribute('fill','none');
+  mp.setAttribute('stroke',color); mp.setAttribute('stroke-width','1.5'); mp.setAttribute('stroke-linecap','round');
+  mk.appendChild(mp); defs.appendChild(mk); svg.appendChild(defs);
+  var mx=(fp.cx+tp.cx)/2, my=Math.min(fp.cy,tp.cy)-28;
+  var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d','M'+fp.cx+' '+fp.cy+' Q'+mx+' '+my+' '+tp.cx+' '+tp.cy);
+  path.setAttribute('fill','none'); path.setAttribute('stroke',color);
+  path.setAttribute('stroke-width','1.2'); path.setAttribute('stroke-dasharray','4 3');
+  path.setAttribute('marker-end','url(#'+id+')');
+  svg.appendChild(path);
+}
+
+// ── animations ────────────────────────────────────────────────────
+async function animHighlight(els){
+  var valid=els.filter(Boolean); if(!valid.length)return;
+  await tweenAll(valid,{scale:1.15,duration:0.18,ease:'power2.out'});
+  await tweenAll(valid,{scale:1,duration:0.16,ease:'power2.in'});
+}
+
+function liftGene(el){
+  var wrap=document.getElementById('rows-wrap');
+  var pos=getPos(el);
+  var ph=document.createElement('div'); ph.className='gene-ph';
+  ph.style.width=pos.w+'px'; ph.style.height=pos.h+'px';
+  el.parentNode.insertBefore(ph,el);
+  el.classList.add('gene-lifted');
+  el.style.left=pos.x+'px'; el.style.top=pos.y+'px';
+  el.style.width=pos.w+'px'; el.style.height=pos.h+'px';
+  gsap.set(el,{x:0,y:0,scale:1,opacity:1});
+  wrap.appendChild(el);
+}
+
+function dropGene(el){
+  if(el&&el.parentNode) el.parentNode.removeChild(el);
+}
+
+async function animFly(src,dst){
+  if(!src||!dst)return;
+  var dstPos=getPos(dst);
+  liftGene(src);
+  var srcY=parseFloat(src.style.top), LIFT=38;
+  await tween(src,{top:srcY-LIFT,duration:0.18,ease:'power2.out'});
+  await Promise.all([tween(src,{left:dstPos.x,duration:0.30,ease:'power1.inOut'}),
+                     tween(src,{top:dstPos.y-LIFT,duration:0.30,ease:'power1.inOut'})]);
+  await tween(src,{top:dstPos.y,duration:0.18,ease:'power2.in'});
+  dropGene(src);
+}
+
+async function animSlide(src,dst){
+  if(!src||!dst)return;
+  var dstPos=getPos(dst);
+  liftGene(src);
+  gsap.set(src,{opacity:0.5});
+  await Promise.all([tween(src,{left:dstPos.x,top:dstPos.y,duration:0.30,ease:'power2.inOut'}),
+                     tween(src,{opacity:1,duration:0.18})]);
+  await tween(src,{scale:1.1,duration:0.1,ease:'power2.out'});
+  await tween(src,{scale:1,duration:0.1,ease:'power2.in'});
+  dropGene(src);
+}
+
+// ── OX step builder ───────────────────────────────────────────────
+function buildOXSteps(P1,P2,s1,s2){
+  var n=P1.length, empty=new Array(n).fill(0);
+  var segSet=new Set(P1.slice(s1,s2+1));
+  var p2order=[]; for(var k=0;k<n;k++) p2order.push(P2[(s2+1+k)%n]);
+  var toFill=p2order.filter(function(v){return !segSet.has(v);});
+  var fillPos=[]; for(var k=0;k<n;k++){var pos=(s2+1+k)%n; if(pos<s1||pos>s2)fillPos.push(pos);}
+  var o1base=new Array(n).fill(0); for(var i=s1;i<=s2;i++) o1base[i]=P1[i];
+  var st=[];
+
+  st.push({arrs:[P1,P2,empty],
+    explain:'<span class="tag t-init">Start</span>Two parent chromosomes. OX copies a segment from P1; the rest is filled in P2 order.',
+    anim:async function(){buildRows([P1,P2,empty]);resetAll();}});
+
+  st.push({arrs:[P1,P2,empty],
+    explain:'<span class="tag t-seg">Segment</span>Positions <strong>['+s1+'&hellip;'+s2+']</strong>: genes <strong>'+P1.slice(s1,s2+1).join(', ')+'</strong> from P1 go directly into O1.',
+    anim:async function(){clearArc();drawBracket(0,s1,s2,'#EF9F27');var hl=[];for(var i=s1;i<=s2;i++)hl.push(gEl(0,i));await animHighlight(hl);}});
+
+  st.push({arrs:[P1,P2,o1base],
+    explain:'<span class="tag t-copy">Copy</span>Segment genes fly from P1 into O1.',
+    anim:async function(){
+      clearArc();drawBracket(0,s1,s2,'#EF9F27');drawBracket(2,s1,s2,'#1D9E75');
+      buildRows([P1,P2,empty]);resetAll();
+      for(var i=s1;i<=s2;i++) await animFly(gEl(0,i),gEl(2,i));
+      buildRows([P1,P2,o1base]);resetAll();
+    }});
+
+  var o1cur=o1base.slice();
+  for(var fi=0;fi<toFill.length;fi++){
+    (function(pos,val,p2col,prev){
+      var next=prev.slice(); next[pos]=val;
+      st.push({arrs:[P1,P2,next],
+        explain:'<span class="tag t-fill">Fill</span>P2 contributes gene <strong>'+val+'</strong> &rarr; position <strong>'+pos+'</strong> of O1.',
+        anim:async function(){
+          clearArc();
+          buildRows([P1,P2,prev]);resetAll();
+          await animHighlight([gEl(1,p2col)]);
+          await animSlide(gEl(1,p2col),gEl(2,pos));
+          buildRows([P1,P2,next]);resetAll();
+        }});
+    })(fillPos[fi],toFill[fi],P2.indexOf(toFill[fi]),o1cur.slice());
+    o1cur[fillPos[fi]]=toFill[fi];
+  }
+
+  st.push({arrs:[P1,P2,o1cur],
+    explain:'<span class="tag t-done">Done</span>O1: <strong>['+o1cur.join(', ')+']</strong>. Segment from P1, remaining order from P2.',
+    anim:async function(){clearArc();buildRows([P1,P2,o1cur]);resetAll();}});
+
+  return st;
+}
+
+// ── CX step builder ───────────────────────────────────────────────
+function buildCXSteps(P1,P2){
+  var n=P1.length, empty=new Array(n).fill(0);
+  var p2pos={}; P2.forEach(function(v,i){p2pos[v]=i;});
+  var st=[];
+
+  st.push({arrs:[P1,P2,empty],
+    explain:'<span class="tag t-init">Start</span>CX finds closed position cycles. Even-numbered cycles come from P1, odd from P2.',
+    anim:async function(){buildRows([P1,P2,empty]);resetAll();}});
+
+  var assignment=new Array(n).fill(-1), visited=new Array(n).fill(false), cycleNum=0;
+
+  while(true){
+    var start=-1; for(var i=0;i<n;i++) if(!visited[i]){start=i;break;} if(start===-1)break;
+    var cycle=[], cur=start;
+    while(!visited[cur]){visited[cur]=true;cycle.push(cur);cur=p2pos[P1[cur]];}
+    var fromP1=cycleNum%2===0;
+    cycle.forEach(function(i){assignment[i]=fromP1?0:1;});
+    var partialO1=P1.map(function(v,i){return assignment[i]===0?v:(assignment[i]===1?P2[i]:0);});
+
+    (function(cyc,cn,fp,partO1,asgSnap){
+      st.push({arrs:[P1,P2,new Array(n).fill(0)],
+        explain:'<span class="tag t-cx">Cycle '+(cn+1)+'</span>Chain: '+cyc.map(function(i){return 'P1['+i+']='+P1[i]+'&rarr;P2['+p2pos[P1[i]]+']';}).join(' ')+'.',
+        anim:async function(){
+          clearArc();
+          var prevO1=P1.map(function(v,i){var a=asgSnap[i];return a===0?v:(a===1?P2[i]:0);});
+          buildRows([P1,P2,prevO1]);resetAll();
+          for(var k=0;k<cyc.length;k++){
+            drawArrow(gEl(0,cyc[k]),gEl(1,p2pos[P1[cyc[k]]]),'#EF9F27');
+            await animHighlight([gEl(0,cyc[k]),gEl(1,p2pos[P1[cyc[k]]])]);
+            await wait(60);
+          }
+        }});
+
+      st.push({arrs:[P1,P2,partO1],
+        explain:'<span class="tag t-cx">Cycle '+(cn+1)+'</span>'+(fp?'Even':'Odd')+' cycle &rarr; positions ['+cyc.join(', ')+'] from <strong>'+(fp?'P1':'P2')+'</strong>.',
+        anim:async function(){
+          clearArc();
+          var prevO1=P1.map(function(v,i){var a=asgSnap[i];return a===0?v:(a===1?P2[i]:0);});
+          buildRows([P1,P2,prevO1]);resetAll();
+          for(var k=0;k<cyc.length;k++) await animFly(gEl(fp?0:1,cyc[k]),gEl(2,cyc[k]));
+          buildRows([P1,P2,partO1]);resetAll();
+        }});
+    })(cycle.slice(),cycleNum,fromP1,partialO1.slice(),assignment.map(function(a,i){return cycle.indexOf(i)>=0?-1:a;}));
+
+    cycleNum++;
+  }
+
+  var o1final=P1.map(function(v,i){return assignment[i]===0?v:P2[i];});
+  st.push({arrs:[P1,P2,o1final],
+    explain:'<span class="tag t-done">Done</span>O1: <strong>['+o1final.join(', ')+']</strong>. Each gene sits at a position it held in one of the parents.',
+    anim:async function(){clearArc();buildRows([P1,P2,o1final]);resetAll();}});
+
+  return st;
+}
+
+// ── render / nav ──────────────────────────────────────────────────
+async function renderStep(idx){
+  if(busy)return;
+  busy=true; updateButtons(true);
+  stepIdx=idx;
+  document.getElementById('explain').innerHTML=steps[idx].explain;
+  try{await steps[idx].anim();}catch(e){console.warn(e);}
+  busy=false; updateProgress(); updateButtons(false);
+}
+
+function updateButtons(b){
+  document.getElementById('btn-prev').disabled=b||stepIdx<=0;
+  document.getElementById('btn-next').disabled=b||stepIdx>=steps.length-1;
+  document.getElementById('btn-auto').disabled=!steps.length;
+}
+
+function updateProgress(){
+  var pr=document.getElementById('progress-row'); pr.innerHTML='';
+  steps.forEach(function(_,i){
+    var d=document.createElement('div');
+    d.className='pdot'+(i<stepIdx?' done':i===stepIdx?' cur':'');
+    pr.appendChild(d);
+  });
+  document.getElementById('sc').textContent=steps.length?(stepIdx+1)+' / '+steps.length:'';
+}
+
+async function goNext(){ if(!busy&&stepIdx<steps.length-1) await renderStep(stepIdx+1); }
+
+async function goPrev(){
+  if(busy||stepIdx<=0)return;
+  gsap.killTweensOf('[id^=g-]'); busy=false; cleanFloating(); clearArc(); stepIdx--;
+  buildRows(steps[stepIdx].arrs); resetAll();
+  document.getElementById('explain').innerHTML=steps[stepIdx].explain;
+  updateProgress(); updateButtons(false);
+}
+
+async function toggleAuto(){
+  if(autoRunning){
+    autoRunning=false;
+    document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+    return;
+  }
+  autoRunning=true;
+  document.getElementById('btn-auto').innerHTML='&#x23F8; Pause<span class="kbd">Space</span>';
+  while(autoRunning&&stepIdx<steps.length-1){await goNext();await wait(500);}
+  autoRunning=false;
+  document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+}
+
+function startCurrent(){
+  autoRunning=false; gsap.killTweensOf('[id^=g-]'); cleanFloating(); busy=false; clearArc();
+  // Generate params on first run or if none exist for this tab
+  if(!p1.length) generateNew();
+  if(curTab==='ox'){
+    // Read segment from inputs (user may have edited them manually)
+    var n=p1.length;
+    var s1=Math.max(0,Math.min(n-2,parseInt(document.getElementById('ox-s1').value)||0));
+    var s2=Math.max(s1+1,Math.min(n-1,parseInt(document.getElementById('ox-s2').value)||s1+1));
+    steps=buildOXSteps(p1,p2,s1,s2);
+  } else {
+    steps=buildCXSteps(p1,p2);
+  }
+  stepIdx=0;
+  document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+  renderStep(0);
+}
+
+function randomize(){
+  generateNew();
+  startCurrent();
+}
+
+function switchTab(t){
+  curTab=t;
+  document.querySelectorAll('.tab').forEach(function(el,i){el.classList.toggle('active',['ox','cx'][i]===t);});
+  document.getElementById('ox-seg-wrap').style.display=t==='ox'?'flex':'none';
+  autoRunning=false; gsap.killTweensOf('[id^=g-]'); cleanFloating(); busy=false;
+  steps=[]; stepIdx=-1; clearArc();
+  document.getElementById('explain').innerHTML='Press Start to begin the step-by-step animation.';
+  document.getElementById('progress-row').innerHTML='';
+  document.getElementById('sc').textContent='';
+  updateButtons(false);
+  if(p1.length) buildRows([p1,p2,new Array(p1.length).fill(0)]);
+  else          buildRows([shuffle(range(8)),shuffle(range(8)),new Array(8).fill(0)]);
+}
+
+document.addEventListener('keydown',function(ev){
+  if(['INPUT','TEXTAREA'].indexOf(document.activeElement&&document.activeElement.tagName)>=0)return;
+  if(ev.key==='ArrowRight'){ev.preventDefault();goNext();}
+  if(ev.key==='ArrowLeft') {ev.preventDefault();goPrev();}
+  if(ev.code==='Space')    {ev.preventDefault();toggleAuto();}
+});
+
+// Init — generate params and show initial state
+generateNew();
+buildRows([p1,p2,new Array(p1.length).fill(0)]);
+updateButtons(false);
+</script>
+</body>
+</html>

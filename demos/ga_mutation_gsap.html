@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GA Mutation Visualizer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      background: #ffffff;
+      color: #1a1a18;
+      padding: 20px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body                  { background: #1a1a18; color: #e8e6df; }
+      .tab                  { color: #b4b2a9; }
+      .tab:hover            { color: #e8e6df; }
+      .tab.active           { color: #e8e6df; border-bottom-color: #e8e6df; }
+      .tabs                 { border-bottom-color: #3d3d3a; }
+      .explain              { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
+      .explain strong       { color: #e8e6df; }
+      .idx                  { color: #6b6965; }
+      .ctrl button          { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover    { background: #232320; }
+      .ctrl button.primary  { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .kbd                  { background: #232320; border-color: #3d3d3a; color: #6b6965; }
+      .sc                   { color: #6b6965; }
+      .pdot                 { background: #3d3d3a; }
+      .randrow label        { color: #b4b2a9; }
+      .randrow input        { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+    }
+
+    .tabs { display: flex; border-bottom: 0.5px solid #d3d1c7; margin-bottom: 14px; }
+    .tab  { padding: 7px 18px; cursor: pointer; font-size: 13px; color: #888780; border-bottom: 2px solid transparent; transition: color .15s; }
+    .tab:hover  { color: #1a1a18; }
+    .tab.active { color: #1a1a18; border-bottom: 2px solid #1a1a18; font-weight: 500; }
+
+    .scene      { position: relative; height: 180px; margin-bottom: 8px; }
+    .chrom-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: flex; gap: 5px; }
+
+    .gene { width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:500; border:1.5px solid transparent; user-select:none; }
+    .g1{background:#EEEDFE;color:#3C3489;border-color:#7F77DD;}
+    .g2{background:#E1F5EE;color:#085041;border-color:#1D9E75;}
+    .g3{background:#FAECE7;color:#712B13;border-color:#D85A30;}
+    .g4{background:#E6F1FB;color:#0C447C;border-color:#378ADD;}
+    .g5{background:#FAEEDA;color:#633806;border-color:#EF9F27;}
+    .g6{background:#FBEAF0;color:#72243E;border-color:#D4537E;}
+    .g7{background:#EAF3DE;color:#27500A;border-color:#639922;}
+    .g8{background:#F1EFE8;color:#444441;border-color:#888780;}
+    .g9{background:#FCEBEB;color:#501313;border-color:#E24B4A;}
+
+    #arc-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
+    .idx-row { display:flex; gap:5px; justify-content:center; margin-bottom:4px; }
+    .idx     { width:42px; text-align:center; font-size:10px; color:#888780; }
+
+    .explain        { border:0.5px solid #e8e6df; border-radius:8px; padding:9px 13px; background:#f5f4f0; font-size:12px; line-height:1.65; color:#444441; height:64px; overflow:hidden; }
+    .explain strong { color: #1a1a18; }
+
+    .tag       { display:inline-block; font-size:10px; font-weight:500; border-radius:3px; padding:1px 6px; margin-right:4px; vertical-align:middle; }
+    .t-init    { background:#F1EFE8; color:#444441; }
+    .t-sel     { background:#FAEEDA; color:#633806; }
+    .t-swap    { background:#EEEDFE; color:#3C3489; }
+    .t-seg     { background:#E6F1FB; color:#0C447C; }
+    .t-rev     { background:#E1F5EE; color:#085041; }
+    .t-ins     { background:#FBEAF0; color:#72243E; }
+    .t-done    { background:#E1F5EE; color:#085041; }
+
+    .ctrl               { display:flex; gap:5px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+    .ctrl button        { font-size:12px; padding:4px 12px; border-radius:8px; border:0.5px solid #d3d1c7; background:#ffffff; color:#1a1a18; cursor:pointer; transition:background .15s; }
+    .ctrl button:hover  { background: #f5f4f0; }
+    .ctrl button:disabled { opacity:.35; cursor:default; }
+    .ctrl button.primary       { background:#1a1a18; color:#ffffff; border-color:#1a1a18; }
+    .ctrl button.primary:hover { opacity:.85; }
+    .kbd { font-size:10px; background:#f5f4f0; border:0.5px solid #d3d1c7; border-radius:3px; padding:1px 5px; color:#888780; margin-left:2px; }
+    .sc  { font-size:11px; color:#888780; margin-left:auto; }
+
+    .progress { display:flex; gap:3px; margin:6px 0 0; min-height:16px; align-items:center; }
+    .pdot      { width:7px; height:7px; border-radius:50%; background:#d3d1c7; transition:background .25s, transform .2s; }
+    .pdot.done { background:#1D9E75; }
+    .pdot.cur  { background:#EF9F27; transform:scale(1.5); }
+
+    .randrow       { display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+    .randrow label { font-size:12px; color:#444441; }
+    .randrow input { width:44px; font-size:12px; padding:3px 6px; border-radius:8px; border:0.5px solid #d3d1c7; background:#ffffff; color:#1a1a18; }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('swap')">Swap</div>
+  <div class="tab"        onclick="switchTab('inv')">Inversion</div>
+  <div class="tab"        onclick="switchTab('ins')">Insertion</div>
+</div>
+
+<div class="idx-row" id="idx-row"></div>
+<div class="scene" id="scene">
+  <svg id="arc-svg" viewBox="0 0 500 180" preserveAspectRatio="xMidYMid meet"></svg>
+  <div class="chrom-wrap" id="chrom-wrap"></div>
+</div>
+
+<div class="explain" id="explain">Press Start to begin the step-by-step mutation animation.</div>
+<div class="progress" id="progress-row"></div>
+
+<div class="ctrl">
+  <button class="primary" onclick="startCurrent()">&#x27F3; Start</button>
+  <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
+  <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
+  <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+  <span class="sc" id="sc"></span>
+</div>
+
+<div class="randrow">
+  <label>Length:</label>
+  <input type="number" id="n-len" value="7" min="5" max="9"/>
+  <button onclick="randomize()">&#x1F3B2; Random</button>
+</div>
+
+<script>
+const GC = ['','g1','g2','g3','g4','g5','g6','g7','g8','g9'];
+const GW = 42, GG = 5, GS = GW + GG;
+
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
+const range   = n => Array.from({length:n},(_,i)=>i+1);
+const wait    = ms => new Promise(r => setTimeout(r, ms));
+const tween   = (targets, vars) => new Promise(r => gsap.to(targets, {...vars, onComplete:r}));
+
+let curTab = 'swap', perm = [], steps = [], stepIdx = -1;
+let busy = false, autoRunning = false;
+
+// Stored mutation params — set once by generateNew(), replayed by startCurrent()
+let mutationParams = null;
+
+function generateNew() {
+  const n = Math.max(5, Math.min(9, parseInt(document.getElementById('n-len').value)||7));
+  perm = shuffle(range(n));
+  // Pre-roll all random choices for the current tab
+  if (curTab === 'swap') {
+    const a = Math.floor(Math.random()*n); let b; do{b=Math.floor(Math.random()*n);}while(b===a);
+    mutationParams = {i: Math.min(a,b), j: Math.max(a,b)};
+  } else if (curTab === 'inv') {
+    const len   = 2 + Math.floor(Math.random()*Math.min(n-2,4));
+    const start = Math.floor(Math.random()*(n-len));
+    mutationParams = {start, end: start+len-1};
+  } else {
+    const from = Math.floor(Math.random()*n); let to; do{to=Math.floor(Math.random()*n);}while(to===from);
+    mutationParams = {from, to};
+  }
+}
+
+function buildChrom(arr) {
+  const wrap = document.getElementById('chrom-wrap');
+  wrap.innerHTML = '';
+  wrap.style.width = (arr.length * GS - GG) + 'px';
+  arr.forEach((v, i) => {
+    const d = document.createElement('div');
+    d.className = 'gene ' + GC[v];
+    d.id = 'g' + i;
+    d.textContent = v;
+    wrap.appendChild(d);
+  });
+  const ir = document.getElementById('idx-row');
+  ir.innerHTML = '';
+  arr.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'idx'; d.textContent = i; ir.appendChild(d);
+  });
+}
+
+const el         = i    => document.getElementById('g' + i);
+const resetGenes = ()   => gsap.set('[id^=g]', {x:0, y:0, scale:1, opacity:1});
+const setExplain = html => document.getElementById('explain').innerHTML = html;
+const clearArc   = ()   => document.getElementById('arc-svg').innerHTML = '';
+
+function drawArc(positions, color) {
+  const svg = document.getElementById('arc-svg');
+  svg.innerHTML = '';
+  if (!positions || positions.length < 2) return;
+  const scene = document.getElementById('scene');
+  const sr = scene.getBoundingClientRect();
+  const vw = 500, vh = 180;
+  const toSVG = e => { const r = e.getBoundingClientRect(); return (r.left + r.width/2 - sr.left) / sr.width * vw; };
+  const wrap = document.getElementById('chrom-wrap');
+  const wr = wrap.getBoundingClientRect();
+  const y0 = (wr.top - sr.top) / sr.height * vh;
+  for (let k = 0; k < positions.length - 1; k++) {
+    const x1 = toSVG(el(positions[k])), x2 = toSVG(el(positions[k+1]));
+    const mx = (x1+x2)/2, cy = y0 - 16 - Math.abs(x2-x1)*0.16;
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', `M${x1} ${y0} Q${mx} ${cy} ${x2} ${y0}`);
+    p.setAttribute('fill','none'); p.setAttribute('stroke', color);
+    p.setAttribute('stroke-width','1.5'); p.setAttribute('stroke-dasharray','4 3');
+    p.setAttribute('stroke-linecap','round');
+    svg.appendChild(p);
+    [x1,x2].forEach(x => {
+      const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',x); c.setAttribute('cy',y0); c.setAttribute('r','3');
+      c.setAttribute('fill', color); svg.appendChild(c);
+    });
+  }
+}
+
+async function animHighlight(indices) {
+  if (!indices.length) return;
+  await tween(indices.map(el), {scale:1.18, duration:0.22, ease:'power2.out', stagger:0.05});
+  await tween(indices.map(el), {scale:1.0,  duration:0.18, ease:'power2.in',  stagger:0.05});
+}
+
+async function animSwap(i, j) {
+  const LIFT = 50, dx = (j - i) * GS;
+  const ei = el(i), ej = el(j);
+  await Promise.all([tween(ei,{y:-LIFT,duration:0.25,ease:'power2.out'}),  tween(ej,{y:-LIFT,duration:0.25,ease:'power2.out'})]);
+  await Promise.all([tween(ei,{x: dx, duration:0.35,ease:'power1.inOut'}), tween(ej,{x:-dx, duration:0.35,ease:'power1.inOut'})]);
+  await Promise.all([tween(ei,{y:0,   duration:0.22,ease:'bounce.out'}),   tween(ej,{y:0,   duration:0.22,ease:'bounce.out'})]);
+}
+
+async function animInvert(seg) {
+  const LIFT = 58, n = seg.length;
+  await Promise.all(seg.map((i,k) => tween(el(i), {y:-(LIFT+(k%2)*10), duration:0.25, ease:'power2.out',    delay:k*0.04})));
+  await Promise.all(seg.map((i,k) => tween(el(i), {x:(seg[n-1-k]-i)*GS, duration:0.38, ease:'power1.inOut', delay:k*0.02})));
+  await Promise.all(seg.map(i     => tween(el(i), {y:0, duration:0.26, ease:'bounce.out'})));
+}
+
+async function animInsert(from, to) {
+  const LIFT = 52, dir = from < to ? 1 : -1;
+  const affected = [];
+  if (dir===1) for(let k=from+1;k<=to;k++) affected.push(k);
+  else         for(let k=to;k<from;k++)    affected.push(k);
+  await tween(el(from), {y:-LIFT, duration:0.22, ease:'power2.out'});
+  await Promise.all([
+    ...affected.map(k => tween(el(k), {x:-dir*GS, duration:0.32, ease:'power1.inOut'})),
+    tween(el(from), {x:(to-from)*GS, duration:0.38, ease:'power1.inOut'}),
+  ]);
+  await tween(el(from), {y:0, duration:0.24, ease:'power2.in'});
+}
+
+function buildSwapSteps(arr, {i, j}) {
+  const after = [...arr]; [after[i],after[j]] = [after[j],after[i]];
+  return [
+    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Swap picks two random positions and exchanges their genes.` },
+    { show:arr,   arc:{pos:[i,j],color:'#EF9F27'}, hl:[i,j],
+      text:`<span class="tag t-sel">Select</span>Positions <strong>${i}</strong> (gene <strong>${arr[i]}</strong>) and <strong>${j}</strong> (gene <strong>${arr[j]}</strong>) will be swapped.` },
+    { show:arr,   anim:async()=>animSwap(i,j), next:after,
+      text:`<span class="tag t-swap">Swap</span>Genes <strong>${arr[i]}</strong> and <strong>${arr[j]}</strong> fly towards each other.` },
+    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Swap changes exactly two genes.` },
+  ];
+}
+
+function buildInvSteps(arr, {start, end}) {
+  const len = end - start + 1;
+  const seg   = Array.from({length:len},(_,k)=>start+k);
+  const after = [...arr]; const sub = arr.slice(start,end+1).reverse();
+  for(let k=0;k<len;k++) after[start+k]=sub[k];
+  return [
+    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Inversion reverses a sub-segment — the gene order inside is flipped.` },
+    { show:arr,   arc:{pos:seg,color:'#378ADD'}, hl:seg,
+      text:`<span class="tag t-seg">Segment</span>Segment <strong>[${start}...${end}]</strong> selected: genes <strong>${arr.slice(start,end+1).join(', ')}</strong> will be reversed.` },
+    { show:arr,   anim:async()=>animInvert(seg), next:after,
+      text:`<span class="tag t-rev">Inversion</span>Genes fly up and land in reverse order: <strong>${arr.slice(start,end+1).join(', ')}</strong> &rarr; <strong>${sub.join(', ')}</strong>.` },
+    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Order of all other genes is preserved.` },
+  ];
+}
+
+function buildInsSteps(arr, {from, to}) {
+  const after = [...arr]; const [val] = after.splice(from,1); after.splice(to,0,val);
+  return [
+    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Insertion picks one gene and places it at a new position.` },
+    { show:arr,   arc:{pos:[Math.min(from,to),Math.max(from,to)],color:'#D4537E'}, hl:[from],
+      text:`<span class="tag t-sel">Select</span>Gene <strong>${arr[from]}</strong> at position <strong>${from}</strong> will be inserted at position <strong>${to}</strong>.` },
+    { show:arr,   anim:async()=>animInsert(from,to), next:after,
+      text:`<span class="tag t-ins">Insert</span>Gene <strong>${arr[from]}</strong> lifts up, neighbours slide, gene drops at position <strong>${to}</strong>.` },
+    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Relative order of all other genes is preserved.` },
+  ];
+}
+
+async function renderStep(idx) {
+  if (busy) return;
+  busy = true; updateButtons(true);
+  const s = steps[idx];
+  clearArc(); setExplain(s.text);
+  buildChrom(s.show); resetGenes();
+  if (s.arc) drawArc(s.arc.pos, s.arc.color);
+  if (s.hl)  await animHighlight(s.hl);
+  if (s.anim) { clearArc(); await s.anim(); buildChrom(s.next); resetGenes(); }
+  clearArc(); busy = false; updateButtons(false); updateProgress();
+}
+
+async function goNext() {
+  if (!busy && stepIdx < steps.length-1) { stepIdx++; await renderStep(stepIdx); }
+}
+
+async function goPrev() {
+  if (busy || stepIdx <= 0) return;
+  gsap.killTweensOf('[id^=g]'); busy = false; stepIdx--;
+  const s = steps[stepIdx]; buildChrom(s.show); resetGenes(); setExplain(s.text);
+  updateButtons(false); updateProgress();
+}
+
+async function toggleAuto() {
+  if (autoRunning) {
+    autoRunning = false;
+    document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+    return;
+  }
+  autoRunning = true;
+  document.getElementById('btn-auto').innerHTML = '&#x23F8; Pause<span class="kbd">Space</span>';
+  while (autoRunning && stepIdx < steps.length-1) { await goNext(); await wait(300); }
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+}
+
+function updateButtons(isBusy) {
+  document.getElementById('btn-prev').disabled = isBusy || stepIdx <= 0;
+  document.getElementById('btn-next').disabled = isBusy || stepIdx >= steps.length-1;
+  document.getElementById('btn-auto').disabled = !steps.length;
+}
+
+function updateProgress() {
+  const pr = document.getElementById('progress-row');
+  pr.innerHTML = '';
+  steps.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'pdot' + (i < stepIdx ? ' done' : i === stepIdx ? ' cur' : '');
+    pr.appendChild(d);
+  });
+  document.getElementById('sc').textContent = steps.length ? `${stepIdx+1} / ${steps.length}` : '';
+}
+
+async function startCurrent() {
+  autoRunning = false; gsap.killTweensOf('[id^=g]'); busy = false; clearArc();
+  // If no params yet (first launch), generate them
+  if (!mutationParams || perm.length !== Math.max(5, Math.min(9, parseInt(document.getElementById('n-len').value)||7))) {
+    generateNew();
+  }
+  steps   = curTab==='swap' ? buildSwapSteps(perm, mutationParams)
+          : curTab==='inv'  ? buildInvSteps(perm, mutationParams)
+          :                   buildInsSteps(perm, mutationParams);
+  stepIdx = 0;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+  await renderStep(0);
+}
+
+function randomize() {
+  generateNew();
+  startCurrent();
+}
+
+function switchTab(t) {
+  curTab = t;
+  document.querySelectorAll('.tab').forEach((e,i) => e.classList.toggle('active', ['swap','inv','ins'][i]===t));
+  autoRunning = false; gsap.killTweensOf('[id^=g]'); busy = false;
+  steps = []; stepIdx = -1; mutationParams = null; clearArc();
+  setExplain('Press Start to begin the step-by-step mutation animation.');
+  document.getElementById('progress-row').innerHTML = '';
+  document.getElementById('sc').textContent = '';
+  updateButtons(false);
+  buildChrom(perm.length ? perm : shuffle(range(7)));
+}
+
+document.addEventListener('keydown', ev => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); goNext(); }
+  if (ev.key === 'ArrowLeft')  { ev.preventDefault(); goPrev(); }
+  if (ev.code === 'Space')     { ev.preventDefault(); toggleAuto(); }
+});
+
+generateNew();
+buildChrom(perm);
+updateButtons(false);
+</script>
+</body>
+</html>

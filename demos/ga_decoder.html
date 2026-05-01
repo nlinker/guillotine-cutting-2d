@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Guillotine Decoder Visualizer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+      background: #ffffff;
+      color: #1a1a18;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body                  { background: #1a1a18; color: #e8e6df; }
+      .gene-card            { background: #1a1a18; border-color: #3d3d3a; }
+      .gene-card.active     { background: #FAEEDA; border-color: #EF9F27; }
+      .sheet-canvas         { border-color: #3d3d3a; }
+      .explain              { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
+      .explain strong       { color: #e8e6df; }
+      .ctrl button          { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover    { background: #232320; }
+      .ctrl button.primary  { background: #e8e6df; color: #1a1a18; }
+      .kbd                  { background: #232320; border-color: #3d3d3a; color: #6b6965; }
+      .sc                   { color: #6b6965; }
+      .pdot                 { background: #3d3d3a; }
+      .panel-title          { color: #6b6965; }
+      .free-list            { color: #b4b2a9; }
+      .sheet-label          { color: #6b6965; }
+      .legend               { color: #b4b2a9; }
+      .settings-group       { background: #232320; border-color: #2e2e2b; }
+      .settings label       { color: #b4b2a9; }
+      .settings input       { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .scale-info           { background: #232320; border-color: #2e2e2b; color: #6b6965; }
+      .ginfo                { color: #6b6965; }
+    }
+
+    #layout  { display: flex; gap: 12px; align-items: flex-start; }
+    #left    { flex: 1; min-width: 0; }
+    #right   { width: 200px; flex-shrink: 0; }
+
+    /* Genome row */
+    .genome-row { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 10px; }
+    .gene-card  { display: flex; flex-direction: column; align-items: center; border: 1.5px solid #d3d1c7; border-radius: 6px; padding: 3px 5px; cursor: default; transition: border-color .2s, transform .15s; background: #ffffff; min-width: 38px; }
+    .gene-card.active  { border-color: #EF9F27; background: #FAEEDA; }
+    .gene-card.placed  { opacity: .45; }
+    .gene-card .gid    { font-size: 11px; font-weight: 600; }
+    .gene-card .ginfo  { font-size: 9px; color: #888780; margin-top: 1px; line-height: 1.3; text-align: center; }
+
+    /* Sheets */
+    .sheets-wrap     { display: flex; gap: 10px; flex-wrap: wrap; }
+    .sheet-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .sheet-label     { font-size: 10px; color: #888780; }
+    .sheet-canvas    { display: block; border: 0.5px solid #d3d1c7; border-radius: 4px; }
+
+    /* Explain — fixed height so buttons never shift */
+    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; height: 68px; overflow: hidden; margin: 8px 0; }
+    .explain strong { color: #1a1a18; }
+
+    /* Tags */
+    .tag     { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+    .t-find  { background: #E6F1FB; color: #0C447C; }
+    .t-place { background: #E1F5EE; color: #085041; }
+    .t-split { background: #EEEDFE; color: #3C3489; }
+    .t-new   { background: #FAEEDA; color: #633806; }
+    .t-done  { background: #E1F5EE; color: #085041; }
+    .t-init  { background: #F1EFE8; color: #444441; }
+
+    /* Legend */
+    .legend { font-size: 11px; color: #444441; margin-top: 6px; }
+    .leg    { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+    .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+    /* Controls */
+    .ctrl               { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .ctrl button        { font-size: 12px; padding: 4px 11px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; cursor: pointer; transition: background .15s; }
+    .ctrl button:hover  { background: #f5f4f0; }
+    .ctrl button:disabled { opacity: .35; cursor: default; }
+    .ctrl button.primary       { background: #1a1a18; color: #ffffff; border-color: #1a1a18; }
+    .ctrl button.primary:hover { opacity: .85; }
+    .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
+    .sc  { font-size: 11px; color: #888780; margin-left: auto; }
+
+    /* Progress dots — fixed height so buttons never shift */
+    .progress { display: flex; gap: 3px; margin: 6px 0; flex-wrap: wrap; min-height: 16px; align-items: center; }
+    .pdot      { width: 7px; height: 7px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; }
+    .pdot.done { background: #1D9E75; }
+    .pdot.cur  { background: #EF9F27; transform: scale(1.5); }
+
+    /* Panel titles */
+    .panel-title { font-size: 10px; font-weight: 500; color: #888780; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+
+    /* Free rect list */
+    .free-list { font-size: 11px; color: #444441; line-height: 1.7; max-height: 180px; overflow-y: auto; }
+    .free-item { padding: 2px 5px; border-radius: 3px; border-left: 3px solid #378ADD; margin-bottom: 2px; background: #E6F1FB22; }
+    .free-item.highlight { background: #FAEEDA; border-color: #EF9F27; }
+
+    /* Settings */
+    .settings       { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+    .settings label { font-size: 12px; color: #444441; }
+    .settings input[type=number] { width: 52px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
+    .settings-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
+    .scale-info     { font-size: 10px; color: #888780; padding: 2px 6px; background: #f5f4f0; border-radius: 3px; border: 0.5px solid #e8e6df; }
+  </style>
+</head>
+<body>
+
+<div class="settings">
+  <div class="settings-group">
+    <label>Sheet:</label>
+    <input id="sw" type="number" value="30" min="4" max="200"/>&#x00D7;
+    <input id="sh" type="number" value="24" min="4" max="200"/>
+    <label>Kerf:</label>
+    <input id="kerf" type="number" value="1" min="0" max="20"/>
+  </div>
+  <div class="settings-group">
+    <label>Genes:</label>
+    <input id="ngenes" type="number" value="8" min="2" max="24"/>
+    <label>Sheets per row:</label>
+    <input id="sheets-per-row" type="number" value="2" min="1" max="6"/>
+    <span class="scale-info" id="scale-info">1 unit = 32 px</span>
+  </div>
+  <button onclick="randomProblem()">&#x1F3B2; Random</button>
+  <button class="primary" onclick="initDecoder()">&#x25B6; Decode</button>
+</div>
+
+<div id="genome-area">
+  <div class="panel-title">Genome (placement order)</div>
+  <div class="genome-row" id="genome-row"></div>
+</div>
+
+<div id="layout">
+  <div id="left">
+    <div class="panel-title">Sheets</div>
+    <div class="sheets-wrap" id="sheets-wrap"></div>
+    <div class="explain" id="explain">Press Decode to run the algorithm step by step.</div>
+    <div class="progress" id="progress-row"></div>
+    <div class="ctrl">
+      <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
+      <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
+      <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+      <span class="sc" id="sc"></span>
+    </div>
+  </div>
+  <div id="right">
+    <div class="panel-title">Free rectangles</div>
+    <div class="free-list" id="free-list">&mdash;</div>
+    <div class="legend" style="margin-top:10px">
+      <div class="leg"><div class="swatch" style="background:#378ADD44;border:1.5px solid #378ADD"></div>Free</div>
+      <div class="leg"><div class="swatch" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Current candidate</div>
+      <div class="leg"><div class="swatch" style="background:#1D9E7555;border:1.5px solid #1D9E75"></div>Placed piece</div>
+      <div class="leg"><div class="swatch" style="background:#E24B4A33;border:1.5px dashed #E24B4A"></div>Does not fit</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PALETTES = [
+  {fill:'#EEEDFE99',stroke:'#7F77DD',text:'#3C3489'},
+  {fill:'#E1F5EE99',stroke:'#1D9E75',text:'#085041'},
+  {fill:'#FAECE799',stroke:'#D85A30',text:'#712B13'},
+  {fill:'#E6F1FB99',stroke:'#378ADD',text:'#0C447C'},
+  {fill:'#FAEEDA99',stroke:'#EF9F27',text:'#633806'},
+  {fill:'#FBEAF099',stroke:'#D4537E',text:'#72243E'},
+  {fill:'#EAF3DE99',stroke:'#639922',text:'#27500A'},
+  {fill:'#FCEBEB99',stroke:'#E24B4A',text:'#501313'},
+];
+const pal     = i => PALETTES[i % PALETTES.length];
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
+const range   = n => Array.from({length:n},(_,i)=>i);
+const clone   = x => JSON.parse(JSON.stringify(x));
+
+let problem = null, genome = null, steps = null, stepIdx = -1, autoRunning = false;
+let SCALE = 32;
+
+// ── scale ─────────────────────────────────────────────────────────
+function computeScale() {
+  const sheetsPerRow = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sw = parseInt(document.getElementById('sw').value)||12;
+  const leftPanelWidth = document.getElementById('left').offsetWidth || 500;
+  const availableForSheets = leftPanelWidth - (sheetsPerRow - 1) * 10;
+  const sheetPixelWidth = Math.floor(availableForSheets / sheetsPerRow);
+  const scale = Math.max(4, Math.floor(sheetPixelWidth / sw));
+  document.getElementById('scale-info').textContent = `1 unit = ${scale} px`;
+  return scale;
+}
+
+// ── problem generation ────────────────────────────────────────────
+function randomProblem() {
+  const sw     = parseInt(document.getElementById('sw').value)||30;
+  const sh     = parseInt(document.getElementById('sh').value)||24;
+  const kerf   = parseInt(document.getElementById('kerf').value)||0;
+  const nGenes = Math.max(2, parseInt(document.getElementById('ngenes').value)||8);
+  const pieces = [];
+  for (let i=0; i<nGenes; i++) {
+    const maxW = Math.max(2, Math.floor(sw * 0.7));
+    const maxH = Math.max(2, Math.floor(sh * 0.7));
+    const w = Math.max(1, 1 + Math.floor(Math.random() * maxW));
+    const h = Math.max(1, 1 + Math.floor(Math.random() * maxH));
+    pieces.push({id:i, width:w, height:h, can_rotate: Math.random()>0.3});
+  }
+  problem = {sheet:{width:sw, height:sh}, pieces, kerf};
+  const idxs = shuffle(range(pieces.length));
+  genome = idxs.map(i => ({
+    piece_idx: i,
+    rotate: Math.random() > 0.5,
+    point_selector: Math.floor(Math.random() * 4),
+  }));
+  renderGenome();
+}
+
+// initDecoder: always replays the current problem/genome without re-rolling
+function initDecoder() {
+  if (!problem) randomProblem();
+  SCALE = computeScale();
+  steps = buildSteps(problem, genome);
+  stepIdx = 0;
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+  renderStep(0);
+}
+
+// ── decoder simulation ────────────────────────────────────────────
+function buildSteps(problem, genome) {
+  const steps = [];
+  const {sheet, pieces, kerf} = problem;
+  let free = [{sheet_idx:0, x:0, y:0, width:sheet.width, height:sheet.height}];
+  let sheets_open = 1;
+  const placements = [];
+
+  steps.push({type:'init', free:clone(free), placements:clone(placements), geneIdx:-1,
+    text:`<span class="tag t-init">Start</span>Genome has <strong>${genome.length} genes</strong>. Sheet <strong>${sheet.width}&times;${sheet.height}</strong>, kerf <strong>${kerf}</strong>. One free rect: the whole sheet.`});
+
+  for (let gi=0; gi<genome.length; gi++) {
+    const gene  = genome[gi];
+    const piece = pieces[gene.piece_idx];
+
+    steps.push({type:'find', free:clone(free), placements:clone(placements), geneIdx:gi, scanHighlight:-1,
+      text:`<span class="tag t-find">Search</span>Gene <strong>${gi}</strong>: piece <strong>${piece.width}&times;${piece.height}</strong>${piece.can_rotate?', rotatable':''}. point_selector=<strong>${gene.point_selector}</strong> &rarr; start at rect[<strong>${gene.point_selector % free.length}</strong>].`});
+
+    const start = gene.point_selector % free.length;
+    let found = null;
+    for (let i=0; i<free.length; i++) {
+      const idx = (start + i) % free.length;
+      const fr  = free[idx];
+      const fit = fitsIn(fr, piece, gene.rotate);
+      steps.push({type: fit ? 'found' : 'scan', free:clone(free), placements:clone(placements),
+        geneIdx:gi, scanHighlight:idx, fitOk:!!fit,
+        text: fit
+          ? `<span class="tag t-place">Fits</span>Rect[<strong>${idx}</strong>] (${fr.width}&times;${fr.height} on sheet ${fr.sheet_idx}) &mdash; piece <strong>${piece.width}&times;${piece.height}</strong>${fit.rotated?' (rotated)':''} fits!`
+          : `<span class="tag t-find">Scan</span>Rect[<strong>${idx}</strong>] (${fr.width}&times;${fr.height}) &mdash; piece <strong>${piece.width}&times;${piece.height}</strong> does not fit. Continuing.`});
+      if (fit) { found = {idx, ...fit}; break; }
+    }
+
+    if (!found) {
+      const newFr = {sheet_idx:sheets_open, x:0, y:0, width:sheet.width, height:sheet.height};
+      const fit   = fitsIn(newFr, piece, gene.rotate);
+      free.push(newFr);
+      const idx = free.length - 1;
+      sheets_open++;
+      found = {idx, ...fit};
+      steps.push({type:'new_sheet', free:clone(free), placements:clone(placements),
+        geneIdx:gi, scanHighlight:idx, fitOk:true,
+        text:`<span class="tag t-new">New sheet</span>Piece did not fit anywhere. Opening sheet <strong>${sheets_open-1}</strong>.`});
+    }
+
+    const fr = free[found.idx];
+    const placement = {sheet_idx:fr.sheet_idx, piece_id:piece.id, x:fr.x, y:fr.y,
+      pw:found.pw, ph:found.ph, rotated:found.rotated, piece_idx:gene.piece_idx};
+    free.splice(found.idx, 1);
+    const splits = guillotineSplit(fr, found.pw, found.ph, kerf);
+    free.push(...splits);
+    placements.push(placement);
+
+    const lw = fr.width - found.pw, lh = fr.height - found.ph;
+    steps.push({type:'split', free:clone(free), placements:clone(placements),
+      geneIdx:gi, lastPlacement:placement, newSplits:splits,
+      text:`<span class="tag t-split">Guillotine</span>Piece placed. SLAS: ${
+        lw <= lh
+          ? `right leftover (${lw}) &le; bottom (${lh}) &rarr; horizontal cut`
+          : `bottom leftover (${lh}) &lt; right (${lw}) &rarr; vertical cut`
+      }. <strong>${splits.length}</strong> new free rect(s).`});
+  }
+
+  const totalArea = problem.sheet.width * problem.sheet.height * sheets_open;
+  const usedArea  = placements.reduce((s,p)=>s+p.pw*p.ph, 0);
+  steps.push({type:'done', free:clone(free), placements:clone(placements), geneIdx:-1,
+    text:`<span class="tag t-done">Done</span>All <strong>${genome.length}</strong> pieces placed on <strong>${sheets_open}</strong> sheet(s). Area used: <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>.`});
+
+  return steps;
+}
+
+function fitsIn(fr, piece, prefer_rotate) {
+  const try_rot = prefer_rotate && piece.can_rotate;
+  const [wa,ha] = try_rot ? [piece.height,piece.width] : [piece.width,piece.height];
+  if (wa<=fr.width && ha<=fr.height) return {pw:wa,ph:ha,rotated:try_rot};
+  if (piece.can_rotate) {
+    const [wb,hb]=[ha,wa];
+    if (wb<=fr.width && hb<=fr.height) return {pw:wb,ph:hb,rotated:!try_rot};
+  }
+  return null;
+}
+
+function guillotineSplit(fr, pw, ph, kerf) {
+  const lw=fr.width-pw, lh=fr.height-ph, out=[];
+  if (lw<=lh) {
+    if (lw>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x+pw+kerf,y:fr.y,        width:lw-kerf,   height:ph});
+    if (lh>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x,        y:fr.y+ph+kerf, width:fr.width, height:lh-kerf});
+  } else {
+    if (lw>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x+pw+kerf,y:fr.y,        width:lw-kerf,   height:fr.height});
+    if (lh>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x,        y:fr.y+ph+kerf, width:pw,       height:lh-kerf});
+  }
+  return out;
+}
+
+// ── rendering ─────────────────────────────────────────────────────
+function renderStep(idx) {
+  const s = steps[idx]; stepIdx = idx;
+
+  document.querySelectorAll('.gene-card').forEach((card,gi)=>{
+    card.classList.toggle('active',  gi===s.geneIdx);
+    card.classList.toggle('placed',  gi<s.geneIdx || (gi===s.geneIdx && (s.type==='split'||s.type==='done')));
+  });
+
+  const sheetsWrap   = document.getElementById('sheets-wrap');
+  const sheetsPerRow = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sheetCount   = Math.max(1, ...s.free.map(f=>f.sheet_idx+1), ...s.placements.map(p=>p.sheet_idx+1));
+  const W = problem.sheet.width  * SCALE;
+  const H = problem.sheet.height * SCALE;
+
+  sheetsWrap.innerHTML = '';
+  sheetsWrap.style.display = 'grid';
+  sheetsWrap.style.gridTemplateColumns = `repeat(${sheetsPerRow}, ${W}px)`;
+  sheetsWrap.style.gap = '10px';
+
+  for (let si=0; si<sheetCount; si++) {
+    const container = document.createElement('div'); container.className='sheet-container';
+    const lbl = document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Sheet '+si;
+    const cv  = document.createElement('canvas'); cv.className='sheet-canvas';
+    cv.width=W; cv.height=H; cv.style.width=W+'px'; cv.style.height=H+'px';
+    drawSheet(cv.getContext('2d'), si, s, W, H);
+    container.appendChild(lbl); container.appendChild(cv); sheetsWrap.appendChild(container);
+  }
+
+  document.getElementById('explain').innerHTML = s.text;
+
+  const fl = document.getElementById('free-list');
+  fl.innerHTML = s.free.length
+    ? s.free.map((fr,i)=>`<div class="free-item${i===s.scanHighlight?' highlight':''}">Rect[${i}] sheet ${fr.sheet_idx}: ${fr.x},${fr.y} &rarr; ${fr.width}&times;${fr.height}</div>`).join('')
+    : '<span style="color:#888780">No free rects</span>';
+
+  const pr = document.getElementById('progress-row'); pr.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('div');
+    d.className='pdot'+(i<idx?' done':i===idx?' cur':'');
+    pr.appendChild(d);
+  });
+  document.getElementById('sc').textContent = `${idx+1} / ${steps.length}`;
+  document.getElementById('btn-prev').disabled = idx===0;
+  document.getElementById('btn-next').disabled = idx===steps.length-1;
+  document.getElementById('btn-auto').disabled = false;
+}
+
+function drawSheet(ctx, si, s, W, H) {
+  ctx.fillStyle='#faf9f7'; ctx.fillRect(0,0,W,H);
+
+  s.placements.filter(p=>p.sheet_idx===si).forEach(p=>{
+    const pc=pal(p.piece_idx);
+    const x=p.x*SCALE, y=p.y*SCALE, w=p.pw*SCALE, h=p.ph*SCALE;
+    const isLast=s.lastPlacement&&p.piece_id===s.lastPlacement.piece_id;
+    ctx.fillStyle=isLast?pc.stroke+'55':pc.fill; ctx.strokeStyle=pc.stroke; ctx.lineWidth=isLast?2:1;
+    ctx.setLineDash([]);
+    roundRect(ctx,x,y,w,h,Math.min(4,SCALE/4)); ctx.fill(); ctx.stroke();
+    const fontSize=Math.max(7,Math.min(11,w/4,h/2));
+    ctx.fillStyle=pc.text; ctx.font=`bold ${fontSize}px sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    if(w>fontSize*2&&h>fontSize*1.5){
+      ctx.fillText(`${problem.pieces[p.piece_idx].width}\u00d7${problem.pieces[p.piece_idx].height}`,x+w/2,y+h/2);
+      if(p.rotated&&h>fontSize*3){ctx.font=`${Math.max(7,fontSize-2)}px sans-serif`;ctx.fillStyle=pc.text+'99';ctx.fillText('\u21bb',x+w/2,y+h/2+fontSize+1);}
+    }
+  });
+
+  s.free.filter(fr=>fr.sheet_idx===si).forEach((fr)=>{
+    const isHL=s.scanHighlight!==undefined&&s.scanHighlight!==-1&&s.free[s.scanHighlight]===fr;
+    const x=fr.x*SCALE, y=fr.y*SCALE, w=fr.width*SCALE, h=fr.height*SCALE;
+    ctx.fillStyle=isHL?'#EF9F2730':'#378ADD18';
+    ctx.strokeStyle=isHL?'#EF9F27':'#378ADD66';
+    ctx.lineWidth=isHL?2:1; ctx.setLineDash([3,3]);
+    roundRect(ctx,x,y,w,h,2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    if(Math.min(w,h)>20){
+      const fz=Math.max(7,Math.min(9,w/5));
+      ctx.fillStyle='#378ADD99'; ctx.font=`${fz}px sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(`${fr.width}\u00d7${fr.height}`,x+w/2,y+h/2);
+    }
+  });
+
+  if(s.type==='scan'&&s.scanHighlight!==-1&&s.free[s.scanHighlight]?.sheet_idx===si){
+    const fr=s.free[s.scanHighlight];
+    const x=fr.x*SCALE,y=fr.y*SCALE,w=fr.width*SCALE,h=fr.height*SCALE;
+    ctx.strokeStyle='#E24B4A'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    roundRect(ctx,x,y,w,h,2); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.strokeStyle='#d3d1c7'; ctx.lineWidth=1; ctx.setLineDash([]); ctx.strokeRect(0,0,W,H);
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+function renderGenome() {
+  const row=document.getElementById('genome-row'); row.innerHTML='';
+  genome.forEach((gene,gi)=>{
+    const piece=problem.pieces[gene.piece_idx], p=pal(gene.piece_idx);
+    const card=document.createElement('div'); card.className='gene-card'; card.style.borderColor=p.stroke; card.id='gc-'+gi;
+    card.innerHTML=`<div class="gid" style="color:${p.text}">${piece.width}\u00d7${piece.height}</div><div class="ginfo">${gene.rotate?'\u21bb ':' '}ps=${gene.point_selector}</div>`;
+    row.appendChild(card);
+  });
+}
+
+// ── navigation ────────────────────────────────────────────────────
+function goNext(){ if(stepIdx<steps.length-1) renderStep(stepIdx+1); }
+function goPrev(){ if(stepIdx>0)              renderStep(stepIdx-1); }
+
+async function toggleAuto(){
+  if(autoRunning){
+    autoRunning=false;
+    document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+    return;
+  }
+  autoRunning=true;
+  document.getElementById('btn-auto').innerHTML='&#x23F8; Pause<span class="kbd">Space</span>';
+  while(autoRunning&&stepIdx<steps.length-1){
+    goNext();
+    await new Promise(r=>setTimeout(r,700));
+  }
+  autoRunning=false;
+  document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+}
+
+document.addEventListener('keydown', ev=>{
+  if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if(ev.key==='ArrowRight'){ ev.preventDefault(); goNext(); }
+  if(ev.key==='ArrowLeft') { ev.preventDefault(); goPrev(); }
+  if(ev.code==='Space')    { ev.preventDefault(); toggleAuto(); }
+});
+
+document.getElementById('sheets-per-row').addEventListener('input', ()=>{
+  if(problem && steps){ SCALE=computeScale(); renderStep(stepIdx); }
+});
+
+// Init — generate once, then decode
+setTimeout(()=>{
+  randomProblem();
+  initDecoder();
+}, 50);
+</script>
+</body>
+</html>
