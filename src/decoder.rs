@@ -250,16 +250,16 @@ mod tests {
         // After placing 6×5, free = [right=(6,0,6,10), bottom=(0,5,6,5)].
         //
         // Genome A (ps=0): places 4×3 in right=(6,0,6,10).
-        //   Leaves: bottom=(0,5,6,5) [usable: 6×5 fits → 30]
+        //   Leaves: bottom=(0,5,6,5) [usable: 6×5 fits -> 30]
         //         + right=(10,0,2,3) [unusable]
-        //         + bottom=(6,3,6,7) [usable: 6×5 fits → 42]
-        //   usable=72 → objective = 1×120 − 72 = 48
+        //         + bottom=(6,3,6,7) [usable: 6×5 fits -> 42]
+        //   usable=72 -> objective = 1×120 − 72 = 48
         //
         // Genome B (ps=1): places 4×3 in bottom=(0,5,6,5).
-        //   Leaves: right=(6,0,6,10) [usable: 6×5 fits → 60]
+        //   Leaves: right=(6,0,6,10) [usable: 6×5 fits -> 60]
         //         + right=(4,5,2,3)  [unusable]
         //         + bottom=(0,8,6,2) [unusable]
-        //   usable=60 → objective = 1×120 − 60 = 60
+        //   usable=60 -> objective = 1×120 − 60 = 60
         //
         // Genome A is better (48 < 60): placing the small piece in the tall right-hand
         // rect consolidates leftover area into two usable rectangles instead of one.

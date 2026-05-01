@@ -6,19 +6,42 @@ use crate::{
 };
 
 /// GA hyperparameters.
-///
-/// `n_elite`: best individuals carried unchanged each generation (default 1).
-/// `tournament_k`: tournament size for parent selection (default 2).
-/// `p_crossover`: probability of applying OX crossover; otherwise children are parent clones.
 #[derive(Debug, Clone)]
 pub struct GaConfig {
+    /// Number of individuals in the population.
     pub pop_size: usize,
+
+    /// Number of generations to run before returning the best individual found.
     pub n_generations: usize,
+
+    /// Number of top individuals copied unchanged into the next generation (elitism).
+    /// Keeps the best solution from being lost to crossover or mutation.
+    /// Typical value: 1-2. Set to 0 to disable.
     pub n_elite: usize,
+
+    /// Tournament size: how many individuals compete for each parent slot.
+    /// Higher values increase selection pressure (best wins more often).
+    /// Typical value: 2-5.
     pub tournament_k: usize,
+
+    /// Probability that two parents produce children via OX crossover.
+    /// With probability `1 - p_crossover` children are clones of their parents.
+    /// Typical value: 0.7-0.9.
     pub p_crossover: f64,
+
+    /// Per-gene probability of a swap mutation (exchanges this gene with a random other).
+    /// Preserves the permutation invariant.
+    /// Typical value: 0.05-0.2.
     pub p_swap: f64,
+
+    /// Per-gene probability of flipping the `rotate` flag.
+    /// Only has effect when the piece allows rotation.
+    /// Typical value: 0.02-0.1.
     pub p_flip: f64,
+
+    /// Per-gene probability of assigning a new random `point_selector`.
+    /// Controls which free rectangle the decoder tries first for this piece.
+    /// Typical value: 0.05-0.15.
     pub p_point: f64,
 }
 
@@ -32,8 +55,8 @@ pub struct Individual {
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
 ///
 /// Each generation: elite individuals are carried over unchanged; the remainder is
-/// filled by tournament selection → OX crossover (with probability `p_crossover`) →
-/// mutation → decode. The running best is tracked independently of elitism so that
+/// filled by tournament selection -> OX crossover (with probability `p_crossover`) ->
+/// mutation -> decode. The running best is tracked independently of elitism so that
 /// `n_elite = 0` still returns a valid result.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
     let mut pop = init_population(problem, config.pop_size, rng);
@@ -90,8 +113,8 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
 /// ```text
 ///          lo    hi
 ///           ↓     ↓
-/// P1: [ 0 │ 1  2 │ 3  4 ]  ──→  C1: [ 4 │ 1  2 │ 3  0 ]
-/// P2: [ 3 │ 0  4 │ 1  2 ]  ──→  C2: [ 2 │ 0  4 │ 3  1 ]
+/// P1: [ 0 │ 1  2 │ 3  4 ]  ──->  C1: [ 4 │ 1  2 │ 3  0 ]
+/// P2: [ 3 │ 0  4 │ 1  2 ]  ──->  C2: [ 2 │ 0  4 │ 3  1 ]
 ///
 ///   C1 segment ← P1;  remaining ← P2 from hi, wrapping, skipping dupes
 ///   C2 segment ← P2;  remaining ← P1 from hi, wrapping, skipping dupes
@@ -441,8 +464,8 @@ mod tests {
     #[test]
     fn cx_known() {
         // P1=[0,1,2,3,4], P2=[3,0,4,1,2]
-        // cycle 0 (even): positions {0,3,1} — trace: 0→pos_of(3)=3→pos_of(1)=1→pos_of(0)=0
-        // cycle 1 (odd):  positions {2,4}   — trace: 2→pos_of(4)=4→pos_of(2)=2
+        // cycle 0 (even): positions {0,3,1} — trace: 0->pos_of(3)=3->pos_of(1)=1->pos_of(0)=0
+        // cycle 1 (odd):  positions {2,4}   — trace: 2->pos_of(4)=4->pos_of(2)=2
         // C1 = [0,1,4,3,2],  C2 = [3,0,2,1,4]
         let p1: Genome = (0..5usize).map(g).collect();
         let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();
@@ -463,7 +486,7 @@ mod tests {
 
     #[test]
     fn cx_identity_parent_gives_self() {
-        // P1 = identity → cycles are all singletons, alternating parity
+        // P1 = identity -> cycles are all singletons, alternating parity
         // Each position i: pos_in_p1[P2[i]] = P2[i] (since P1 is identity)
         // So cycle of pos i is just {i}, parity alternates 0,1,0,1,...
         // C1: even positions from P1, odd from P2
@@ -480,13 +503,13 @@ mod tests {
     fn ox_at_known() {
         // p1=[0,1,2,3,4], p2=[3,0,4,1,2], segment [lo=1, hi=3)
         //
-        // child1: segment from p1 → [_,1,2,_,_]
-        //   filler p2 from pos 3: 1(skip),2(skip),3,0,4 → fill [3,4,0] with [3,0,4]
-        //   → [4,1,2,3,0]
+        // child1: segment from p1 -> [_,1,2,_,_]
+        //   filler p2 from pos 3: 1(skip),2(skip),3,0,4 -> fill [3,4,0] with [3,0,4]
+        //   -> [4,1,2,3,0]
         //
-        // child2: segment from p2 → [_,0,4,_,_]
-        //   filler p1 from pos 3: 3,4(skip),0(skip),1,2 → fill [3,4,0] with [3,1,2]
-        //   → [2,0,4,3,1]
+        // child2: segment from p2 -> [_,0,4,_,_]
+        //   filler p1 from pos 3: 3,4(skip),0(skip),1,2 -> fill [3,4,0] with [3,1,2]
+        //   -> [2,0,4,3,1]
         let p1: Genome = (0..5usize).map(g).collect();
         let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();
         let (c1, c2) = ox_at(&p1, &p2, 1, 3);
