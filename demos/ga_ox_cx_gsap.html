@@ -267,6 +267,18 @@ function dropGene(el){
   if(el&&el.parentNode) el.parentNode.removeChild(el);
 }
 
+// After the gene lands, make the destination cell look filled immediately
+// so it doesn't flash back to an empty dashed box before buildRows runs.
+function fillCell(src, dst){
+  if(!dst) return;
+  // Copy color class from src
+  var cls = Array.from(src.classList).find(function(c){ return /^g\d$/.test(c); });
+  dst.className = 'gene' + (cls ? ' '+cls : '');
+  dst.textContent = src.textContent;
+  dst.style.opacity = '';
+  dst.style.borderStyle = '';
+}
+
 async function animFly(src,dst){
   if(!src||!dst)return;
   var dstPos=getPos(dst);
@@ -276,6 +288,7 @@ async function animFly(src,dst){
   await Promise.all([tween(src,{left:dstPos.x,duration:0.30,ease:'power1.inOut'}),
                      tween(src,{top:dstPos.y-LIFT,duration:0.30,ease:'power1.inOut'})]);
   await tween(src,{top:dstPos.y,duration:0.18,ease:'power2.in'});
+  fillCell(src, dst);
   dropGene(src);
 }
 
@@ -288,6 +301,7 @@ async function animSlide(src,dst){
                      tween(src,{opacity:1,duration:0.18})]);
   await tween(src,{scale:1.1,duration:0.1,ease:'power2.out'});
   await tween(src,{scale:1,duration:0.1,ease:'power2.in'});
+  fillCell(src, dst);
   dropGene(src);
 }
 
