@@ -56,6 +56,17 @@ pub struct GeneratorConfig {
     ///
     /// `weights` must be non-empty and contain at least one positive value.
     pub weights: Vec<f32>,
+
+    /// Number of alternating guillotine-cut stages applied to each sheet.
+    ///
+    /// Stage 1 slices horizontally, stage 2 vertically, stage 3 horizontally
+    /// again, and so on.  A value of `2` (the typical default) produces a
+    /// 2-level H -> V cut tree, yielding a grid-like layout.  A value of `1`
+    /// produces only horizontal strips.  Values above `2` create deeper trees
+    /// and many more (smaller) pieces.
+    ///
+    /// Must be at least `1`.
+    pub stage_count: usize,
 }
 
 /// Generate a 2-D guillotine cutting-stock instance with a known optimal solution.
@@ -73,11 +84,12 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
         cfg.weights.iter().all(|&w| w >= 0.0),
         "weights must all be non-negative"
     );
+    assert!(cfg.stage_count >= 1, "stage_count must be at least 1");
 
     let min_size = cfg.min_size;
     let kerf = cfg.kerf;
+    let stage_count = cfg.stage_count;
 
-    let stage_count = 2_usize;
     let mut all_rects = Vec::with_capacity((cfg.k as usize) * cfg.weights.len().pow(stage_count as u32));
 
     for sheet_idx in 0..cfg.k {
@@ -250,6 +262,7 @@ mod tests {
             min_size: 2,
             kerf,
             weights,
+            stage_count: 2,
         }
     }
 
@@ -352,6 +365,7 @@ mod tests {
                     min_size: 1,
                     kerf,
                     weights: w_single(),
+                    stage_count: 2,
                 },
                 &mut rng,
             );
@@ -380,6 +394,7 @@ mod tests {
             min_size: 2,
             kerf: 1,
             weights: w_single(),
+            stage_count: 2,
         };
         let out = generate(&c, &mut rng);
         for p in &out.problem.pieces {
@@ -400,6 +415,7 @@ mod tests {
                     min_size: 1,
                     kerf,
                     weights: w_single(),
+                    stage_count: 2,
                 },
                 &mut rng,
             );
@@ -457,6 +473,7 @@ mod tests {
                 min_size: 1,
                 kerf: 0,
                 weights: w_single(),
+                stage_count: 2,
             },
             &mut rng,
         );
@@ -481,6 +498,7 @@ mod tests {
                 min_size: 2,
                 kerf: 1,
                 weights: vec![0.0, 0.0, 1.0], // always try 3 pieces first
+                stage_count: 2,
             },
             &mut rng,
         );
