@@ -1,200 +1,147 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guillotine Generator Visualizer</title>
+  <title>Guillotine Generator v3</title>
+  <link rel="stylesheet" href="claude-vars.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-sans);font-size:13px;padding:16px;background:var(--color-background-primary);color:var(--color-text-primary);}
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: 13px;
-      padding: 16px;
-      background: #ffffff;
-      color: #1a1a18;
-    }
+#layout{display:flex;gap:12px;align-items:flex-start;}
+#left{flex:1;min-width:0;}
+#right{width:230px;flex-shrink:0;}
 
-    @media (prefers-color-scheme: dark) {
-      body               { background: #1a1a18; color: #e8e6df; }
-      .sg                { background: #232320; border-color: #2e2e2b; }
-      .settings label    { color: #b4b2a9; }
-      .settings input    { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .scale-info        { background: #232320; border-color: #2e2e2b; color: #6b6965; }
-      .wbtn              { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .wbtn:hover        { background: #232320; }
-      .weight-inp        { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .sheet-label       { color: #6b6965; }
-      .sheet-canvas      { border-color: #3d3d3a; }
-      .explain           { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
-      .explain strong    { color: #e8e6df; }
-      .ctrl button       { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .ctrl button:hover { background: #232320; }
-      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
-      .kbd               { background: #232320; border-color: #3d3d3a; color: #6b6965; }
-      .sc                { color: #6b6965; }
-      .pdot              { background: #3d3d3a; }
-      .panel-title       { color: #6b6965; }
-      .stage-rects       { background: #1a1a18; }
-      .rect-item         { color: #b4b2a9; }
-      .rect-item .empty  { color: #6b6965; }
-      .legend            { color: #b4b2a9; }
-      .stat-box          { background: #232320; border-color: #2e2e2b; }
-      .stat-title        { color: #6b6965; }
-      .stat-val          { color: #e8e6df; }
-    }
+.sheets-wrap{display:grid;gap:10px;}
+.sheet-container{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.sheet-label{font-size:10px;color:var(--color-text-tertiary);}
+.sheet-canvas{display:block;border:0.5px solid var(--color-border-secondary);border-radius:4px;}
 
-    #layout { display: flex; gap: 12px; align-items: flex-start; }
-    #left   { flex: 1; min-width: 0; }
-    #right  { width: 230px; flex-shrink: 0; }
+.explain{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:9px 12px;background:var(--color-background-secondary);font-size:12px;line-height:1.65;color:var(--color-text-secondary);min-height:60px;margin:8px 0;}
+.explain strong{color:var(--color-text-primary);}
 
-    /* Sheets */
-    .sheets-wrap     { display: grid; gap: 10px; }
-    .sheet-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-    .sheet-label     { font-size: 10px; color: #888780; }
-    .sheet-canvas    { display: block; border: 0.5px solid #d3d1c7; border-radius: 4px; }
+.tag{display:inline-block;font-size:10px;font-weight:500;border-radius:3px;padding:1px 6px;margin-right:4px;vertical-align:middle;}
+.t-init{background:#F1EFE8;color:#444441;}
+.t-h{background:#DDEEFF;color:#0C447C;}
+.t-v{background:#EEEDFE;color:#3C3489;}
+.t-done{background:#E1F5EE;color:#085041;}
+.t-fallback{background:#FAEEDA;color:#633806;}
 
-    /* Explain — fixed height so buttons never shift */
-    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; height: 68px; overflow: hidden; margin: 8px 0; }
-    .explain strong { color: #1a1a18; }
+.ctrl{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:4px;}
+.ctrl button{font-size:12px;padding:4px 11px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer;}
+.ctrl button:hover{background:var(--color-background-secondary);}
+.ctrl button:disabled{opacity:.35;cursor:default;}
+.ctrl button.primary{background:var(--color-text-primary);color:var(--color-background-primary);}
+.kbd{font-size:10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:3px;padding:1px 5px;color:var(--color-text-tertiary);margin-left:2px;}
+.sc{font-size:11px;color:var(--color-text-tertiary);margin-left:auto;}
 
-    /* Tags */
-    .tag          { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
-    .t-init       { background: #F1EFE8; color: #444441; }
-    .t-h          { background: #DDEEFF; color: #0C447C; }
-    .t-v          { background: #EEEDFE; color: #3C3489; }
-    .t-done       { background: #E1F5EE; color: #085041; }
-    .t-fallback   { background: #FAEEDA; color: #633806; }
+.progress{display:flex;gap:3px;margin:6px 0;flex-wrap:wrap;}
+.pdot{width:7px;height:7px;border-radius:50%;background:var(--color-border-secondary);transition:background .2s,transform .2s;}
+.pdot.done{background:#1D9E75;}.pdot.cur{background:#EF9F27;transform:scale(1.5);}
 
-    /* Controls */
-    .ctrl               { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
-    .ctrl button        { font-size: 12px; padding: 4px 11px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; cursor: pointer; transition: background .15s; }
-    .ctrl button:hover  { background: #f5f4f0; }
-    .ctrl button:disabled { opacity: .35; cursor: default; }
-    .ctrl button.primary       { background: #1a1a18; color: #ffffff; border-color: #1a1a18; }
-    .ctrl button.primary:hover { opacity: .85; }
-    .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
-    .sc  { font-size: 11px; color: #888780; margin-left: auto; }
+.panel-title{font-size:10px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px;}
 
-    /* Progress dots — fixed height */
-    .progress { display: flex; gap: 3px; margin: 6px 0; flex-wrap: wrap; min-height: 16px; align-items: center; }
-    .pdot      { width: 7px; height: 7px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; }
-    .pdot.done { background: #1D9E75; }
-    .pdot.cur  { background: #EF9F27; transform: scale(1.5); }
+.settings{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center;}
+.settings label{font-size:12px;color:var(--color-text-secondary);}
+.settings input[type=number]{font-size:12px;padding:3px 6px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);}
+.sg{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);}
+.scale-info{font-size:10px;color:var(--color-text-tertiary);padding:2px 6px;background:var(--color-background-secondary);border-radius:3px;border:0.5px solid var(--color-border-tertiary);}
 
-    .panel-title { font-size: 10px; font-weight: 500; color: #888780; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+/* Right panel */
+.stage-box{margin-bottom:8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);overflow:hidden;}
+.stage-header{padding:4px 8px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.stage-header.sh{background:#DDEEFF;color:#0C447C;}
+.stage-header.sv{background:#EEEDFE;color:#3C3489;}
+.stage-header.sdone{background:#E1F5EE;color:#085041;}
+.stage-rects{padding:4px 6px;max-height:130px;overflow-y:auto;}
+.rect-item{display:flex;align-items:center;gap:5px;padding:2px 4px;border-radius:3px;margin-bottom:1px;font-size:11px;color:var(--color-text-secondary);}
+.rect-item.active{background:#FAEEDA44;outline:1.5px solid #EF9F27;}
+.rect-item .sw{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+.rect-item .empty{color:var(--color-text-tertiary);font-style:italic;}
 
-    /* Settings */
-    .settings       { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
-    .settings label { font-size: 12px; color: #444441; }
-    .settings input[type=number] { font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
-    .sg         { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
-    .scale-info { font-size: 10px; color: #888780; padding: 2px 6px; background: #f5f4f0; border-radius: 3px; border: 0.5px solid #e8e6df; }
-    .weight-inp { width: 38px; font-size: 12px; padding: 2px 4px; border-radius: 3px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
-    .wbtn       { font-size: 11px; padding: 2px 7px; border-radius: 3px; border: 0.5px solid #d3d1c7; cursor: pointer; background: #ffffff; transition: background .15s; }
-    .wbtn:hover { background: #f5f4f0; }
+.legend{font-size:11px;color:var(--color-text-secondary);margin-top:8px;}
+.leg{display:flex;align-items:center;gap:5px;margin-bottom:3px;}
+.leg-sw{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
 
-    /* Right panel */
-    .stage-box    { margin-bottom: 8px; border-radius: 8px; border: 0.5px solid #e8e6df; overflow: hidden; }
-    .stage-header { padding: 4px 8px; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-    .stage-header.sh   { background: #DDEEFF; color: #0C447C; }
-    .stage-header.sv   { background: #EEEDFE; color: #3C3489; }
-    .stage-header.sdone{ background: #E1F5EE; color: #085041; }
-    .stage-rects  { padding: 4px 6px; max-height: 130px; overflow-y: auto; background: #ffffff; }
-    .rect-item    { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 3px; margin-bottom: 1px; font-size: 11px; color: #444441; }
-    .rect-item.active { background: #FAEEDA44; outline: 1.5px solid #EF9F27; }
-    .rect-item .rsw   { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-    .rect-item .empty { color: #888780; font-style: italic; }
+.stat-box{margin-top:10px;padding:7px 9px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);font-size:11px;line-height:1.8;}
+.stat-title{font-size:10px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+.stat-row{display:flex;justify-content:space-between;}
+.stat-val{font-weight:600;color:var(--color-text-primary);}
 
-    .legend { font-size: 11px; color: #444441; margin-top: 8px; }
-    .leg     { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
-    .leg-sw  { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
-
-    .stat-box   { margin-top: 10px; padding: 7px 9px; background: #f5f4f0; border-radius: 8px; border: 0.5px solid #e8e6df; font-size: 11px; line-height: 1.8; }
-    .stat-title { font-size: 10px; font-weight: 600; color: #888780; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-    .stat-row   { display: flex; justify-content: space-between; }
-    .stat-val   { font-weight: 600; color: #1a1a18; }
+.weight-inp{width:38px;font-size:12px;padding:2px 4px;border-radius:3px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);}
+.wbtn{font-size:11px;padding:2px 7px;border-radius:3px;border:0.5px solid var(--color-border-secondary);cursor:pointer;background:var(--color-background-primary);}
+.wbtn:hover{background:var(--color-background-secondary);}
   </style>
 </head>
 <body>
 
 <div class="settings">
   <div class="sg">
-    <label>Sheet:</label>
-    <input id="sw" type="number" value="30" min="4" max="400" style="width:52px"/>&#x00D7;
-    <input id="sh" type="number" value="24" min="4" max="400" style="width:52px"/>
-    <label>Kerf:</label>
+    <label>Лист:</label>
+    <input id="sw" type="number" value="200" min="4" max="400" style="width:52px"/>×
+    <input id="sh" type="number" value="160" min="4" max="400" style="width:52px"/>
+    <label>Пропил:</label>
     <input id="kerf" type="number" value="1" min="0" max="20" style="width:42px"/>
     <label>min_size:</label>
-    <input id="minsize" type="number" value="2" min="1" max="30" style="width:42px"/>
+    <input id="minsize" type="number" value="20" min="1" max="30" style="width:42px"/>
   </div>
   <div class="sg">
-    <label>Sheets k:</label>
+    <label>Листов k:</label>
     <input id="ksheets" type="number" value="2" min="1" max="8" style="width:42px"/>
+    <label>Стадий:</label>
+    <input id="stage-count" type="number" value="2" min="1" max="6" style="width:42px"/>
   </div>
   <div class="sg">
-    <label>Sheets per row:</label>
+    <label>Листов в ширину:</label>
     <input id="spr" type="number" value="2" min="1" max="8" style="width:42px"/>
-    <span class="scale-info" id="scale-info">1 unit = ? px</span>
+    <span class="scale-info" id="scale-info">1 ед = ? px</span>
   </div>
 </div>
-
 <div class="settings" style="margin-top:-2px">
   <div class="sg">
-    <label>Weights:</label>
+    <label>Веса:</label>
     <div id="wed" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;"></div>
-    <button class="wbtn" onclick="addW()">+ weight</button>
-    <button class="wbtn" onclick="remW()">&minus; weight</button>
+    <button class="wbtn" onclick="addW()">+ вес</button>
+    <button class="wbtn" onclick="remW()">− вес</button>
   </div>
-  <button onclick="generate()">&#x1F3B2; Generate</button>
-  <button class="primary" onclick="runSteps()">&#x25B6; Step through</button>
+  <button onclick="generate()">🎲 Генерировать</button>
+  <button class="primary" onclick="runSteps()">▶ Пошагово</button>
 </div>
 
 <div id="layout">
   <div id="left">
-    <div class="panel-title">Sheets</div>
+    <div class="panel-title">Листы</div>
     <div class="sheets-wrap" id="sheets-wrap"></div>
-    <div class="explain" id="explain">Press Generate, then Step through.</div>
+    <div class="explain" id="explain">Нажмите «Генерировать», затем «Пошагово».</div>
     <div class="progress" id="progress-row"></div>
     <div class="ctrl">
-      <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
-      <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
-      <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+      <button id="btn-prev" onclick="goPrev()" disabled>◀<span class="kbd">←</span></button>
+      <button id="btn-next" onclick="goNext()" disabled>▶<span class="kbd">→</span></button>
+      <button id="btn-auto" onclick="toggleAuto()" disabled>▷ Авто<span class="kbd">Space</span></button>
       <span class="sc" id="sc"></span>
     </div>
   </div>
   <div id="right">
-    <div class="panel-title">Queue (BFS by stage)</div>
-
-    <div class="stage-box">
-      <div class="stage-header sh">Stage 0 &mdash; horizontal cuts (H)</div>
-      <div class="stage-rects" id="rects-s0"></div>
-    </div>
-    <div class="stage-box">
-      <div class="stage-header sv">Stage 1 &mdash; vertical cuts (V)</div>
-      <div class="stage-rects" id="rects-s1"></div>
-    </div>
-    <div class="stage-box">
-      <div class="stage-header sdone">Finished pieces</div>
-      <div class="stage-rects" id="rects-done"></div>
-    </div>
+    <div class="panel-title">Очередь (BFS по стадиям)</div>
+    <div id="stage-boxes"></div>
 
     <div class="legend">
-      <div class="leg"><div class="leg-sw" style="background:#378ADD33;border:2px solid #378ADD"></div>Horizontal cut (H)</div>
-      <div class="leg"><div class="leg-sw" style="background:#7F77DD33;border:2px solid #7F77DD"></div>Vertical cut (V)</div>
-      <div class="leg"><div class="leg-sw" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Active rectangle</div>
-      <div class="leg"><div class="leg-sw" style="background:#c8b89a;border:1px solid #a09070"></div>Kerf (saw blade)</div>
+      <div class="leg"><div class="leg-sw" style="background:#378ADD33;border:2px solid #378ADD"></div>Горизонтальный разрез (H)</div>
+      <div class="leg"><div class="leg-sw" style="background:#7F77DD33;border:2px solid #7F77DD"></div>Вертикальный разрез (V)</div>
+      <div class="leg"><div class="leg-sw" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Активный прямоугольник</div>
+      <div class="leg"><div class="leg-sw" style="background:#c8b89a;border:1px solid #a09070"></div>Пропил (kerf)</div>
     </div>
 
     <div class="stat-box" id="stat-box" style="display:none">
-      <div class="stat-title">Summary</div>
+      <div class="stat-title">Итог</div>
       <div id="stat-rows"></div>
     </div>
   </div>
 </div>
 
 <script>
-// ── RNG (Mulberry32) ──────────────────────────────────────────────
+// ─── RNG (Mulberry32) ──────────────────────────────────────────────────────────
 let rngState = 1;
 function seedRng(s){ rngState = (s>>>0)||1; }
 function rngNext(){
@@ -205,12 +152,12 @@ function rngNext(){
 }
 function rngRange(lo, hi){ return lo + Math.floor(rngNext()*(hi-lo+1)); }
 
-// ── Weights UI ────────────────────────────────────────────────────
+// ─── Weights UI ────────────────────────────────────────────────────────────────
 let weightsArr = [5,3,2];
 function renderWed(){
   const ed=document.getElementById('wed'); ed.innerHTML='';
   weightsArr.forEach((w,i)=>{
-    if(i){ const s=document.createElement('span'); s.textContent=','; s.style.color='#888780'; ed.appendChild(s); }
+    if(i){ const s=document.createElement('span'); s.textContent=','; s.style.color='var(--color-text-tertiary)'; ed.appendChild(s); }
     const inp=document.createElement('input'); inp.type='number'; inp.value=w; inp.min=0; inp.className='weight-inp';
     inp.oninput=()=>{ weightsArr[i]=parseFloat(inp.value)||0; };
     ed.appendChild(inp);
@@ -220,7 +167,7 @@ function addW(){ weightsArr.push(1); renderWed(); }
 function remW(){ if(weightsArr.length>1){ weightsArr.pop(); renderWed(); } }
 renderWed();
 
-// ── Palettes ──────────────────────────────────────────────────────
+// ─── Palettes ──────────────────────────────────────────────────────────────────
 const PAL=[
   {fill:'#EEEDFE99',stroke:'#7F77DD',text:'#3C3489'},
   {fill:'#E1F5EE99',stroke:'#1D9E75',text:'#085041'},
@@ -231,12 +178,19 @@ const PAL=[
   {fill:'#EAF3DE99',stroke:'#639922',text:'#27500A'},
   {fill:'#FCEBEB99',stroke:'#E24B4A',text:'#501313'},
 ];
-const pal   = i => PAL[i % PAL.length];
+const pal = i => PAL[i % PAL.length];
 const clone = x => JSON.parse(JSON.stringify(x));
 
-// ── Algorithm ─────────────────────────────────────────────────────
+// Stage colours: alternating H (blue) / V (purple)
+const STAGE_H = { col:'#378ADD', bg:'#DDEEFF', text:'#0C447C', cls:'sh' };
+const STAGE_V = { col:'#7F77DD', bg:'#EEEDFE', text:'#3C3489', cls:'sv' };
+function stageStyle(stageIdx){ return stageIdx%2===0 ? STAGE_H : STAGE_V; }
+function stageName(stageIdx){ return stageIdx%2===0 ? 'горизонтальные (H)' : 'вертикальные (V)'; }
+function stageDir(stageIdx){ return stageIdx%2===0 ? 'H' : 'V'; }
+
+// ─── cutExtent (JS port of Rust) ───────────────────────────────────────────────
 function cutExtent(extent, minSize, kerf, weights){
-  const desired = weightedSample(weights);
+  const desired = weightedSample(weights); // 1..weights.length
   function validRange(k){
     if(k===0) return {ok:true, aMin:extent, aMax:extent};
     const num = extent - k*kerf - minSize;
@@ -246,148 +200,179 @@ function cutExtent(extent, minSize, kerf, weights){
     return {ok:true, aMin:minSize, aMax};
   }
   let nCuts=desired, range=null;
-  for(let k=desired;k>=0;k--){ const r=validRange(k); if(r.ok){nCuts=k;range=r;break;} }
-  const a=rngRange(range.aMin,range.aMax);
-  if(nCuts===0) return {pieces:[a],nCuts:0,a:null,b:a,fallback:desired!==0};
-  const b=extent-nCuts*(a+kerf);
+  for(let k=desired; k>=0; k--){
+    const r=validRange(k);
+    if(r.ok){ nCuts=k; range=r; break; }
+  }
+  const a=rngRange(range.aMin, range.aMax);
+  if(nCuts===0) return {pieces:[a], nCuts:0, a:null, b:a, fallback:desired!==0};
+  const b=extent - nCuts*(a+kerf);
   const pieces=[];
   for(let i=0;i<nCuts;i++) pieces.push(a);
   pieces.push(b);
-  return {pieces,nCuts,a,b,fallback:desired!==nCuts};
+  return {pieces, nCuts, a, b, fallback:desired!==nCuts};
 }
 
 function weightedSample(weights){
   const total=weights.reduce((s,w)=>s+Math.max(0,w),0);
   let pick=rngNext()*total;
-  for(let i=0;i<weights.length;i++){ pick-=Math.max(0,weights[i]); if(pick<=0) return i+1; }
+  for(let i=0;i<weights.length;i++){
+    pick-=Math.max(0,weights[i]);
+    if(pick<=0) return i+1;
+  }
   return weights.length;
 }
 
-// ── Build steps ───────────────────────────────────────────────────
-function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights){
+// ─── buildSteps ────────────────────────────────────────────────────────────────
+// Each step has:
+//   type, tag, msg, sheetIdx, stageIdx,
+//   activeRect, resultRects, kerfRects, fallback,
+//   finishedLeaves,
+//   stageQueues: array[stageCount] of {input:[], doneIdxs:[]}   (snapshot)
+function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount){
   const steps=[];
   const finishedLeaves=[];
   let colorCounter=0;
 
   steps.push({
-    type:'init', sheetIdx:-1, stageIdx:-1,
+    type:'init', tag:'t-init', sheetIdx:-1, stageIdx:-1,
     activeRect:null, resultRects:[], kerfRects:[], fallback:false,
-    finishedLeaves:[], s0queue:[], s1queue:[], s0done:[], s1done:[],
-    msg:`<span class="tag t-init">Start</span>Generating problem: <strong>${kSheets}</strong> sheet(s) <strong>${sheetW}&times;${sheetH}</strong>, kerf=<strong>${kerf}</strong>, min_size=<strong>${minSize}</strong>. Two BFS passes: all horizontal cuts (H), then all vertical cuts (V).`
+    finishedLeaves:[], stageQueues: Array.from({length:stageCount},()=>({input:[],doneIdxs:[]})),
+    msg:`<span class="tag t-init">Старт</span>Генерируем: <strong>${kSheets}</strong> листов <strong>${sheetW}×${sheetH}</strong>, пропил=<strong>${kerf}</strong>, min_size=<strong>${minSize}</strong>, стадий=<strong>${stageCount}</strong>. Направления: ${Array.from({length:stageCount},(_,i)=>stageDir(i)).join('→')}.`
   });
 
-  for(let si=0;si<kSheets;si++){
-    let stage0input=[{x:0,y:0,w:sheetW,h:sheetH,sheetIdx:si,colorId:null}];
-    let stage0output=[];
+  for(let si=0; si<kSheets; si++){
+    // stageInputs[s] = queue going into stage s
+    const stageInputs = [
+      [{x:0,y:0,w:sheetW,h:sheetH,sheetIdx:si,colorId:null}]
+    ];
 
     steps.push({
-      type:'sheet_start', sheetIdx:si, stageIdx:0,
+      type:'sheet_start', tag:'t-init', sheetIdx:si, stageIdx:0,
       activeRect:null, resultRects:[], kerfRects:[], fallback:false,
       finishedLeaves:clone(finishedLeaves),
-      s0queue:clone(stage0input), s1queue:[], s0done:[], s1done:[],
-      msg:`<span class="tag t-init">Sheet ${si}</span>Starting sheet <strong>${si}</strong>. Stage 0 (H) queue: 1 rectangle <strong>${sheetW}&times;${sheetH}</strong>.`
+      stageQueues: buildQueueSnapshot(stageInputs, stageCount, -1, []),
+      msg:`<span class="tag t-init">Лист ${si}</span>Начинаем лист <strong>${si}</strong>. Стадия 0 (${stageName(0)}): 1 прямоугольник <strong>${sheetW}×${sheetH}</strong>.`
     });
 
-    const s0done=[];
-    for(let qi=0;qi<stage0input.length;qi++){
-      const fr=stage0input[qi];
-      const cut=cutExtent(fr.h,minSize,kerf,weights);
-      const {pieces,nCuts,a,b,fallback}=cut;
-      const resultRects=[], kerfRects=[];
-      let offset=0;
-      for(let i=0;i<pieces.length;i++){
-        resultRects.push({x:fr.x,y:fr.y+offset,w:fr.w,h:pieces[i],sheetIdx:si,colorId:null});
-        offset+=pieces[i];
-        if(i<pieces.length-1){ kerfRects.push({x:fr.x,y:fr.y+offset,w:fr.w,h:kerf}); offset+=kerf; }
+    // Run all stages
+    for(let stage=0; stage<stageCount; stage++){
+      const vertical = stage%2===1;
+      const inputQueue = stageInputs[stage];
+      const outputQueue = [];
+      const doneIdxs = [];
+
+      // announce stage start (if not first stage)
+      if(stage>0){
+        steps.push({
+          type:'stage_start', tag: stageDir(stage)==='H'?'t-h':'t-v',
+          sheetIdx:si, stageIdx:stage,
+          activeRect:null, resultRects:[], kerfRects:[], fallback:false,
+          finishedLeaves:clone(finishedLeaves),
+          stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage, []),
+          msg:`<span class="tag ${stageDir(stage)==='H'?'t-h':'t-v'}">Стадия ${stage}</span>Лист ${si}: начинаем стадию <strong>${stage}</strong> (${stageName(stage)}). Прямоугольников в очереди: <strong>${inputQueue.length}</strong>.`
+        });
       }
-      stage0output.push(...resultRects);
-      const fb=fallback?` <span class="tag t-fallback">fallback</span>`:'';
-      const pd=nCuts===0?`&rarr; <strong>1</strong> piece (no cut)`:`&rarr; <strong>${pieces.length}</strong> pieces: ${nCuts} &times; <strong>${a}</strong> + last <strong>${b}</strong>`;
-      s0done.push(qi);
+
+      for(let qi=0; qi<inputQueue.length; qi++){
+        const fr=inputQueue[qi];
+        const extent=vertical?fr.w:fr.h;
+        const cut=cutExtent(extent,minSize,kerf,weights);
+        const {pieces,nCuts,a,b,fallback}=cut;
+
+        const resultRects=[];
+        const kerfRects=[];
+        let offset=0;
+        for(let i=0;i<pieces.length;i++){
+          const r=vertical
+            ? {x:fr.x+offset,y:fr.y,w:pieces[i],h:fr.h,sheetIdx:si,colorId:null}
+            : {x:fr.x,y:fr.y+offset,w:fr.w,h:pieces[i],sheetIdx:si,colorId:null};
+          resultRects.push(r);
+          offset+=pieces[i];
+          if(i<pieces.length-1){
+            kerfRects.push(vertical
+              ? {x:fr.x+offset,y:fr.y,w:kerf,h:fr.h}
+              : {x:fr.x,y:fr.y+offset,w:fr.w,h:kerf});
+            offset+=kerf;
+          }
+        }
+        outputQueue.push(...resultRects);
+        doneIdxs.push(qi);
+
+        const dir=stageDir(stage);
+        const fallbackStr=fallback?` <span class="tag t-fallback">fallback</span>`:'';
+        const pieceDesc=nCuts===0
+          ?`→ <strong>1</strong> кусок (нет разреза)`
+          :`→ <strong>${pieces.length}</strong>: ${nCuts}×<strong>${a}</strong> + последний <strong>${b}</strong>`;
+
+        steps.push({
+          type:`cut_${dir.toLowerCase()}`, tag:dir==='H'?'t-h':'t-v',
+          sheetIdx:si, stageIdx:stage,
+          activeRect:clone(fr), resultRects:clone(resultRects), kerfRects:clone(kerfRects), fallback,
+          finishedLeaves:clone(finishedLeaves),
+          stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage, clone(doneIdxs)),
+          msg:`<span class="tag ${dir==='H'?'t-h':'t-v'}">${dir}-разрез</span>Лист ${si}, стадия ${stage}. Rect <strong>${fr.w}×${fr.h}</strong> @ (${fr.x},${fr.y}). ${stageName(stage).split(' ')[0].charAt(0).toUpperCase()+stageName(stage).split(' ')[0].slice(1)} ${vertical?'ширина':'высота'} ${extent}: ${pieceDesc}.${fallbackStr}`
+        });
+      }
+
+      // Assign colors only on last stage (these become leaves)
+      if(stage===stageCount-1){
+        for(const r of outputQueue) r.colorId=colorCounter++;
+      }
+
+      stageInputs.push(outputQueue);
+
       steps.push({
-        type:'cut_h', sheetIdx:si, stageIdx:0,
-        activeRect:clone(fr), resultRects:clone(resultRects), kerfRects:clone(kerfRects), fallback,
-        finishedLeaves:clone(finishedLeaves),
-        s0queue:clone(stage0input), s1queue:[], s0done:clone(s0done), s1done:[],
-        msg:`<span class="tag t-h">H-cut</span>Sheet ${si}, stage 0. Rect <strong>${fr.w}&times;${fr.h}</strong> @ (${fr.x},${fr.y}). Height ${fr.h}: ${pd}.${fb}`
+        type:'stage_done', tag:'t-done',
+        sheetIdx:si, stageIdx:stage,
+        activeRect:null, resultRects:[], kerfRects:[], fallback:false,
+        finishedLeaves: stage===stageCount-1
+          ? [...clone(finishedLeaves), ...clone(outputQueue)]
+          : clone(finishedLeaves),
+        stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage+1, []),
+        msg:`<span class="tag t-done">Стадия ${stage} готова</span>Лист ${si}, стадия <strong>${stage}</strong> завершена. Получено <strong>${outputQueue.length}</strong> прямоугольников${stage===stageCount-1?' — <strong>финальные детали</strong>':`, переходим к стадии <strong>${stage+1}</strong>`}.`
       });
     }
 
-    const s1done=[];
-    steps.push({
-      type:'stage1_start', sheetIdx:si, stageIdx:1,
-      activeRect:null, resultRects:[], kerfRects:[], fallback:false,
-      finishedLeaves:clone(finishedLeaves),
-      s0queue:clone(stage0input), s1queue:clone(stage0output),
-      s0done:stage0input.map((_,i)=>i), s1done:[],
-      msg:`<span class="tag t-v">Stage 1</span>Sheet ${si}: horizontal cuts done. <strong>${stage0output.length}</strong> strips produced. Starting vertical cuts.`
-    });
-
-    for(let qi=0;qi<stage0output.length;qi++){
-      const fr=stage0output[qi];
-      const cut=cutExtent(fr.w,minSize,kerf,weights);
-      const {pieces,nCuts,a,b,fallback}=cut;
-      const resultRects=[], kerfRects=[];
-      let offset=0;
-      for(let i=0;i<pieces.length;i++){
-        resultRects.push({x:fr.x+offset,y:fr.y,w:pieces[i],h:fr.h,sheetIdx:si,colorId:colorCounter++});
-        offset+=pieces[i];
-        if(i<pieces.length-1){ kerfRects.push({x:fr.x+offset,y:fr.y,w:kerf,h:fr.h}); offset+=kerf; }
-      }
-      const stage1sofar=[...finishedLeaves,...stage0output.slice(0,qi+1).flatMap((_,j)=>j<qi?[]:resultRects)];
-      s1done.push(qi);
-      const fb=fallback?` <span class="tag t-fallback">fallback</span>`:'';
-      const pd=nCuts===0?`&rarr; <strong>1</strong> piece (no cut)`:`&rarr; <strong>${pieces.length}</strong> pieces: ${nCuts} &times; <strong>${a}</strong> + last <strong>${b}</strong>`;
-      // accumulate stage1 output for drawing
-      if(!stage0output[qi]._results) stage0output[qi]._results=resultRects;
-      const allSoFar=[...clone(finishedLeaves)];
-      for(let j=0;j<=qi;j++) if(stage0output[j]._results) allSoFar.push(...clone(stage0output[j]._results));
-      steps.push({
-        type:'cut_v', sheetIdx:si, stageIdx:1,
-        activeRect:clone(fr), resultRects:clone(resultRects), kerfRects:clone(kerfRects), fallback,
-        finishedLeaves:allSoFar,
-        s0queue:clone(stage0input), s1queue:clone(stage0output.map(r=>({x:r.x,y:r.y,w:r.w,h:r.h,sheetIdx:r.sheetIdx,colorId:r.colorId}))),
-        s0done:stage0input.map((_,i)=>i), s1done:clone(s1done),
-        msg:`<span class="tag t-v">V-cut</span>Sheet ${si}, stage 1. Rect <strong>${fr.w}&times;${fr.h}</strong> @ (${fr.x},${fr.y}). Width ${fr.w}: ${pd}.${fb}`
-      });
-    }
-
-    // collect all stage1 results for finishedLeaves
-    const stage1output=[];
-    for(const fr of stage0output) if(fr._results) stage1output.push(...fr._results);
-    finishedLeaves.push(...stage1output);
+    const sheetLeaves=stageInputs[stageCount];
+    finishedLeaves.push(...sheetLeaves);
 
     steps.push({
-      type:'sheet_done', sheetIdx:si, stageIdx:-1,
+      type:'sheet_done', tag:'t-done', sheetIdx:si, stageIdx:-1,
       activeRect:null, resultRects:[], kerfRects:[], fallback:false,
       finishedLeaves:clone(finishedLeaves),
-      s0queue:clone(stage0input), s1queue:clone(stage0output.map(r=>({x:r.x,y:r.y,w:r.w,h:r.h,sheetIdx:r.sheetIdx,colorId:r.colorId}))),
-      s0done:stage0input.map((_,i)=>i), s1done:stage0output.map((_,i)=>i),
-      msg:`<span class="tag t-done">Sheet done</span>Sheet <strong>${si}</strong> complete: <strong>${stage1output.length}</strong> pieces.`
+      stageQueues: buildQueueSnapshot(stageInputs, stageCount, stageCount, []),
+      msg:`<span class="tag t-done">Лист готов</span>Лист <strong>${si}</strong> завершён: <strong>${sheetLeaves.length}</strong> деталей.`
     });
   }
 
   const totalArea=sheetW*sheetH*kSheets;
   const usedArea=finishedLeaves.reduce((s,l)=>s+l.w*l.h,0);
   steps.push({
-    type:'done', sheetIdx:-1, stageIdx:-1,
+    type:'done', tag:'t-done', sheetIdx:-1, stageIdx:-1,
     activeRect:null, resultRects:[], kerfRects:[], fallback:false,
     finishedLeaves:clone(finishedLeaves),
-    s0queue:[], s1queue:[], s0done:[], s1done:[],
+    stageQueues: Array.from({length:stageCount},()=>({input:[],doneIdxs:[]})),
     stat:{pieces:finishedLeaves.length, sheets:kSheets,
           usedPct:(usedArea/totalArea*100).toFixed(1),
           lostPct:((totalArea-usedArea)/totalArea*100).toFixed(1)},
-    msg:`<span class="tag t-done">Done</span>Generated: <strong>${finishedLeaves.length}</strong> pieces on <strong>${kSheets}</strong> sheet(s). Area used: <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>. Solution is guaranteed optimal.`
+    msg:`<span class="tag t-done">Готово</span>Задача сгенерирована: <strong>${finishedLeaves.length}</strong> деталей на <strong>${kSheets}</strong> листе(ах). Использовано <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong> площади. Решение гарантированно оптимально.`
   });
 
   return steps;
 }
 
-// ── App state ─────────────────────────────────────────────────────
+// Build a snapshot of all stage queues for the right panel
+function buildQueueSnapshot(stageInputs, stageCount, currentStage, doneIdxs){
+  return Array.from({length:stageCount}, (_,si)=>({
+    input: stageInputs[si] ? clone(stageInputs[si]) : [],
+    doneIdxs: si===currentStage ? clone(doneIdxs) : si<currentStage ? (stageInputs[si]||[]).map((_,i)=>i) : []
+  }));
+}
+
+// ─── App state ─────────────────────────────────────────────────────────────────
 let steps=[], stepIdx=-1, autoRunning=false;
-let SCALE=16, sheetW, sheetH, kSheets, kerf, minSize;
-// Stored seed so Generate is deterministic until user clicks Generate again
-let storedSeed = null;
+let SCALE=16, sheetW, sheetH, kSheets, kerf, minSize, stageCount;
 
 function computeScale(){
   const spr=Math.max(1,parseInt(document.getElementById('spr').value)||2);
@@ -395,23 +380,36 @@ function computeScale(){
   const leftW=document.getElementById('left').offsetWidth||700;
   const avail=leftW-(spr-1)*10-2;
   const s=Math.max(3,Math.floor(avail/spr/sw));
-  document.getElementById('scale-info').textContent=`1 unit = ${s} px`;
+  document.getElementById('scale-info').textContent=`1 ед = ${s} px`;
   return s;
 }
 
-// generate(): picks new random seed and rebuilds steps
+function buildStageBoxes(n){
+  const container=document.getElementById('stage-boxes');
+  container.innerHTML='';
+  for(let i=0;i<n;i++){
+    const st=stageStyle(i);
+    const box=document.createElement('div'); box.className='stage-box';
+    box.innerHTML=`<div class="stage-header ${st.cls}" style="background:${st.bg};color:${st.text}">Стадия ${i} — ${stageName(i)}</div><div class="stage-rects" id="rects-s${i}"></div>`;
+    container.appendChild(box);
+  }
+  const donebox=document.createElement('div'); donebox.className='stage-box';
+  donebox.innerHTML=`<div class="stage-header sdone">Готовые детали</div><div class="stage-rects" id="rects-done"></div>`;
+  container.appendChild(donebox);
+}
+
 function generate(){
-  sheetW  = parseInt(document.getElementById('sw').value)||30;
-  sheetH  = parseInt(document.getElementById('sh').value)||24;
-  kerf    = parseInt(document.getElementById('kerf').value)||0;
-  kSheets = parseInt(document.getElementById('ksheets').value)||2;
-  minSize = parseInt(document.getElementById('minsize').value)||2;
-  const wts=weightsArr.map(w=>Math.max(0,w));
-  SCALE   = computeScale();
-  storedSeed = Date.now();        // new random seed
-  seedRng(storedSeed);
-  steps = buildSteps(sheetW,sheetH,kSheets,kerf,minSize,wts);
-  // Show final result immediately
+  sheetW      = parseInt(document.getElementById('sw').value)||30;
+  sheetH      = parseInt(document.getElementById('sh').value)||24;
+  kerf        = parseInt(document.getElementById('kerf').value)||0;
+  kSheets     = parseInt(document.getElementById('ksheets').value)||2;
+  minSize     = parseInt(document.getElementById('minsize').value)||2;
+  stageCount  = Math.max(1,parseInt(document.getElementById('stage-count').value)||2);
+  const wts   = weightsArr.map(w=>Math.max(0,w));
+  SCALE       = computeScale();
+  seedRng(Date.now());
+  buildStageBoxes(stageCount);
+  steps = buildSteps(sheetW,sheetH,kSheets,kerf,minSize,wts,stageCount);
   stepIdx = steps.length-1;
   renderStep(stepIdx);
   document.getElementById('btn-auto').disabled=false;
@@ -419,7 +417,6 @@ function generate(){
   document.getElementById('btn-next').disabled=true;
 }
 
-// runSteps(): replays existing steps from the beginning — no new randomness
 function runSteps(){
   if(!steps.length) generate();
   stepIdx=0; renderStep(0);
@@ -427,19 +424,20 @@ function runSteps(){
   document.getElementById('btn-next').disabled=false;
 }
 
-// ── Render ────────────────────────────────────────────────────────
+// ─── Render ────────────────────────────────────────────────────────────────────
 function renderStep(idx){
   const s=steps[idx]; stepIdx=idx;
   SCALE=computeScale();
   const spr=Math.max(1,parseInt(document.getElementById('spr').value)||2);
   const W=sheetW*SCALE, H=sheetH*SCALE;
 
+  // Sheets
   const wrap=document.getElementById('sheets-wrap');
   wrap.style.gridTemplateColumns=`repeat(${spr},${W}px)`;
   wrap.innerHTML='';
   for(let si=0;si<kSheets;si++){
     const cont=document.createElement('div'); cont.className='sheet-container';
-    const lbl=document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Sheet '+si;
+    const lbl=document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Лист '+si;
     const cv=document.createElement('canvas'); cv.className='sheet-canvas';
     cv.width=W; cv.height=H; cv.style.width=W+'px'; cv.style.height=H+'px';
     drawSheet(cv.getContext('2d'),si,s,W,H);
@@ -448,20 +446,28 @@ function renderStep(idx){
 
   document.getElementById('explain').innerHTML=s.msg||'';
 
-  renderQueue('rects-s0',s.s0queue,s.s0done,s.activeRect,s.stageIdx===0,'H');
-  renderQueue('rects-s1',s.s1queue,s.s1done,s.activeRect,s.stageIdx===1,'V');
-  renderDone('rects-done',s.finishedLeaves);
+  // Right panel: one box per stage
+  (s.stageQueues||[]).forEach((sq,si)=>{
+    const el=document.getElementById(`rects-s${si}`);
+    if(!el) return;
+    const st=stageStyle(si);
+    const isActive=s.stageIdx===si;
+    renderQueueInto(el, sq.input, sq.doneIdxs, s.activeRect, isActive, st.col);
+  });
+  renderDone('rects-done', s.finishedLeaves);
 
+  // Stat
   const statBox=document.getElementById('stat-box');
   if(s.stat){
     statBox.style.display='block';
     document.getElementById('stat-rows').innerHTML=`
-      <div class="stat-row"><span>Pieces</span><span class="stat-val">${s.stat.pieces}</span></div>
-      <div class="stat-row"><span>Sheets</span><span class="stat-val">${s.stat.sheets}</span></div>
-      <div class="stat-row"><span>Area used</span><span class="stat-val">${s.stat.usedPct}%</span></div>
-      <div class="stat-row"><span>Kerf loss</span><span class="stat-val">${s.stat.lostPct}%</span></div>`;
+      <div class="stat-row"><span>Деталей</span><span class="stat-val">${s.stat.pieces}</span></div>
+      <div class="stat-row"><span>Листов</span><span class="stat-val">${s.stat.sheets}</span></div>
+      <div class="stat-row"><span>Использовано</span><span class="stat-val">${s.stat.usedPct}%</span></div>
+      <div class="stat-row"><span>Потери (пропил)</span><span class="stat-val">${s.stat.lostPct}%</span></div>`;
   } else { statBox.style.display='none'; }
 
+  // Progress
   const pr=document.getElementById('progress-row'); pr.innerHTML='';
   steps.forEach((_,i)=>{
     const d=document.createElement('div');
@@ -474,42 +480,47 @@ function renderStep(idx){
   document.getElementById('btn-auto').disabled=false;
 }
 
-function renderQueue(elId, queue, doneIdxs, activeRect, isActive, dir){
-  const el=document.getElementById(elId);
-  if(!queue||!queue.length){ el.innerHTML='<div class="rect-item"><span class="empty">empty</span></div>'; return; }
+function renderQueueInto(el, queue, doneIdxs, activeRect, isActive, col){
+  if(!queue||!queue.length){
+    el.innerHTML='<div class="rect-item"><span class="empty">пусто</span></div>';
+    return;
+  }
   const doneSet=new Set(doneIdxs||[]);
-  const col=dir==='H'?'#378ADD':'#7F77DD';
   el.innerHTML=queue.map((r,i)=>{
     const isDone=doneSet.has(i);
     const isAct=isActive&&activeRect&&r.x===activeRect.x&&r.y===activeRect.y&&r.w===activeRect.w&&r.h===activeRect.h;
     return `<div class="rect-item${isAct?' active':''}" style="opacity:${isDone?'0.4':'1'}">
-      <div class="rsw" style="background:${col}55;border:1.5px solid ${col}"></div>
-      <span>${r.w}\u00d7${r.h} @ (${r.x},${r.y})${isDone?' \u2713':''}</span>
+      <div class="sw" style="background:${col}55;border:1.5px solid ${col}"></div>
+      <span>${r.w}×${r.h} @ (${r.x},${r.y})${isDone?' ✓':''}</span>
     </div>`;
   }).join('');
 }
 
 function renderDone(elId, leaves){
   const el=document.getElementById(elId);
-  if(!leaves||!leaves.length){ el.innerHTML='<div class="rect-item"><span class="empty">empty</span></div>'; return; }
+  if(!leaves||!leaves.length){
+    el.innerHTML='<div class="rect-item"><span class="empty">пусто</span></div>';
+    return;
+  }
   const bySheet={};
   for(const l of leaves)(bySheet[l.sheetIdx]=bySheet[l.sheetIdx]||[]).push(l);
   let html='';
   for(const si of Object.keys(bySheet).sort()){
-    html+=`<div style="font-size:10px;color:#888780;margin:3px 0 1px">Sheet ${si}:</div>`;
+    html+=`<div style="font-size:10px;color:var(--color-text-tertiary);margin:3px 0 1px">Лист ${si}:</div>`;
     for(const l of bySheet[si]){
       const p=pal(l.colorId||0);
-      html+=`<div class="rect-item"><div class="rsw" style="background:${p.stroke}55;border:1.5px solid ${p.stroke}"></div><span>${l.w}\u00d7${l.h} @ (${l.x},${l.y})</span></div>`;
+      html+=`<div class="rect-item"><div class="sw" style="background:${p.stroke}55;border:1.5px solid ${p.stroke}"></div><span>${l.w}×${l.h} @ (${l.x},${l.y})</span></div>`;
     }
   }
   el.innerHTML=html;
 }
 
-// ── Canvas drawing ────────────────────────────────────────────────
-function drawSheet(ctx,si,s,W,H){
+// ─── Canvas drawing ────────────────────────────────────────────────────────────
+function drawSheet(ctx, si, s, W, H){
   ctx.fillStyle='#faf9f7'; ctx.fillRect(0,0,W,H);
   const leaves=(s.finishedLeaves||[]).filter(l=>l.sheetIdx===si);
 
+  // 1. Kerf gaps between finished leaves
   if(kerf>0&&leaves.length>1){
     ctx.fillStyle='#c8b89a';
     for(const l of leaves){
@@ -522,6 +533,7 @@ function drawSheet(ctx,si,s,W,H){
     }
   }
 
+  // 2. Finished leaves
   for(const l of leaves){
     const p=pal(l.colorId||0);
     const x=l.x*SCALE,y=l.y*SCALE,w=l.w*SCALE,h=l.h*SCALE;
@@ -531,28 +543,30 @@ function drawSheet(ctx,si,s,W,H){
     if(w>fz*2.5&&h>fz*1.5){
       ctx.fillStyle=p.text; ctx.font=`bold ${fz}px sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(`${l.w}\u00d7${l.h}`,x+w/2,y+h/2);
+      ctx.fillText(`${l.w}×${l.h}`,x+w/2,y+h/2);
     }
   }
 
+  // 3. Active rect highlight
   if(s.activeRect&&s.sheetIdx===si){
     const r=s.activeRect;
     const x=r.x*SCALE,y=r.y*SCALE,w=r.w*SCALE,h=r.h*SCALE;
-    const isH=s.stageIdx===0;
-    ctx.fillStyle=isH?'#378ADD18':'#7F77DD18';
-    ctx.strokeStyle=isH?'#378ADD':'#7F77DD';
+    const st=stageStyle(s.stageIdx);
+    ctx.fillStyle=st.col+'18'; ctx.strokeStyle=st.col;
     ctx.lineWidth=2.5; ctx.setLineDash([5,3]);
     rRect(ctx,x,y,w,h,2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
   }
 
+  // 4. Kerf strips for current cut
   if(s.sheetIdx===si&&s.kerfRects&&kerf>0){
     ctx.fillStyle='#c8b89a';
-    for(const kr of s.kerfRects) ctx.fillRect(kr.x*SCALE,kr.y*SCALE,kr.w*SCALE,kr.h*SCALE);
+    for(const kr of s.kerfRects)
+      ctx.fillRect(kr.x*SCALE,kr.y*SCALE,kr.w*SCALE,kr.h*SCALE);
   }
 
+  // 5. Result rects of current cut
   if(s.sheetIdx===si&&s.resultRects&&s.resultRects.length){
-    const isH=s.stageIdx===0;
-    const col=isH?'#378ADD':'#7F77DD';
+    const col=stageStyle(s.stageIdx).col;
     for(const r of s.resultRects){
       const x=r.x*SCALE,y=r.y*SCALE,w=r.w*SCALE,h=r.h*SCALE;
       ctx.fillStyle=col+'28'; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.setLineDash([]);
@@ -565,36 +579,29 @@ function drawSheet(ctx,si,s,W,H){
 
 function rRect(ctx,x,y,w,h,r){
   r=Math.min(r,w/2,h/2);
-  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
   ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
   ctx.closePath();
 }
 
-// ── Controls ──────────────────────────────────────────────────────
+// ─── Controls ──────────────────────────────────────────────────────────────────
 function goNext(){ if(stepIdx<steps.length-1) renderStep(stepIdx+1); }
 function goPrev(){ if(stepIdx>0) renderStep(stepIdx-1); }
-
 async function toggleAuto(){
-  if(autoRunning){
-    autoRunning=false;
-    document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
-    return;
-  }
-  autoRunning=true;
-  document.getElementById('btn-auto').innerHTML='&#x23F8; Pause<span class="kbd">Space</span>';
+  if(autoRunning){ autoRunning=false; document.getElementById('btn-auto').textContent='▷ Авто'; return; }
+  autoRunning=true; document.getElementById('btn-auto').textContent='⏸ Пауза';
   while(autoRunning&&stepIdx<steps.length-1){ goNext(); await new Promise(r=>setTimeout(r,600)); }
-  autoRunning=false;
-  document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
+  autoRunning=false; document.getElementById('btn-auto').textContent='▷ Авто';
 }
-
 document.addEventListener('keydown',ev=>{
   if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
   if(ev.key==='ArrowRight'){ ev.preventDefault(); goNext(); }
-  if(ev.key==='ArrowLeft') { ev.preventDefault(); goPrev(); }
-  if(ev.code==='Space')    { ev.preventDefault(); toggleAuto(); }
+  if(ev.key==='ArrowLeft'){ ev.preventDefault(); goPrev(); }
+  if(ev.code==='Space'){ ev.preventDefault(); toggleAuto(); }
 });
-
 document.getElementById('spr').addEventListener('input',()=>{ if(steps.length) renderStep(stepIdx); });
 
 setTimeout(()=>{ generate(); }, 60);
