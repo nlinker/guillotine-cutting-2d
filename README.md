@@ -32,7 +32,26 @@ fn main() {
 }
 ```
 
-## Input format
+## Concepts
+
+- **Problem** — stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
+  Each piece has an opaque external label (`id`), dimensions, and a rotation flag.
+  Pieces are addressed internally by their 0-based index in the list.
+- **Solution** — vector of placements + vector of free rectangles.  
+- **Genome** — ordered list of `Gene` values, one per piece. Defines placement order,
+  rotation preference, and which free rectangle to try first (`point_selector`).
+  Suitable as the individual in a genetic algorithm.
+- **Decoder** — deterministic: given a genome and a problem, produces a `Solution`
+  via the Shorter Leftover Axis (SLAS) guillotine heuristic.
+- **Generator** — creates random problem instances with a known optimal solution.
+  Applies guillotine-cut passes to `k` blank sheets, producing a set of pieces
+  that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
+- **GA** — genetic algorithm that searches for a good genome. Operators: OX/CX
+  crossover, swap/flip/point-selector mutation. Configured via `GaConfig`.
+- **Kerf** — blade thickness subtracted from each internal cut; sheet boundary
+  edges are exempt.
+
+## Input format for the parser
 
 `parse_problem` accepts a compact string: `"<sheet>:<pieces>"`.
 
@@ -46,27 +65,15 @@ fn main() {
 
 Example: `"3000x4000:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900"`
 
-## Concepts
-
-- **Problem** — stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
-  Each piece has an opaque external label (`id`), dimensions, and a rotation flag.
-  Pieces are addressed internally by their 0-based index in the list.
-- **Solution** — vector of placements + vector of free rectangles.  
-- **Genome** — ordered list of `Gene` values, one per piece. Defines placement order,
-  rotation preference, and which free rectangle to try first (`point_selector`).
-  Suitable as the individual in a genetic algorithm.
-- **Decoder** — deterministic: given a genome and a problem, produces a `Solution`
-  via the Shorter Leftover Axis (SLAS) guillotine heuristic.
-- **Kerf** — blade thickness subtracted from each internal cut; sheet boundary
-  edges are exempt.
-
 ## Commands
 
 ```
 cargo build
 cargo test
+cargo test <test_name>                              # single test
 cargo clippy -- -D warnings
 cargo +nightly fmt
+cargo run --example ga_benchmark --release          # GA quality benchmark
 ```
 
 ## Demos
