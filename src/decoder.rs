@@ -38,7 +38,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             let fr = free.remove(idx);
             placements.push(Placement {
                 sheet_idx: fr.sheet_idx,
-                piece_id: piece.id,
+                piece_idx: gene.piece_idx,
                 x: fr.x,
                 y: fr.y,
                 rotated,

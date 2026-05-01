@@ -1,3 +1,8 @@
+/// External label attached to a piece — used for display and round-tripping with
+/// the caller's numbering scheme (e.g. an ERP part number).  The value carries no
+/// structural meaning inside the solver: it need not be unique, need not be
+/// contiguous, and is never used as an internal key.  Pieces are addressed
+/// internally by their 0-based index in `Problem::pieces`.
 pub type PieceId = u32;
 
 /// Stock sheet — all sheets in the problem are identical.
@@ -28,10 +33,11 @@ pub struct Problem {
 
 /// Position of a placed piece. `(x, y)` is the top-left corner of the piece on the sheet;
 /// `rotated` means the piece was placed as (height × width) instead of (width × height).
+/// `piece_idx` is the 0-based index into `Problem::pieces` — the unambiguous internal key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Placement {
     pub sheet_idx: usize,
-    pub piece_id: PieceId,
+    pub piece_idx: usize,
     pub x: u32,
     pub y: u32,
     pub rotated: bool,

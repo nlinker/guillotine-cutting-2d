@@ -126,28 +126,26 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
         }
         all_rects.extend(queue);
     }
+    // Shuffle before assigning indices so piece_idx == position in problem.pieces.
+    all_rects.shuffle(rng);
+
     let mut placements: Vec<Placement> = Vec::new();
     let mut problem_pieces: Vec<Piece> = Vec::new();
-    let mut piece_idx = 0_usize;
-    for rect in all_rects {
-        let id: PieceId = (piece_idx + 1) as PieceId;
+    for (piece_idx, rect) in all_rects.iter().enumerate() {
         placements.push(Placement {
             sheet_idx: rect.sheet_idx,
-            piece_id: id,
+            piece_idx,
             x: rect.x,
             y: rect.y,
             rotated: false,
         });
         problem_pieces.push(Piece {
-            id,
+            id: (piece_idx + 1) as PieceId,
             width: rect.w,
             height: rect.h,
             can_rotate: true,
         });
-        piece_idx += 1;
     }
-    // Shuffle so that a solver cannot infer placement order from piece list position.
-    problem_pieces.shuffle(rng);
     Output {
         problem: Problem {
             sheet: cfg.sheet,
@@ -358,7 +356,7 @@ mod tests {
                 &mut rng,
             );
             for pl in &out.optimal_solution.placements {
-                let p = out.problem.pieces.iter().find(|p| p.id == pl.piece_id).unwrap();
+                let p = &out.problem.pieces[pl.piece_idx];
                 assert!(
                     pl.x + p.width <= sheet.width,
                     "kerf={kerf}: piece {} overflows width",
@@ -415,8 +413,8 @@ mod tests {
                 for i in 0..on.len() {
                     for j in i + 1..on.len() {
                         let (a, b) = (on[i], on[j]);
-                        let ap = out.problem.pieces.iter().find(|p| p.id == a.piece_id).unwrap();
-                        let bp = out.problem.pieces.iter().find(|p| p.id == b.piece_id).unwrap();
+                        let ap = &out.problem.pieces[a.piece_idx];
+                        let bp = &out.problem.pieces[b.piece_idx];
                         let overlap = a.x < b.x + bp.width
                             && a.x + ap.width > b.x
                             && a.y < b.y + bp.height
@@ -424,7 +422,7 @@ mod tests {
                         assert!(
                             !overlap,
                             "kerf={kerf}: pieces {} and {} overlap on sheet {}",
-                            a.piece_id, b.piece_id, sheet_idx
+                            a.piece_idx, b.piece_idx, sheet_idx
                         );
                     }
                 }
