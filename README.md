@@ -9,6 +9,8 @@ the library finds placements that minimizes the number of sheets used.
 All cuts are guillotine cuts (straight lines across the full 
 remaining rectangle).
 
+![Cutting example](docs/cutting_example.png)
+
 ## Usage
 
 ```rust
