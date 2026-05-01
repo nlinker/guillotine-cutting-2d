@@ -244,30 +244,28 @@ mod tests {
     }
 
     #[test]
-    fn objective_varies_by_point_selector() {
-        // Sheet 12×10, kerf=0. Two pieces: 6×5 (fixed) and 4×3 (fixed).
+    fn objective_prefers_smaller_area_on_last_sheet() {
+        // Sheet 10×10, kerf=0. Pieces: 10×6n (big), 10×4n (medium), 3×3n (small).
         //
-        // After placing 6×5, free = [right=(6,0,6,10), bottom=(0,5,6,5)].
+        // Genome A: [big, medium, small]
+        //   big  10×6 -> sheet 0 at (0,0); leftover bottom=(0,6,10,4)
+        //   med  10×4 -> fits in bottom; sheet 0 full
+        //   small 3×3 -> sheet 1  area_on_last=9
+        //   objective = 2*(100+1) + 9 = 211
         //
-        // Genome A (ps=0): places 4×3 in right=(6,0,6,10).
-        //   Leaves: bottom=(0,5,6,5) [usable: 6×5 fits -> 30]
-        //         + right=(10,0,2,3) [unusable]
-        //         + bottom=(6,3,6,7) [usable: 6×5 fits -> 42]
-        //   usable=72 -> objective = 1×120 − 72 = 48
+        // Genome B: [big, small, medium]
+        //   big  10×6 -> sheet 0; leftover bottom=(0,6,10,4)
+        //   small 3×3 -> fits at (0,6); SLAS lw=7>lh=1 -> right=(3,6,7,4), bottom=(0,9,3,1)
+        //   med  10×4 -> does not fit -> sheet 1  area_on_last=40
+        //   objective = 2*(100+1) + 40 = 242
         //
-        // Genome B (ps=1): places 4×3 in bottom=(0,5,6,5).
-        //   Leaves: right=(6,0,6,10) [usable: 6×5 fits -> 60]
-        //         + right=(4,5,2,3)  [unusable]
-        //         + bottom=(0,8,6,2) [unusable]
-        //   usable=60 -> objective = 1×120 − 60 = 60
-        //
-        // Genome A is better (48 < 60): placing the small piece in the tall right-hand
-        // rect consolidates leftover area into two usable rectangles instead of one.
-        let problem = parse_problem("12x10:6x5n,4x3n", 0).expect("Error parsing problem");
-        let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0)]);
-        let sol_b = decode(&problem, &vec![g(0, false, 0), g(1, false, 1)]);
-        assert_eq!(sol_a.objective(&problem), 48);
-        assert_eq!(sol_b.objective(&problem), 60);
+        // A is better: the large piece stays on sheet 0, only the small piece overflows.
+        // objective = sheets_used*(s+1) + area_on_last, s=100
+        let problem = parse_problem("10x10:10x6n,10x4n,3x3n", 0).expect("parse error");
+        let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
+        let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
+        assert_eq!(sol_a.objective(&problem), 211);  // 2*101 + 9
+        assert_eq!(sol_b.objective(&problem), 242);  // 2*101 + 40
         assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
     }
 }

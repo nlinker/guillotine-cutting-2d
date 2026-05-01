@@ -1,4 +1,5 @@
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
 
 use crate::{
     decoder::{Gene, Genome, decode},
@@ -101,6 +102,30 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
     }
 
     best
+}
+
+/// Runs `run_ga` in parallel — one thread per seed — and returns all results sorted by
+/// objective ascending (best first). Each seed produces an independent Xoshiro256**
+/// stream, so results are fully deterministic and reproducible.
+/// Panics if `seeds` is empty.
+pub fn run_ga_mt(problem: &Problem, config: &GaConfig, seeds: &[u64]) -> Vec<(u64, Individual)> {
+    assert!(!seeds.is_empty(), "seeds must not be empty");
+    let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
+        seeds
+            .iter()
+            .map(|&seed| {
+                s.spawn(move || {
+                    let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+                    (seed, run_ga(problem, config, &mut rng))
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect()
+    });
+    results.sort_by_key(|(_, ind)| ind.objective);
+    results
 }
 
 /// OX (Ordered Crossover) for two genomes.
