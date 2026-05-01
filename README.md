@@ -73,12 +73,12 @@ cargo +nightly fmt
 
 Interactive visualizations (open in browser, no server needed):
 
-| File | What it shows                                                                |
+| Demo | What it shows                                                                |
 |------|------------------------------------------------------------------------------|
-| [demos/ga_decoder.html](demos/ga_decoder.html) | Guillotine Decoder — genome → sheet placements step by step                  |
-| [demos/ga_ox_cx_gsap.html](demos/ga_ox_cx_gsap.html) | GA Crossover — OX and CX operators animated                                  |
-| [demos/ga_mutation_gsap.html](demos/ga_mutation_gsap.html) | GA Mutation — swap / flip / point-selector mutation animated                 |
-| [demos/guillotine_generator.html](demos/guillotine_generator.html) | Guillotine Generator — random problem generation with known optimal solution |
+| [Guillotine Decoder](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_decoder.html) | genome → sheet placements step by step                  |
+| [GA Crossover](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_ox_cx_gsap.html) | OX and CX operators animated                                  |
+| [GA Mutation](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_mutation_gsap.html) | swap / flip / point-selector mutation animated                 |
+| [Guillotine Generator](https://nlinker.github.io/gullotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
 
 ## References
 
