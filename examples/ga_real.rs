@@ -10,8 +10,7 @@ use cutting::ga::{GaConfig, run_ga_mt};
 use cutting::model::{Piece, Placement, Problem, Solution};
 use cutting::parse::parse_problem;
 
-const PROBLEM: &str = "2600x1800:400x400x6n,495x495x6n,270x320x10n,150x450x17";
-const KERF: u32 = 3;
+const PROBLEM: &str = "2600x1800:3:400x400x6n,495x495x6n,270x320x10n,150x450x17";
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
@@ -47,12 +46,11 @@ fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize, String) {
 }
 
 fn main() {
-    let problem = parse_problem(PROBLEM, KERF).expect("parse error");
+    let problem = parse_problem(PROBLEM).expect("parse error");
     let cfg = ga_cfg();
     let seeds: Vec<u64> = (0..N_PARALLEL as u64).collect();
 
     println!("Problem  : {PROBLEM}");
-    println!("Kerf     : {KERF} mm");
     println!("Pieces   : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
     println!("GA cfg   : pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2}",
         cfg.pop_size, cfg.n_generations, cfg.n_elite, cfg.tournament_k,

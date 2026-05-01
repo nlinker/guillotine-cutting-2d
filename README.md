@@ -19,7 +19,7 @@ use cutting::decoder::{Gene, Genome, decode};
 
 fn main() {
   // "3000x4000" sheet, 7 mm kerf, 9 pieces
-  let problem = parse_problem("3000x4000:835x620x4,1020x620x4n,1750x900", 7).unwrap();
+  let problem = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1750x900").unwrap();
 
   // Build a genome (one Gene per piece, in placement order)
   let genome: Genome = problem.pieces.iter().enumerate()
@@ -28,7 +28,7 @@ fn main() {
 
   let solution = decode(&problem, &genome);
   println!("{} sheet(s) used", solution.sheets_used());
-  println!("the objective value is {}", solution.objective());
+  println!("the objective value is {}", solution.objective(&problem));
 }
 ```
 
@@ -53,7 +53,11 @@ fn main() {
 
 ## Input format for the parser
 
-`parse_problem` accepts a compact string: `"<sheet>:<pieces>"`.
+`parse_problem` accepts a compact string: `"<sheet>:<kerf>:<pieces>"`.
+
+- `<sheet>` — `WxH` in mm
+- `<kerf>` — blade kerf width in mm (non-negative integer)
+- `<pieces>` — comma-separated piece tokens:
 
 | Piece token | Meaning                       |
 |-------------|-------------------------------|
@@ -63,7 +67,7 @@ fn main() {
 | `WxHxNn`    | N pieces, fixed orientation   |
 (pieces can be rotated by default, suffix `n` here means _no rotation_)
 
-Example: `"3000x4000:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900"`
+Example: `"3000x4000:7:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900"`
 
 ## Commands
 

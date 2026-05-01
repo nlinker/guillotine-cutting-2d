@@ -9,8 +9,12 @@ struct PieceSpec {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ParseError {
-    #[error("missing ':' separator between sheet spec and pieces")]
+    #[error("missing ':' separator (format: WxH:kerf:pieces)")]
     MissingSeparator,
+    #[error("missing kerf field (format: WxH:kerf:pieces)")]
+    MissingKerf,
+    #[error("invalid kerf value '{0}': expected a non-negative integer")]
+    InvalidKerf(String),
     #[error("invalid sheet spec '{0}': expected WxH")]
     InvalidSheet(String),
     #[error("invalid piece spec '{0}': expected WxH, WxHxN, WxHn, or WxHxNn")]
@@ -21,8 +25,9 @@ pub enum ParseError {
 
 /// Parse a compact problem string into a `Problem`.
 ///
-/// Format: `"<sheet>:<pieces>"` where
+/// Format: `"<sheet>:<kerf>:<pieces>"` where
 /// - `<sheet>` = `WxH`
+/// - `<kerf>` = blade kerf width in the same units as sheet dimensions (non-negative integer)
 /// - `<pieces>` = comma-separated `WxH` | `WxHxN` | `WxHn` | `WxHxNn`
 ///   (`n` suffix = no rotation; `N` = repeat count, defaults to 1)
 ///
@@ -32,13 +37,17 @@ pub enum ParseError {
 /// # Example
 /// ```
 /// # use cutting::parse::parse_problem;
-/// let p = parse_problem("3000x4000:835x620x4,1020x620x4n,1750x900", 7).unwrap();
+/// let p = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
+/// assert_eq!(p.kerf, 7);
 /// assert_eq!(p.pieces.len(), 9);
 /// ```
-pub fn parse_problem(s: &str, kerf: u32) -> Result<Problem, ParseError> {
-    let (sheet_str, pieces_str) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
+pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
+    let (sheet_str, rest) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
+    let (kerf_str, pieces_str) = rest.split_once(':').ok_or(ParseError::MissingKerf)?;
     let sheet = parse_sheet(sheet_str.trim())?;
+    let kerf = kerf_str.trim().parse::<u32>()
+        .map_err(|_| ParseError::InvalidKerf(kerf_str.trim().to_string()))?;
     let mut pieces = Vec::new();
     let mut next_id = 0u32;
     for piece_str in pieces_str.split(',') {
@@ -104,7 +113,7 @@ mod tests {
     #[test]
     fn full_example() {
         // 4 rotatable + 4 fixed + 4 rotatable + 2 + 1 = 15 pieces
-        let p = parse_problem("3000x4000:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900", 7).unwrap();
+        let p = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900").unwrap();
 
         assert_eq!(
             p.sheet,
@@ -146,27 +155,32 @@ mod tests {
     #[test]
     fn errors() {
         assert_eq!(
-            parse_problem("3000x4000 835x620", 7).unwrap_err(),
+            parse_problem("3000x4000 835x620").unwrap_err(),
             ParseError::MissingSeparator
         );
+        assert!(parse_problem("3000x4000:7:100x100").is_ok());
         assert_eq!(
-            parse_problem("3000:100x100", 0).unwrap_err(),
+            parse_problem("3000x4000:100x100").unwrap_err(),
+            ParseError::MissingKerf
+        );
+        assert_eq!(
+            parse_problem("3000x4000:abc:100x100").unwrap_err(),
+            ParseError::InvalidKerf("abc".into())
+        );
+        assert_eq!(
+            parse_problem("3000:0:100x100").unwrap_err(),
             ParseError::InvalidSheet("3000".into())
         );
         assert_eq!(
-            parse_problem("0x4000:100x100", 0).unwrap_err(),
+            parse_problem("0x4000:0:100x100").unwrap_err(),
             ParseError::InvalidSheet("0x4000".into())
         );
         assert_eq!(
-            parse_problem("1000x500:abc", 0).unwrap_err(),
+            parse_problem("1000x500:0:abc").unwrap_err(),
             ParseError::InvalidPiece("abc".into())
         );
         assert_eq!(
-            parse_problem("1000x500:100", 0).unwrap_err(),
-            ParseError::InvalidPiece("100".into())
-        );
-        assert_eq!(
-            parse_problem("1000x500:100x0", 0).unwrap_err(),
+            parse_problem("1000x500:0:100x0").unwrap_err(),
             ParseError::InvalidPiece("100x0".into())
         );
     }

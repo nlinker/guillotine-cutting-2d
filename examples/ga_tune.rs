@@ -14,8 +14,7 @@ use cutting::parse::parse_problem;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
-const PROBLEM: &str = "2600x1800:400x400x6n,495x495x6n,270x320x10n,150x450x17";
-const KERF: u32 = 3;
+const PROBLEM: &str = "2600x1800:3:400x400x6n,495x495x6n,270x320x10n,150x450x17";
 const N_SEEDS: usize = 100;
 
 /// Ideal: 1×400×400 on last sheet. obj = 2*(2600*1800+1) + 400*400 = 9_520_002
@@ -79,8 +78,8 @@ fn cfg(
 }
 
 fn main() {
-    let problem = parse_problem(PROBLEM, KERF).expect("parse error");
-    println!("Problem : {PROBLEM}  kerf={KERF}");
+    let problem = parse_problem(PROBLEM).expect("parse error");
+    println!("Problem : {PROBLEM}");
     println!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(),
              problem.sheet.width, problem.sheet.height);
     println!("Seeds   : 0..{N_SEEDS}   ideal_obj={IDEAL_OBJ}   1-piece_obj≤{ONE_PIECE_OBJ}");

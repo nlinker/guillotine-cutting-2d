@@ -224,7 +224,7 @@ mod tests {
         // │             ├─────────────┤    │ free 100×10│               │
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
-        let problem = parse_problem("200x150:120x80n,60x80n,200x60n,70x100,60x70", 5).expect("Error parsing problem");
+        let problem = parse_problem("200x150:5:120x80n,60x80n,200x60n,70x100,60x70").expect("Error parsing problem");
         let genome = vec![
             g(0, false, 0),
             g(1, false, 0),
@@ -261,7 +261,7 @@ mod tests {
         //
         // A is better: the large piece stays on sheet 0, only the small piece overflows.
         // objective = sheets_used*(s+1) + area_on_last, s=100
-        let problem = parse_problem("10x10:10x6n,10x4n,3x3n", 0).expect("parse error");
+        let problem = parse_problem("10x10:0:10x6n,10x4n,3x3n").expect("parse error");
         let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
         assert_eq!(sol_a.objective(&problem), 211);  // 2*101 + 9
