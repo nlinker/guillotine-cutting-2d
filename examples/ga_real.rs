@@ -10,7 +10,7 @@ use cutting::ga::{GaConfig, run_ga_mt};
 use cutting::model::{Piece, Placement, Problem, Solution};
 use cutting::parse::parse_problem;
 
-const PROBLEM: &str = "2600x1800:3:400x400x6n,495x495x6n,270x320x10n,150x450x17";
+const PROBLEM: &str = "2600x1800:3:400x400x6,495x495x6,270x320x10,150x450x17r";
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {

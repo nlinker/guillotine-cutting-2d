@@ -17,7 +17,7 @@ pub enum ParseError {
     InvalidKerf(String),
     #[error("invalid sheet spec '{0}': expected WxH")]
     InvalidSheet(String),
-    #[error("invalid piece spec '{0}': expected WxH, WxHxN, WxHn, or WxHxNn")]
+    #[error("invalid piece spec '{0}': expected WxH, WxHxN, WxHr, or WxHxNr")]
     InvalidPiece(String),
     #[error("invalid integer in '{0}'")]
     InvalidInteger(String),
@@ -28,16 +28,16 @@ pub enum ParseError {
 /// Format: `"<sheet>:<kerf>:<pieces>"` where
 /// - `<sheet>` = `WxH`
 /// - `<kerf>` = blade kerf width in the same units as sheet dimensions (non-negative integer)
-/// - `<pieces>` = comma-separated `WxH` | `WxHxN` | `WxHn` | `WxHxNn`
-///   (`n` suffix = no rotation; `N` = repeat count, defaults to 1)
+/// - `<pieces>` = comma-separated `WxH` | `WxHxN` | `WxHr` | `WxHxNr`
+///   (`r` suffix = can rotate; default is fixed orientation; `N` = repeat count, defaults to 1)
 ///
-/// To fix orientation, specify dimensions in the desired order: `620x1020` places
-/// the 620mm side along X and 1020mm along Y.
+/// To control orientation of fixed pieces, specify dimensions in the desired order:
+/// `620x1020` places the 620mm side along X and 1020mm along Y.
 ///
 /// # Example
 /// ```
 /// # use cutting::parse::parse_problem;
-/// let p = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1750x900").unwrap();
+/// let p = parse_problem("3000x4000:7:835x620x4r,1020x620x4,1750x900r").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
 /// assert_eq!(p.pieces.len(), 9);
@@ -79,10 +79,10 @@ fn parse_sheet(s: &str) -> Result<Sheet, ParseError> {
 
 fn parse_piece_spec(s: &str) -> Result<PieceSpec, ParseError> {
     let err = || ParseError::InvalidPiece(s.to_string());
-    let (base, can_rotate) = if s.ends_with('n') {
-        (&s[..s.len() - 1], false)
+    let (base, can_rotate) = if s.ends_with('r') {
+        (&s[..s.len() - 1], true)
     } else {
-        (s, true)
+        (s, false)
     };
     let parts: Vec<&str> = base.splitn(3, 'x').collect();
     let (width, height, count) = match parts.as_slice() {
@@ -112,8 +112,8 @@ mod tests {
 
     #[test]
     fn full_example() {
-        // 4 rotatable + 4 fixed + 4 rotatable + 2 + 1 = 15 pieces
-        let p = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900").unwrap();
+        // 4 rotatable + 4 fixed + 4 rotatable + 2r + 1r = 15 pieces
+        let p = parse_problem("3000x4000:7:835x620x4r,1020x620x4,1020x620x4r,1490x620x2r,1750x900r").unwrap();
 
         assert_eq!(
             p.sheet,
