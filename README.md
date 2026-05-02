@@ -116,5 +116,6 @@ Interactive visualizations (open in browser, no server needed):
 ## References
 
 - [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/sirazetdinova_t_u.pdf)
-- Genetic Algorithm in Java [2d-cutting-stock-problem-master](third-party/2d-cutting-stock-problem-master)
+- Genetic Algorithm in Java [2d-cutting-stock-problem-master](https://github.com/fabiofdsantos/2d-cutting-stock-problem)
 - Simple heuristic in Python [guillotine-cutting-master](third-party/guillotine-cutting-master)
+- Cutting algorithm in C++ from Gadsky [gadsky-cutting](third-party/gadsky-cutting)
