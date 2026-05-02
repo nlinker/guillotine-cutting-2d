@@ -23,7 +23,7 @@ struct Cli {
 enum Command {
     /// Run the GA on a problem and print ranked results
     Calc {
-        /// Problem string e.g. "2600x1800F:3:400x400x6,495x495x6,270x320x10,150x450x17r"
+        /// Problem string e.g. "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r"
         problem: String,
         /// Number of parallel GA runs
         #[arg(long, default_value_t = 8)]

@@ -14,7 +14,7 @@ use cutting::parse::parse_problem;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
-const PROBLEM: &str = "2600x1800F:3:400x400x6,495x495x6,270x320x10,150x450x17r";
+const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
 const N_SEEDS: usize = 100;
 
 /// Ideal: 1×400×400 on last sheet. obj = 2*(2600*1800+1) + 400*400 = 9_520_002

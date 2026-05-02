@@ -17,7 +17,7 @@ pub enum ParseError {
     InvalidKerf(String),
     #[error("invalid sheet spec '{0}': expected WxHR or WxHF (R = rotatable default, F = fixed default)")]
     InvalidSheet(String),
-    #[error("invalid piece spec '{0}': expected WxH, WxHxN, WxHr, WxHf, WxHxNr, or WxHxNf")]
+    #[error("invalid piece spec '{0}': expected WxH, WxH-N, WxHr, WxHf, WxH-Nr, or WxH-Nf")]
     InvalidPiece(String),
     #[error("invalid integer in '{0}'")]
     InvalidInteger(String),
@@ -29,8 +29,8 @@ pub enum ParseError {
 /// - `<sheet>` = `WxHR` or `WxHF`
 ///   (`R` = pieces rotatable by default, `F` = pieces fixed by default)
 /// - `<kerf>` = blade kerf width in the same units as sheet dimensions (non-negative integer)
-/// - `<pieces>` = comma-separated `WxH` | `WxHxN` | `WxHr` | `WxHf` | `WxHxNr` | `WxHxNf`
-///   (no suffix = sheet default; `r`/`f` override per piece; `N` = repeat count, defaults to 1)
+/// - `<pieces>` = comma-separated `WxH` | `WxH-N` | `WxHr` | `WxHf` | `WxH-Nr` | `WxH-Nf`
+///   (no suffix = sheet default; `r`/`f` override per piece; `-N` = repeat count, defaults to 1)
 ///
 /// To control orientation of fixed pieces, specify dimensions in the desired order:
 /// `620x1020` places the 620mm side along X and 1020mm along Y.
@@ -38,7 +38,7 @@ pub enum ParseError {
 /// # Example
 /// ```
 /// # use cutting::parse::parse_problem;
-/// let p = parse_problem("3000x4000R:7:835x620x4,1020x620x4f,1750x900").unwrap();
+/// let p = parse_problem("3000x4000R:7:835x620-4,1020x620-4f,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
 /// assert_eq!(p.pieces.len(), 9);
@@ -93,21 +93,17 @@ fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseErr
     } else {
         (s, default_rotate)
     };
-    let parts: Vec<&str> = base.splitn(3, 'x').collect();
-    let (width, height, count) = match parts.as_slice() {
-        [w, h] => (parse_u32(w, s)?, parse_u32(h, s)?, 1),
-        [w, h, n] => (parse_u32(w, s)?, parse_u32(h, s)?, parse_u32(n, s)?),
-        _ => return Err(err()),
+    let (dims, count) = match base.split_once('-') {
+        Some((d, n)) => (d, parse_u32(n, s)?),
+        None => (base, 1),
     };
+    let (w_str, h_str) = dims.split_once('x').ok_or_else(err)?;
+    let width = parse_u32(w_str, s)?;
+    let height = parse_u32(h_str, s)?;
     if width == 0 || height == 0 || count == 0 {
         return Err(err());
     }
-    Ok(PieceSpec {
-        width,
-        height,
-        count,
-        can_rotate,
-    })
+    Ok(PieceSpec { width, height, count, can_rotate })
 }
 
 fn parse_u32(s: &str, context: &str) -> Result<u32, ParseError> {
@@ -122,7 +118,7 @@ mod tests {
     #[test]
     fn full_example() {
         // R default: 4 rotatable + 4 fixed(f) + 4 rotatable + 2 rotatable + 1 rotatable = 15
-        let p = parse_problem("3000x4000R:7:835x620x4,1020x620x4f,1020x620x4,1490x620x2,1750x900").unwrap();
+        let p = parse_problem("3000x4000R:7:835x620-4,1020x620-4f,1020x620-4,1490x620-2,1750x900").unwrap();
 
         assert_eq!(
             p.sheet,

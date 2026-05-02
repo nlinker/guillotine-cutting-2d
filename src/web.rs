@@ -55,7 +55,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
 <form hx-post="/solve" hx-target="#results" hx-indicator="#spinner">
   <label>Problem string
     <input type="text" name="problem"
-      value="2600x1800F:3:400x400x6,495x495x6,270x320x10,150x450x17r">
+      value="2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r">
   </label>
   <div class="row">
     <label>Seeds <input type="number" name="seeds" value="8" min="1" max="64"></label>
