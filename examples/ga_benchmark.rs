@@ -60,12 +60,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
         "=== {} | {}×{}  k={}  min={}  kerf={}  stages={} ===",
         s.name, g.sheet.width, g.sheet.height, g.k, g.min_size, g.kerf, g.stage_count,
     );
-    let ga = &s.ga_cfg;
-    println!(
-        "GA cfg: pop={}  gens={}  elite={}  k={}  p_cx={:.2}  p_sw={:.2}  p_fl={:.2}  p_pt={:.2}",
-        ga.pop_size, ga.n_generations, ga.n_elite, ga.tournament_k,
-        ga.p_crossover, ga.p_swap, ga.p_flip, ga.p_point,
-    );
+    println!("GA cfg: {}", s.ga_cfg);
     println!("Instances : {n}");
     println!(
         "Matched   : {:4} ({:.1}%)",

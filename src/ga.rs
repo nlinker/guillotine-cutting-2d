@@ -1,3 +1,5 @@
+use std::fmt;
+
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 
@@ -44,6 +46,17 @@ pub struct GaConfig {
     /// Controls which free rectangle the decoder tries first for this piece.
     /// Typical value: 0.05-0.15.
     pub p_point: f64,
+}
+
+impl fmt::Display for GaConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2}",
+            self.pop_size, self.n_generations, self.n_elite, self.tournament_k,
+            self.p_crossover, self.p_swap, self.p_flip, self.p_point,
+        )
+    }
 }
 
 /// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.

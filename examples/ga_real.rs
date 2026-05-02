@@ -52,9 +52,7 @@ fn main() {
 
     println!("Problem  : {PROBLEM}");
     println!("Pieces   : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
-    println!("GA cfg   : pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2}",
-        cfg.pop_size, cfg.n_generations, cfg.n_elite, cfg.tournament_k,
-        cfg.p_crossover, cfg.p_swap, cfg.p_flip, cfg.p_point);
+    println!("GA cfg   : {cfg}");
     println!("Parallel : {} threads  seeds={:?}", N_PARALLEL, seeds);
     println!();
 
