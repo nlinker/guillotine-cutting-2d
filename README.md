@@ -18,8 +18,8 @@ use cutting::parse::parse_problem;
 use cutting::decoder::{Gene, Genome, decode};
 
 fn main() {
-  // "3000x4000" sheet, 7 mm kerf, 9 pieces
-  let problem = parse_problem("3000x4000:7:835x620x4,1020x620x4n,1750x900").unwrap();
+  // 3000x4000 sheet, 7 mm kerf, 9 pieces (R = rotatable by default)
+  let problem = parse_problem("3000x4000R:7:835x620x4,1020x620x4f,1750x900").unwrap();
 
   // Build a genome (one Gene per piece, in placement order)
   let genome: Genome = problem.pieces.iter().enumerate()
@@ -55,19 +55,27 @@ fn main() {
 
 `parse_problem` accepts a compact string: `"<sheet>:<kerf>:<pieces>"`.
 
-- `<sheet>` — `WxH` in mm
+- `<sheet>` — `WxHR` or `WxHF` in mm; the suffix sets the **default rotation** for pieces:
+  - `R` — pieces are rotatable by default
+  - `F` — pieces are fixed (no rotation) by default
 - `<kerf>` — blade kerf width in mm (non-negative integer)
-- `<pieces>` — comma-separated piece tokens:
+- `<pieces>` — comma-separated piece tokens; per-piece suffix overrides the sheet default:
 
-| Piece token | Meaning                       |
-|-------------|-------------------------------|
-| `WxH`       | one piece, rotatable          |
-| `WxHxN`     | N identical pieces, rotatable |
-| `WxHn`      | one piece, fixed orientation  |
-| `WxHxNn`    | N pieces, fixed orientation   |
-(pieces can be rotated by default, suffix `n` here means _no rotation_)
+| Piece token | Meaning                                        |
+|-------------|------------------------------------------------|
+| `WxH`       | one piece, rotation = sheet default            |
+| `WxHxN`     | N identical pieces, rotation = sheet default   |
+| `WxHr`      | one piece, **rotatable** (overrides default)   |
+| `WxHf`      | one piece, **fixed** (overrides default)       |
+| `WxHxNr`    | N pieces, rotatable                            |
+| `WxHxNf`    | N pieces, fixed                                |
 
-Example: `"3000x4000:7:835x620x4,1020x620x4n,1020x620x4,1490x620x2,1750x900"`
+To control orientation of a fixed piece, put the shorter side first or last as desired:
+`620x1020` places 620 mm along X and 1020 mm along Y.
+
+Examples:
+- `"3000x4000R:7:835x620x4,1020x620x4f,1750x900"` — R default; only the `1020x620` batch is fixed
+- `"2600x1800F:3:400x400x6,495x495x6,270x320x10,150x450x17r"` — F default; only `150x450` is rotatable
 
 ## Commands
 

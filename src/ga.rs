@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn init_population_size_and_valid_permutations() {
         use crate::parse::parse_problem;
-        let problem = parse_problem("10x10:0:3x2r,4x3r,2x2,5x1r").unwrap();
+        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
         let n = problem.pieces.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
         let pop = init_population(&problem, 20, &mut rng);
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn init_population_is_deterministic() {
         use crate::parse::parse_problem;
-        let problem = parse_problem("10x10:0:3x2r,4x3r,2x2").unwrap();
+        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
         let pop1 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         let pop2 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn run_ga_smoke() {
         use crate::parse::parse_problem;
-        let problem = parse_problem("10x10:0:3x2r,4x3r,2x2,5x1r").unwrap();
+        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
         let mut rng = Xoshiro256StarStar::seed_from_u64(42);
         let _best = run_ga(&problem, &default_config(), &mut rng);
     }
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn run_ga_is_deterministic() {
         use crate::parse::parse_problem;
-        let problem = parse_problem("10x10:0:3x2r,4x3r,2x2,5x1r").unwrap();
+        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
         let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         assert_eq!(b1.objective, b2.objective);
