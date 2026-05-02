@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Write};
+use std::sync::mpsc;
 use std::time::Instant;
 
 use axum::{Form, Router, response::Html, routing::{get, post}};
 use cutting::{
-    ga::run_ga_mt,
+    ga::{ProgressEvent, ProgressLog, run_ga_mt},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
 };
@@ -103,9 +104,11 @@ fn solve_to_html(problem_str: &str, n_seeds: usize, gens: usize, pop: usize) -> 
     let cfg = crate::ga_config(gens, pop, 5, 5);
     let seeds: Vec<u64> = (0..n_seeds.max(1) as u64).collect();
 
+    let (tx, rx) = mpsc::channel::<ProgressEvent>();
     let t0 = Instant::now();
-    let results = run_ga_mt(&problem, &cfg, &seeds);
+    let results = run_ga_mt(&problem, &cfg, &seeds, Some(ProgressLog { tx, progress_interval: 50, seed: 0 }));
     let elapsed = t0.elapsed().as_secs_f64();
+    let events: Vec<ProgressEvent> = rx.try_iter().collect();
 
     let decoded = crate::decode_results(&problem, &results);
     let mut out = String::new();
@@ -129,6 +132,17 @@ fn solve_to_html(problem_str: &str, n_seeds: usize, gens: usize, pop: usize) -> 
     out.push_str("<pre>");
     out.push_str(&render_solution(&problem, best_sol)?);
     out.push_str("</pre>");
+
+    if !events.is_empty() {
+        out.push_str("<h3>Progress</h3>");
+        out.push_str("<table><thead><tr><th>gen</th><th>best_obj</th><th>sheets</th><th>seed</th></tr></thead><tbody>\n");
+        for evt in &events {
+            writeln!(out, "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                     evt.generation, evt.objective, evt.sheets_used, evt.seed)?;
+        }
+        out.push_str("</tbody></table>\n");
+    }
+
     Ok(out)
 }
 

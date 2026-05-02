@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::{Mutex, mpsc};
 
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -59,11 +60,35 @@ impl fmt::Display for GaConfig {
     }
 }
 
-/// A genome paired with its cached `Solution::objective()` value to avoid re-decoding during selection.
+/// A genome paired with its cached fitness values to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
 pub struct Individual {
     pub genome: Genome,
     pub objective: i64,
+    pub sheets_used: usize,
+}
+
+/// Progress snapshot emitted every `ProgressLog::progress_interval` generations by `run_ga_mt`.
+/// Contains the current global best across all islands.
+/// `objective` and `sheets_used` are pre-computed from genome to avoid re-decoding in hot display
+/// paths.
+#[derive(Debug, Clone)]
+pub struct ProgressEvent {
+    pub seed: u64,
+    pub generation: usize,
+    pub genome: Genome,
+    pub objective: i64,
+    pub sheets_used: usize,
+}
+
+/// Combines a progress channel sender, reporting interval, and island seed.
+/// Passed to `run_ga_mt` to enable cross-island migration and progress events.
+/// `seed` is set per-thread by `run_ga_mt`; callers may leave it as 0.
+#[derive(Clone)]
+pub struct ProgressLog {
+    pub tx: mpsc::Sender<ProgressEvent>,
+    pub progress_interval: usize,
+    pub seed: u64,
 }
 
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
@@ -73,10 +98,27 @@ pub struct Individual {
 /// mutation -> decode. The running best is tracked independently of elitism so that
 /// `n_elite = 0` still returns a valid result.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
+    let pool = Mutex::new(None);
+    run_ga_inner(problem, config, rng, &pool, None)
+}
+
+/// Inner GA loop shared by `run_ga` and `run_ga_mt`.
+///
+/// When `progress_log` is `Some`, every `progress_interval` generations:
+/// - updates the shared `migration_pool` with the local best if it's a new global best
+/// - injects the global best into the worst slot of the local population
+/// - sends a `ProgressEvent` with the current global best
+fn run_ga_inner<R: Rng>(
+    problem: &Problem,
+    config: &GaConfig,
+    rng: &mut R,
+    migration_pool: &Mutex<Option<Individual>>,
+    progress_log: Option<&ProgressLog>,
+) -> Individual {
     let mut pop = init_population(problem, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().unwrap();
 
-    for _ in 0..config.n_generations {
+    for step in 0..config.n_generations {
         let elite = select_elite(&pop, config.n_elite);
         let mut next_pop = elite;
 
@@ -91,18 +133,20 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
             };
 
             mutate(&mut g1, rng, config.p_swap, config.p_flip, config.p_point);
-            let obj1 = decode(problem, &g1).objective(problem);
+            let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
-                objective: obj1,
+                objective: sol1.objective(problem),
+                sheets_used: sol1.sheets_used(),
             });
 
             if next_pop.len() < config.pop_size {
                 mutate(&mut g2, rng, config.p_swap, config.p_flip, config.p_point);
-                let obj2 = decode(problem, &g2).objective(problem);
+                let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
-                    objective: obj2,
+                    objective: sol2.objective(problem),
+                    sheets_used: sol2.sheets_used(),
                 });
             }
         }
@@ -112,24 +156,66 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
         if gen_best.objective < best.objective {
             best = gen_best;
         }
+
+        if let Some(log) = progress_log
+            && (step + 1) % log.progress_interval == 0
+        {
+            let event = {
+                let mut pool = migration_pool.lock().unwrap();
+                if pool.as_ref().is_none_or(|g| best.objective < g.objective) {
+                    *pool = Some(best.clone());
+                }
+                let worst_idx = pop.iter().enumerate()
+                    .max_by_key(|(_, i)| i.objective)
+                    .map(|(i, _)| i)
+                    .unwrap();
+                if let Some(global) = pool.as_ref()
+                    && global.objective < pop[worst_idx].objective
+                {
+                    pop[worst_idx] = global.clone();
+                }
+                pool.as_ref().map(|g| ProgressEvent {
+                    seed: log.seed,
+                    generation: step + 1,
+                    objective: g.objective,
+                    sheets_used: g.sheets_used,
+                    genome: g.genome.clone(),
+                })
+            };
+            if let Some(evt) = event {
+                log.tx.send(evt).ok();
+            }
+        }
     }
 
     best
 }
 
-/// Runs `run_ga` in parallel — one thread per seed — and returns all results sorted by
+/// Runs `run_ga_inner` in parallel — one thread per seed — and returns all results sorted by
 /// objective ascending (best first). Each seed produces an independent Xoshiro256**
 /// stream, so results are fully deterministic and reproducible.
+///
+/// When `progress_log` is `Some`, all threads share a migration pool and emit
+/// `ProgressEvent`s every `progress_interval` generations. Pass `None` to disable both.
+///
 /// Panics if `seeds` is empty.
-pub fn run_ga_mt(problem: &Problem, config: &GaConfig, seeds: &[u64]) -> Vec<(u64, Individual)> {
+pub fn run_ga_mt(
+    problem: &Problem,
+    config: &GaConfig,
+    seeds: &[u64],
+    progress_log: Option<ProgressLog>,
+) -> Vec<(u64, Individual)> {
     assert!(!seeds.is_empty(), "seeds must not be empty");
+    let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
+    let pool_ref = &migration_pool;
     let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
         seeds
             .iter()
             .map(|&seed| {
+                let log = progress_log.as_ref().map(|l| ProgressLog { seed, ..l.clone() });
                 s.spawn(move || {
                     let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                    (seed, run_ga(problem, config, &mut rng))
+                    (seed, run_ga_inner(problem, config, &mut rng, pool_ref, log.as_ref()))
                 })
             })
             .collect::<Vec<_>>()
@@ -313,8 +399,8 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
     (0..size)
         .map(|_| {
             let genome = random_genome(problem, rng);
-            let objective = decode(problem, &genome).objective(problem);
-            Individual { genome, objective }
+            let sol = decode(problem, &genome);
+            Individual { genome, objective: sol.objective(problem), sheets_used: sol.sheets_used() }
         })
         .collect()
 }
@@ -473,6 +559,7 @@ mod tests {
         Individual {
             genome: vec![g(piece_idx)],
             objective,
+            sheets_used: 0,
         }
     }
 

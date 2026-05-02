@@ -90,7 +90,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     let kerf = cfg.kerf;
     let stage_count = cfg.stage_count;
 
-    let mut all_rects = Vec::with_capacity((cfg.k as usize) * cfg.weights.len().pow(stage_count as u32));
+    let mut all_rects = Vec::with_capacity(cfg.k * cfg.weights.len().pow(stage_count as u32));
 
     for sheet_idx in 0..cfg.k {
         let mut queue = VecDeque::with_capacity(cfg.weights.len().pow(stage_count as u32));

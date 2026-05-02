@@ -68,10 +68,10 @@ pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
 
 fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
     let err = || ParseError::InvalidSheet(s.to_string());
-    let (dims, default_rotate) = if s.ends_with('R') {
-        (&s[..s.len() - 1], true)
-    } else if s.ends_with('F') {
-        (&s[..s.len() - 1], false)
+    let (dims, default_rotate) = if let Some(stripped) = s.strip_suffix('R') {
+        (stripped, true)
+    } else if let Some(stripped) = s.strip_suffix('F') {
+        (stripped, false)
     } else {
         return Err(err());
     };
@@ -86,10 +86,10 @@ fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
 
 fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseError> {
     let err = || ParseError::InvalidPiece(s.to_string());
-    let (base, can_rotate) = if s.ends_with('r') {
-        (&s[..s.len() - 1], true)
-    } else if s.ends_with('f') {
-        (&s[..s.len() - 1], false)
+    let (base, can_rotate) = if let Some(stripped) = s.strip_suffix('r') {
+        (stripped, true)
+    } else if let Some(stripped) = s.strip_suffix('f') {
+        (stripped, false)
     } else {
         (s, default_rotate)
     };

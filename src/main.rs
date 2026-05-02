@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::sync::mpsc;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, Individual, run_ga_mt},
+    ga::{GaConfig, Individual, ProgressEvent, ProgressLog, run_ga_mt},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
 };
@@ -40,6 +41,9 @@ enum Command {
         /// Tournament size
         #[arg(long, default_value_t = 5)]
         k: usize,
+        /// Report global best every N generations; 0 = silent
+        #[arg(long, default_value_t = 100)]
+        progress: usize,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -52,15 +56,15 @@ enum Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Calc { problem, seeds, gens, pop, elite, k } => {
-            run_calc(&problem, &ga_config(gens, pop, elite, k), seeds)?;
+        Command::Calc { problem, seeds, gens, pop, elite, k, progress } => {
+            run_calc(&problem, &ga_config(gens, pop, elite, k), seeds, progress)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
     Ok(())
 }
 
-fn run_calc(problem_str: &str, cfg: &GaConfig, n_seeds: usize) -> Result<(), Box<dyn Error>> {
+fn run_calc(problem_str: &str, cfg: &GaConfig, n_seeds: usize, progress_interval: usize) -> Result<(), Box<dyn Error>> {
     let problem = parse_problem(problem_str)?;
     let seeds: Vec<u64> = (0..n_seeds as u64).collect();
 
@@ -70,9 +74,19 @@ fn run_calc(problem_str: &str, cfg: &GaConfig, n_seeds: usize) -> Result<(), Box
     println!("Seeds   : {seeds:?}");
     println!();
 
+    let (tx, rx) = mpsc::channel::<ProgressEvent>();
+    let printer = std::thread::spawn(move || {
+        for evt in rx {
+            println!("gen={:5}  best_obj={:12}  sheets={}  seed={}",
+                     evt.generation, evt.objective, evt.sheets_used, evt.seed);
+        }
+    });
+
     let t0 = Instant::now();
-    let results = run_ga_mt(&problem, cfg, &seeds);
+    let log = (progress_interval > 0).then(|| ProgressLog { tx, progress_interval, seed: 0 });
+    let results = run_ga_mt(&problem, cfg, &seeds, log);
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
+    printer.join().unwrap();
 
     let decoded = decode_results(&problem, &results);
 

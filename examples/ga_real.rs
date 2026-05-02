@@ -10,7 +10,7 @@ use cutting::ga::{GaConfig, run_ga_mt};
 use cutting::model::{Piece, Placement, Problem, Solution};
 use cutting::parse::parse_problem;
 
-const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
+const PROBLEM: &str = "200x160F:1:22x26-4,32x20-7,35x20-2,42x21-5,46x26r,67x34-3,75x42-2,76x22-4,83x32-4r,83x82,93x31,106x31,124x26-5,130x22-6,157x31-3,164x21-2,177x31";
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
@@ -57,7 +57,7 @@ fn main() {
     println!();
 
     let t0 = Instant::now();
-    let results = run_ga_mt(&problem, &cfg, &seeds);
+    let results = run_ga_mt(&problem, &cfg, &seeds, None);
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
 
     // compute per-result summaries (decode once each)
@@ -74,14 +74,8 @@ fn main() {
     }
     println!();
 
-    let ideal_270 = decoded.iter().any(|(_, _, _, n, s)| *n == 1 && s.contains("270×320"));
-    let ideal_400 = decoded.iter().any(|(_, _, _, n, s)| *n == 1 && s.contains("400×400"));
-    println!("Best known  1×270×320 (obj=9446402): {}", if ideal_270 { "YES ✓" } else { "not found" });
-    println!("Alt  known  1×400×400 (obj=9520002): {}", if ideal_400 { "YES ✓" } else { "not found" });
-    println!();
-
     let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
-    println!("─── BEST (seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {best_summary}) ───",
+    println!("BEST (seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {best_summary})",
         best_sol.sheets_used());
     print_solution(&problem, best_sol);
 }
