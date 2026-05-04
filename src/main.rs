@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::sync::mpsc;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, Individual, ProgressEvent, ProgressLog, run_ga_mt},
+    ga::{GaConfig, GaEvent, Individual, ga_channel, run_ga_mt},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
 };
@@ -74,17 +73,19 @@ fn run_calc(problem_str: &str, cfg: &GaConfig, n_seeds: usize, progress_interval
     println!("Seeds   : {seeds:?}");
     println!();
 
-    let (tx, rx) = mpsc::channel::<ProgressEvent>();
+    let (mut handle, ctx) = ga_channel(progress_interval);
     let printer = std::thread::spawn(move || {
-        for evt in rx {
-            println!("gen={:5}  best_obj={:12}  sheets={}  seed={}",
-                     evt.generation, evt.objective, evt.sheets_used, evt.seed);
+        while let Some(evt) = handle.rx.blocking_recv() {
+            match evt {
+                GaEvent::Progress(p) => println!("gen={:5}  best_obj={:12}  sheets={}  seed={}",
+                                                  p.generation, p.objective, p.sheets_used, p.seed),
+                GaEvent::Done(_) => break,
+            }
         }
     });
 
     let t0 = Instant::now();
-    let log = (progress_interval > 0).then(|| ProgressLog { tx, progress_interval, seed: 0 });
-    let results = run_ga_mt(&problem, cfg, &seeds, log);
+    let results = run_ga_mt(&problem, cfg, &seeds, (progress_interval > 0).then_some(ctx));
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
     printer.join().unwrap();
 

@@ -1,8 +1,10 @@
 use std::fmt;
-use std::sync::{Mutex, mpsc};
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     decoder::{Gene, Genome, decode},
@@ -68,27 +70,78 @@ pub struct Individual {
     pub sheets_used: usize,
 }
 
-/// Progress snapshot emitted every `ProgressLog::progress_interval` generations by `run_ga_mt`.
+/// Progress snapshot emitted every `GaContext::progress_interval` generations.
 /// Contains the current global best across all islands.
-/// `objective` and `sheets_used` are pre-computed from genome to avoid re-decoding in hot display
-/// paths.
+/// `objective` and `sheets_used` are pre-computed from genome to avoid re-decoding.
 #[derive(Debug, Clone)]
 pub struct ProgressEvent {
     pub seed: u64,
+    /// `gen` is a reserved keyword in Rust 2024 edition.
     pub generation: usize,
     pub genome: Genome,
     pub objective: i64,
     pub sheets_used: usize,
 }
 
-/// Combines a progress channel sender, reporting interval, and island seed.
-/// Passed to `run_ga_mt` to enable cross-island migration and progress events.
-/// `seed` is set per-thread by `run_ga_mt`; callers may leave it as 0.
-#[derive(Clone)]
-pub struct ProgressLog {
-    pub tx: mpsc::Sender<ProgressEvent>,
+/// Event delivered from the GA to the caller via `GaHandle`.
+#[derive(Debug)]
+pub enum GaEvent {
+    /// Emitted every `progress_interval` generations with the current global best.
+    Progress(ProgressEvent),
+    /// Emitted once when all islands finish; carries results sorted by objective.
+    Done(Vec<(u64, Individual)>),
+}
+
+/// Caller-facing handle for observing and stopping a running GA.
+///
+/// Dropping the handle requests early termination — useful when an SSE client disconnects.
+pub struct GaHandle {
+    pub rx: UnboundedReceiver<GaEvent>,
+    stop: Arc<AtomicBool>,
+}
+
+impl GaHandle {
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+impl Drop for GaHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Internal per-thread GA context. Obtain via `ga_channel`.
+pub struct GaContext {
+    tx: UnboundedSender<GaEvent>,
+    stop: Arc<AtomicBool>,
     pub progress_interval: usize,
     pub seed: u64,
+}
+
+impl Clone for GaContext {
+    fn clone(&self) -> Self {
+        GaContext {
+            tx: self.tx.clone(),
+            stop: Arc::clone(&self.stop),
+            progress_interval: self.progress_interval,
+            seed: self.seed,
+        }
+    }
+}
+
+/// Creates a linked `(GaHandle, GaContext)` pair.
+///
+/// Pass `ctx` to `run_ga_mt` or `run_ga_mt_bg`; use `handle` to read events and
+/// call `handle.stop()` for early termination.
+pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    (
+        GaHandle { rx, stop: Arc::clone(&stop) },
+        GaContext { tx, stop, progress_interval, seed: 0 },
+    )
 }
 
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
@@ -102,18 +155,18 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
     run_ga_inner(problem, config, rng, &pool, None)
 }
 
-/// Inner GA loop shared by `run_ga` and `run_ga_mt`.
+/// Inner GA loop shared by `run_ga`, `run_ga_mt`, and `run_ga_mt_bg`.
 ///
-/// When `progress_log` is `Some`, every `progress_interval` generations:
-/// - updates the shared `migration_pool` with the local best if it's a new global best
-/// - injects the global best into the worst slot of the local population
-/// - sends a `ProgressEvent` with the current global best
+/// When `ctx` is `Some`, every `progress_interval` generations:
+/// - checks the stop flag and exits early if set
+/// - updates the shared migration pool; injects global best into local population
+/// - sends `GaEvent::Progress` with the current global best
 fn run_ga_inner<R: Rng>(
     problem: &Problem,
     config: &GaConfig,
     rng: &mut R,
     migration_pool: &Mutex<Option<Individual>>,
-    progress_log: Option<&ProgressLog>,
+    ctx: Option<&GaContext>,
 ) -> Individual {
     let mut pop = init_population(problem, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().unwrap();
@@ -157,9 +210,12 @@ fn run_ga_inner<R: Rng>(
             best = gen_best;
         }
 
-        if let Some(log) = progress_log
-            && (step + 1) % log.progress_interval == 0
+        if let Some(ctx) = ctx
+            && (step + 1) % ctx.progress_interval == 0
         {
+            if ctx.stop.load(Ordering::Relaxed) {
+                break;
+            }
             let event = {
                 let mut pool = migration_pool.lock().unwrap();
                 if pool.as_ref().is_none_or(|g| best.objective < g.objective) {
@@ -174,16 +230,16 @@ fn run_ga_inner<R: Rng>(
                 {
                     pop[worst_idx] = global.clone();
                 }
-                pool.as_ref().map(|g| ProgressEvent {
-                    seed: log.seed,
+                pool.as_ref().map(|g| GaEvent::Progress(ProgressEvent {
+                    seed: ctx.seed,
                     generation: step + 1,
                     objective: g.objective,
                     sheets_used: g.sheets_used,
                     genome: g.genome.clone(),
-                })
+                }))
             };
             if let Some(evt) = event {
-                log.tx.send(evt).ok();
+                ctx.tx.send(evt).ok();
             }
         }
     }
@@ -191,19 +247,15 @@ fn run_ga_inner<R: Rng>(
     best
 }
 
-/// Runs `run_ga_inner` in parallel — one thread per seed — and returns all results sorted by
-/// objective ascending (best first). Each seed produces an independent Xoshiro256**
-/// stream, so results are fully deterministic and reproducible.
+/// Runs the GA synchronously in parallel (one thread per seed); returns results sorted
+/// by objective ascending. Does NOT send `GaEvent::Done` — use `run_ga_mt_bg` for that.
 ///
-/// When `progress_log` is `Some`, all threads share a migration pool and emit
-/// `ProgressEvent`s every `progress_interval` generations. Pass `None` to disable both.
-///
-/// Panics if `seeds` is empty.
+/// Pass `ctx = None` to disable migration and progress. Panics if `seeds` is empty.
 pub fn run_ga_mt(
     problem: &Problem,
     config: &GaConfig,
     seeds: &[u64],
-    progress_log: Option<ProgressLog>,
+    ctx: Option<GaContext>,
 ) -> Vec<(u64, Individual)> {
     assert!(!seeds.is_empty(), "seeds must not be empty");
     let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
@@ -212,10 +264,10 @@ pub fn run_ga_mt(
         seeds
             .iter()
             .map(|&seed| {
-                let log = progress_log.as_ref().map(|l| ProgressLog { seed, ..l.clone() });
+                let thread_ctx = ctx.as_ref().map(|c| GaContext { seed, ..c.clone() });
                 s.spawn(move || {
                     let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                    (seed, run_ga_inner(problem, config, &mut rng, pool_ref, log.as_ref()))
+                    (seed, run_ga_inner(problem, config, &mut rng, pool_ref, thread_ctx.as_ref()))
                 })
             })
             .collect::<Vec<_>>()
@@ -225,6 +277,42 @@ pub fn run_ga_mt(
     });
     results.sort_by_key(|(_, ind)| ind.objective);
     results
+}
+
+/// Spawns the GA in a background thread and returns immediately.
+///
+/// Progress and final results arrive through the `GaHandle` from `ga_channel`.
+/// Sends `GaEvent::Progress` during the run and `GaEvent::Done` when finished.
+/// Dropping `GaHandle` requests early termination via the stop flag.
+pub fn run_ga_mt_bg(
+    problem: Arc<Problem>,
+    config: Arc<GaConfig>,
+    seeds: Vec<u64>,
+    ctx: GaContext,
+) {
+    std::thread::spawn(move || {
+        let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
+        let pool_ref = &migration_pool;
+        let p = &*problem;
+        let c = &*config;
+        let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
+            seeds
+                .iter()
+                .map(|&seed| {
+                    let thread_ctx = GaContext { seed, ..ctx.clone() };
+                    s.spawn(move || {
+                        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+                        (seed, run_ga_inner(p, c, &mut rng, pool_ref, Some(&thread_ctx)))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect()
+        });
+        results.sort_by_key(|(_, ind)| ind.objective);
+        ctx.tx.send(GaEvent::Done(results)).ok();
+    });
 }
 
 /// OX (Ordered Crossover) for two genomes.
