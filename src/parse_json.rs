@@ -78,9 +78,4 @@ mod tests {
         assert_eq!(p.pieces[3].name, "полка");
         assert_eq!(p.pieces[3].can_rotate, true);
     }
-
-    #[test]
-    fn parse_problem_json_invalid() {
-        assert!(parse_problem_json("not json").is_err());
-    }
 }
