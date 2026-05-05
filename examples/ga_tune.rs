@@ -9,7 +9,6 @@
 use std::time::Instant;
 
 use cutting::ga::{GaConfig, run_ga};
-use cutting::model::Solution;
 use cutting::parse::parse_problem;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
@@ -25,11 +24,6 @@ const ONE_PIECE_OBJ: i64 = 2 * (2600 * 1800 + 1) + 495 * 495; // 9_605_027
 struct Variant {
     name: &'static str,
     cfg: GaConfig,
-}
-
-fn pieces_on_last(sol: &Solution) -> usize {
-    let last = sol.sheets_used().saturating_sub(1);
-    sol.placements.iter().filter(|p| p.sheet_idx == last).count()
 }
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {

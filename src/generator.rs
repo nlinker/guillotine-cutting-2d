@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use rand::prelude::{Rng, RngExt, SliceRandom};
 
-use crate::model::{FreeRect, Piece, PieceId, Placement, Problem, Sheet, Solution};
+use crate::model::{FreeRect, Piece, Placement, Problem, Sheet, Solution};
 
 #[derive(Debug)]
 pub struct Output {
@@ -152,7 +152,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
             rotated: false,
         });
         problem_pieces.push(Piece {
-            id: (piece_idx + 1) as PieceId,
+            name: String::new(),
             width: rect.w,
             height: rect.h,
             can_rotate: true,
@@ -374,12 +374,12 @@ mod tests {
                 assert!(
                     pl.x + p.width <= sheet.width,
                     "kerf={kerf}: piece {} overflows width",
-                    p.id
+                    pl.piece_idx
                 );
                 assert!(
                     pl.y + p.height <= sheet.height,
                     "kerf={kerf}: piece {} overflows height",
-                    p.id
+                    pl.piece_idx
                 );
             }
         }
@@ -398,8 +398,8 @@ mod tests {
         };
         let out = generate(&c, &mut rng);
         for p in &out.problem.pieces {
-            assert!(p.width >= c.min_size, "piece {} width  < min_size", p.id);
-            assert!(p.height >= c.min_size, "piece {} height < min_size", p.id);
+            assert!(p.width >= c.min_size, "piece {:?} width  < min_size", p.name);
+            assert!(p.height >= c.min_size, "piece {:?} height < min_size", p.name);
         }
     }
 
@@ -451,8 +451,8 @@ mod tests {
         let c = cfg(1, vec![1.0, 1.0, 1.0]);
         let o1 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let o2 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
-        let ids1: Vec<_> = o1.problem.pieces.iter().map(|p| (p.id, p.width, p.height)).collect();
-        let ids2: Vec<_> = o2.problem.pieces.iter().map(|p| (p.id, p.width, p.height)).collect();
+        let ids1: Vec<_> = o1.problem.pieces.iter().map(|p| (p.width, p.height)).collect();
+        let ids2: Vec<_> = o2.problem.pieces.iter().map(|p| (p.width, p.height)).collect();
         assert_eq!(ids1, ids2);
     }
 

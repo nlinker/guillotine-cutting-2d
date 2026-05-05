@@ -1,12 +1,7 @@
-/// External label attached to a piece — used for display and round-tripping with
-/// the caller's numbering scheme (e.g. an ERP part number).  The value carries no
-/// structural meaning inside the solver: it need not be unique, need not be
-/// contiguous, and is never used as an internal key.  Pieces are addressed
-/// internally by their 0-based index in `Problem::pieces`.
-pub type PieceId = u32;
+use serde::Serialize;
 
 /// Stock sheet — all sheets in the problem are identical.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Sheet {
     pub width: u32,
     pub height: u32,
@@ -14,9 +9,10 @@ pub struct Sheet {
 
 /// A rectangular piece to be cut from a sheet.
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `name`: caller-supplied display label (empty string when parsed from CLI format).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Piece {
-    pub id: PieceId,
+    pub name: String,
     pub width: u32,
     pub height: u32,
     pub can_rotate: bool,
@@ -24,7 +20,7 @@ pub struct Piece {
 
 /// A cutting problem: identical sheets, pieces to place, and a blade kerf (mm)
 /// subtracted at each guillotine split; boundary edges of the sheet are exempt.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Problem {
     pub sheet: Sheet,
     pub kerf: u32,
@@ -34,7 +30,7 @@ pub struct Problem {
 /// Position of a placed piece. `(x, y)` is the top-left corner of the piece on the sheet;
 /// `rotated` means the piece was placed as (height × width) instead of (width × height).
 /// `piece_idx` is the 0-based index into `Problem::pieces` — the unambiguous internal key.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Placement {
     pub sheet_idx: usize,
     pub piece_idx: usize,
@@ -45,7 +41,7 @@ pub struct Placement {
 
 /// An unused rectangle remaining after all pieces are placed. `(x, y)` is the top-left corner;
 /// `x` increases rightward, `y` increases downward.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FreeRect {
     pub sheet_idx: usize,
     pub x: u32,
@@ -54,7 +50,7 @@ pub struct FreeRect {
     pub h: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub leftovers: Vec<FreeRect>,

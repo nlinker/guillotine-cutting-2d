@@ -1,16 +1,24 @@
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, GaEvent, Individual, ga_channel, run_ga_mt},
+    ga::{GaConfig, GaEvent, Individual, ga_channel, run_ga_mt_bg},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
+    parse_json::parse_problem_json,
+    transport::{ProgressMessage, ProgressSink},
 };
 
 mod web;
+
+#[cfg(windows)]
+const PIPE_NAME: &str = r"\\.\pipe\cut_progress";
+#[cfg(unix)]
+const FIFO_PATH: &str = "/tmp/cut_progress";
 
 #[derive(Parser)]
 #[command(name = "cutting", about = "2D guillotine cutting optimizer")]
@@ -23,8 +31,11 @@ struct Cli {
 enum Command {
     /// Run the GA on a problem and print ranked results
     Calc {
-        /// Problem string e.g. "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r"
-        problem: String,
+        /// Problem string e.g. "2600x1800F:3:400x400-6,495x495-6" (mutually exclusive with --json)
+        problem: Option<String>,
+        /// Path to a JSON problem file (mutually exclusive with positional problem string)
+        #[arg(long)]
+        json: Option<String>,
         /// Number of parallel GA runs
         #[arg(long, default_value_t = 8)]
         seeds: usize,
@@ -43,6 +54,9 @@ enum Command {
         /// Report global best every N generations; 0 = silent
         #[arg(long, default_value_t = 100)]
         progress: usize,
+        /// Progress sink: "pipe" (default, named pipe / FIFO) or "stdout"
+        #[arg(long, default_value = "pipe")]
+        sink: String,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -55,57 +69,114 @@ enum Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Calc { problem, seeds, gens, pop, elite, k, progress } => {
-            run_calc(&problem, &ga_config(gens, pop, elite, k), seeds, progress)?;
+        Command::Calc { problem, json, seeds, gens, pop, elite, k, progress, sink } => {
+            let cfg = ga_config(gens, pop, elite, k);
+            let parsed = load_problem(problem.as_deref(), json.as_deref())?;
+            run_calc_with_sink(&parsed, &cfg, seeds, progress, &sink)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
     Ok(())
 }
 
-fn run_calc(problem_str: &str, cfg: &GaConfig, n_seeds: usize, progress_interval: usize) -> Result<(), Box<dyn Error>> {
-    let problem = parse_problem(problem_str)?;
+fn load_problem(problem: Option<&str>, json: Option<&str>) -> Result<Problem, Box<dyn Error>> {
+    match (problem, json) {
+        (Some(_), Some(_)) => Err("specify either a problem string or --json, not both".into()),
+        (None, None) => Err("provide a problem string or --json <path>".into()),
+        (Some(s), None) => Ok(parse_problem(s)?),
+        (None, Some(path)) => {
+            let s = std::fs::read_to_string(path)?;
+            Ok(parse_problem_json(&s)?)
+        }
+    }
+}
+
+fn run_calc_with_sink(
+    problem: &Problem,
+    cfg: &GaConfig,
+    n_seeds: usize,
+    progress_interval: usize,
+    sink_mode: &str,
+) -> Result<(), Box<dyn Error>> {
     let seeds: Vec<u64> = (0..n_seeds as u64).collect();
 
-    println!("Problem : {problem_str}");
-    println!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
-    println!("GA cfg  : {cfg}");
-    println!("Seeds   : {seeds:?}");
-    println!();
+    eprintln!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
+    eprintln!("GA cfg  : {cfg}");
+    eprintln!("Sink    : {sink_mode}");
 
-    let (mut handle, ctx) = ga_channel(progress_interval);
-    let printer = std::thread::spawn(move || {
-        while let Some(evt) = handle.rx.blocking_recv() {
-            match evt {
-                GaEvent::Progress(p) => println!("gen={:5}  best_obj={:12}  sheets={}  seed={}",
-                                                  p.generation, p.objective, p.sheets_used, p.seed),
-                GaEvent::Done(_) => break,
+    match sink_mode {
+        "stdout" => {
+            let mut sink = cutting::transport::stdout::StdoutSink;
+            run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+        }
+        _ => {
+            #[cfg(windows)]
+            {
+                eprintln!("Waiting for client on {PIPE_NAME} …");
+                let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+            }
+            #[cfg(unix)]
+            {
+                eprintln!("Waiting for reader on {FIFO_PATH} …");
+                let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+            }
+            #[cfg(not(any(windows, unix)))]
+            {
+                eprintln!("Named pipe not supported on this platform, falling back to stdout");
+                let mut sink = cutting::transport::stdout::StdoutSink;
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
             }
         }
-    });
+    }
+}
+
+fn run_with_sink(
+    problem: &Problem,
+    cfg: &GaConfig,
+    seeds: &[u64],
+    progress_interval: usize,
+    sink: &mut dyn ProgressSink,
+) -> Result<(), Box<dyn Error>> {
+    let (mut handle, ctx) = ga_channel(progress_interval);
+    run_ga_mt_bg(Arc::new(problem.clone()), Arc::new(cfg.clone()), seeds.to_vec(), ctx);
 
     let t0 = Instant::now();
-    let results = run_ga_mt(&problem, cfg, &seeds, (progress_interval > 0).then_some(ctx));
-    println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
-    printer.join().unwrap();
-
-    let decoded = decode_results(&problem, &results);
-
-    println!("{:>6}  {:>6}  {:>10}  {:>8}  last sheet", "seed", "sheets", "objective", "last_n");
-    println!("{}", "-".repeat(55));
-    for (seed, obj, sol, n, summary) in &decoded {
-        println!("{seed:6}  {:6}  {obj:10}  {n:8}  {summary}", sol.sheets_used());
+    loop {
+        match handle.rx.blocking_recv() {
+            None => break,
+            Some(GaEvent::Progress(p)) => {
+                let msg = ProgressMessage::Progress {
+                    generation: p.generation,
+                    objective: p.objective,
+                    sheets_used: p.sheets_used,
+                    seed: p.seed,
+                };
+                if sink.send(&msg).is_err() {
+                    handle.stop();
+                    break;
+                }
+            }
+            Some(GaEvent::Done(results)) => {
+                eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
+                let (_, best) = &results[0];
+                let sol = decode(problem, &best.genome);
+                let msg = ProgressMessage::Done {
+                    sheets_used: sol.sheets_used(),
+                    objective: best.objective,
+                    solution: sol,
+                    pieces: problem.pieces.clone(),
+                };
+                sink.send(&msg).ok();
+                break;
+            }
+        }
     }
-    println!();
-
-    let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
-    println!(
-        "BEST (seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {best_summary})",
-        best_sol.sheets_used()
-    );
-    print_solution(&problem, best_sol);
     Ok(())
 }
+
+// ── Legacy helpers used by web.rs ─────────────────────────────────────────
 
 pub(crate) fn decode_results(problem: &Problem, results: &[(u64, Individual)]) -> Vec<(u64, i64, Solution, usize, String)> {
     results.iter().map(|(seed, ind)| {
@@ -144,6 +215,7 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
     }
 }
 
+#[allow(dead_code)]
 fn print_solution(problem: &Problem, sol: &Solution) {
     let mut by_sheet: BTreeMap<usize, Vec<&Placement>> = BTreeMap::new();
     for pl in &sol.placements {
@@ -155,9 +227,14 @@ fn print_solution(problem: &Problem, sol: &Solution) {
         for pl in pls {
             let p = &problem.pieces[pl.piece_idx];
             let (pw, ph) = if pl.rotated { (p.height, p.width) } else { (p.width, p.height) };
-            println!("    idx={:2}  {pw}×{ph}  at ({:4},{:4}){}",
+            let name = if p.name.is_empty() { String::new() } else { format!("  \"{}\"", p.name) };
+            println!("    idx={:2}  {pw}×{ph}  at ({:4},{:4}){}{}",
                 pl.piece_idx, pl.x, pl.y,
-                if pl.rotated { "  [rot]" } else { "" });
+                if pl.rotated { "  [rot]" } else { "" },
+                name);
         }
+    }
+    if let Ok(x) = serde_json::to_string(sol) {
+        println!("json = {x}");
     }
 }

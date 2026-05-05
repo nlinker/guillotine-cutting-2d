@@ -50,17 +50,15 @@ pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
     let kerf = kerf_str.trim().parse::<u32>()
         .map_err(|_| ParseError::InvalidKerf(kerf_str.trim().to_string()))?;
     let mut pieces = Vec::new();
-    let mut next_id = 0u32;
     for piece_str in pieces_str.split(',') {
         let spec = parse_piece_spec(piece_str.trim(), default_rotate)?;
         for _ in 0..spec.count {
             pieces.push(Piece {
-                id: next_id,
+                name: String::new(),
                 width: spec.width,
                 height: spec.height,
                 can_rotate: spec.can_rotate,
             });
-            next_id += 1;
         }
     }
     Ok(Problem { sheet, kerf, pieces })
@@ -151,10 +149,7 @@ mod tests {
         for i in 12..14 {
             assert_eq!((p.pieces[i].width, p.pieces[i].height), (1490, 620));
         }
-        assert_eq!(
-            (p.pieces[14].width, p.pieces[14].height, p.pieces[14].id),
-            (1750, 900, 14)
-        );
+        assert_eq!((p.pieces[14].width, p.pieces[14].height), (1750, 900));
     }
 
     #[test]
