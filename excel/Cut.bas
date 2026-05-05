@@ -257,8 +257,8 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
 
     Dim originLeft As Double: originLeft = ws.Cells(1, CANVAS_COL).Left
     Dim originTop  As Double: originTop  = ws.Cells(1, CANVAS_COL).Top
-    Dim scale      As Double: scale      = PT_PER_SHEET / sheetW
-    Dim sheetDispH As Double: sheetDispH = sheetH * scale
+    Dim scl        As Double: scl        = PT_PER_SHEET / sheetW
+    Dim sheetDispH As Double: sheetDispH = sheetH * scl
 
     ' Count sheets
     Dim nSheets As Long: nSheets = 0
@@ -294,10 +294,10 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
             pw = pieces(idx)("width"):  ph = pieces(idx)("height")
         End If
 
-        Dim rLeft   As Double: rLeft   = originLeft + shIdx * (PT_PER_SHEET + CANVAS_SHEET_GAP) + pl("x") * scale
-        Dim rTop    As Double: rTop    = originTop + pl("y") * scale
-        Dim rWidth  As Double: rWidth  = pw * scale
-        Dim rHeight As Double: rHeight = ph * scale
+        Dim rLeft   As Double: rLeft   = originLeft + shIdx * (PT_PER_SHEET + CANVAS_SHEET_GAP) + pl("x") * scl
+        Dim rTop    As Double: rTop    = originTop + pl("y") * scl
+        Dim rWidth  As Double: rWidth  = pw * scl
+        Dim rHeight As Double: rHeight = ph * scl
         If rWidth  < 1# Then rWidth  = 1#
         If rHeight < 1# Then rHeight = 1#
 
