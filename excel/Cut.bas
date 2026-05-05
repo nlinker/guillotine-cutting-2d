@@ -70,6 +70,10 @@ Private Const DATA_START_ROW   As Long = 4   ' first piece row
 Private Const OUT_COL          As Long = 11  ' column K (1-based) for progress output
 Private Const RESULT_ROW       As Long = 6   ' first row of placement results table
 
+Private Const CANVAS_COL       As Long   = 18    ' column R — drawing canvas left edge
+Private Const PT_PER_SHEET     As Double = 300#  ' display width per sheet in points
+Private Const CANVAS_SHEET_GAP As Double = 10#   ' gap between sheets in points
+
 '' == State ====================================================================
 
 Private g_Running As Boolean
@@ -122,6 +126,7 @@ Private Sub InitOutputArea(ws As Worksheet)
     ws.Cells(4, labCol).Value = "Sheets"
 
     ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), ws.Cells(1000, OUT_COL + 5)).ClearContents
+    ClearLayoutShapes ws
 End Sub
 
 ' Renders the placement table after a Done message.
@@ -168,6 +173,116 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
         r = r + 1
     Next pl
     DoEvents
+End Sub
+
+'' == Layout drawing ===========================================================
+
+' Maps piece name to a fill color from a 12-color palette.
+Private Function PieceColor(pieceName As String) As Long
+    Dim p(11) As Long
+    p(0)  = RGB(255, 182, 193): p(1)  = RGB(173, 216, 230)
+    p(2)  = RGB(144, 238, 144): p(3)  = RGB(255, 255, 153)
+    p(4)  = RGB(255, 200, 120): p(5)  = RGB(221, 160, 221)
+    p(6)  = RGB(135, 206, 235): p(7)  = RGB(240, 180, 180)
+    p(8)  = RGB(180, 255, 180): p(9)  = RGB(255, 228, 196)
+    p(10) = RGB(200, 200, 255): p(11) = RGB(255, 240, 180)
+    Dim h As Long: h = 0
+    Dim i As Integer
+    For i = 1 To Len(pieceName)
+        h = (h * 31 + AscW(Mid(pieceName, i, 1))) Mod 12
+    Next i
+    PieceColor = p(Abs(h) Mod 12)
+End Function
+
+' Deletes all shapes whose name starts with "cut_".
+Private Sub ClearLayoutShapes(ws As Worksheet)
+    Dim shapeNames() As String
+    Dim n As Long: n = 0
+    Dim shp As Shape
+    For Each shp In ws.Shapes
+        If Left(shp.Name, 4) = "cut_" Then
+            ReDim Preserve shapeNames(n)
+            shapeNames(n) = shp.Name
+            n = n + 1
+        End If
+    Next shp
+    Dim i As Long
+    For i = 0 To n - 1
+        ws.Shapes(shapeNames(i)).Delete
+    Next i
+End Sub
+
+' Draws cutting layout as Excel shapes starting at column CANVAS_COL, row 1.
+' Sheets are displayed side-by-side; pieces are color-coded by name.
+Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
+                       sheetW As Long, sheetH As Long)
+    If sheetW <= 0 Or sheetH <= 0 Then Exit Sub
+
+    ClearLayoutShapes ws
+
+    Dim originLeft As Double: originLeft = ws.Cells(1, CANVAS_COL).Left
+    Dim originTop  As Double: originTop  = ws.Cells(1, CANVAS_COL).Top
+    Dim scale      As Double: scale      = PT_PER_SHEET / sheetW
+    Dim sheetDispH As Double: sheetDispH = sheetH * scale
+
+    ' Count sheets
+    Dim nSheets As Long: nSheets = 0
+    Dim pl As Object
+    For Each pl In sol("placements")
+        If pl("sheet_idx") + 1 > nSheets Then nSheets = pl("sheet_idx") + 1
+    Next pl
+
+    ' Draw sheet backgrounds first (drawn first = behind pieces)
+    Dim si As Long
+    For si = 0 To nSheets - 1
+        Dim bgLeft As Double: bgLeft = originLeft + si * (PT_PER_SHEET + CANVAS_SHEET_GAP)
+        Dim bg As Shape
+        Set bg = ws.Shapes.AddShape(msoShapeRectangle, bgLeft, originTop, _
+                                    PT_PER_SHEET, sheetDispH)
+        bg.Name = "cut_bg_" & si
+        bg.Fill.ForeColor.RGB = RGB(248, 248, 248)
+        bg.Fill.Transparency = 0
+        bg.Line.ForeColor.RGB = RGB(60, 60, 60)
+        bg.Line.Weight = 1#
+        bg.TextFrame2.TextRange.Text = ""
+    Next si
+
+    ' Draw pieces
+    For Each pl In sol("placements")
+        Dim idx   As Long: idx   = pl("piece_idx") + 1
+        Dim shIdx As Long: shIdx = pl("sheet_idx")
+
+        Dim pw As Long, ph As Long
+        If pl("rotated") Then
+            pw = pieces(idx)("height"): ph = pieces(idx)("width")
+        Else
+            pw = pieces(idx)("width"):  ph = pieces(idx)("height")
+        End If
+
+        Dim rLeft   As Double: rLeft   = originLeft + shIdx * (PT_PER_SHEET + CANVAS_SHEET_GAP) + pl("x") * scale
+        Dim rTop    As Double: rTop    = originTop + pl("y") * scale
+        Dim rWidth  As Double: rWidth  = pw * scale
+        Dim rHeight As Double: rHeight = ph * scale
+        If rWidth  < 1# Then rWidth  = 1#
+        If rHeight < 1# Then rHeight = 1#
+
+        Dim s As Shape
+        Set s = ws.Shapes.AddShape(msoShapeRectangle, rLeft, rTop, rWidth, rHeight)
+        s.Name = "cut_p_" & shIdx & "_" & (idx - 1)
+        s.Fill.ForeColor.RGB = PieceColor(pieces(idx)("name"))
+        s.Fill.Transparency = 0
+        s.Line.ForeColor.RGB = RGB(80, 80, 80)
+        s.Line.Weight = 0.5#
+
+        If rWidth >= 20# And rHeight >= 12# Then
+            s.TextFrame2.TextRange.Text = pieces(idx)("name")
+            s.TextFrame2.TextRange.Font.Size = 7
+            s.TextFrame2.TextRange.Font.Fill.ForeColor.RGB = RGB(0, 0, 0)
+            s.TextFrame2.WordWrap = msoFalse
+        Else
+            s.TextFrame2.TextRange.Text = ""
+        End If
+    Next pl
 End Sub
 
 '' == JSON builder =============================================================
@@ -342,6 +457,8 @@ Public Sub RunCut()
                         ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), _
                                  ws.Cells(1000, OUT_COL + 5)).ClearContents
                         RenderPlacements ws, msg("solution"), msg("pieces")
+                        DrawLayout ws, msg("solution"), msg("pieces"), _
+                            ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
                         Application.ScreenUpdating = True
                     End If
 
@@ -349,7 +466,13 @@ Public Sub RunCut()
                     SetProgress ws, "Done " & Chr(10003), "", _
                         CStr(msg("objective")), _
                         CStr(msg("sheets_used"))
+                    Application.ScreenUpdating = False
+                    ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), _
+                             ws.Cells(1000, OUT_COL + 5)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
+                    DrawLayout ws, msg("solution"), msg("pieces"), _
+                        ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
+                    Application.ScreenUpdating = True
                     g_Running = False
 
                 Case "error"

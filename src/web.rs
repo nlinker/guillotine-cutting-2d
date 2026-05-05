@@ -10,6 +10,7 @@ use axum::extract::Query;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Router, response::Html, routing::get};
 use cutting::{
+    decoder::decode,
     ga::{GaEvent, Individual, ga_channel, run_ga_mt_bg},
     model::Problem,
     parse::parse_problem,
@@ -62,6 +63,8 @@ const INDEX_HTML: &str = r##"<!doctype html>
   pre { background: #f8f8f8; padding: 1em; overflow-x: auto; }
   h3 { margin-bottom: .3em; }
   #chart-wrap { margin: 1em 0; display: none; }
+  #layout-wrap { margin: 1em 0; display: none; }
+  #layout { width: 100%; display: block; }
 </style>
 </head>
 <body>
@@ -87,11 +90,19 @@ const INDEX_HTML: &str = r##"<!doctype html>
   <canvas id="chart" height="120"></canvas>
 </div>
 <div id="results"></div>
+<div id="layout-wrap">
+  <h3>Layout</h3>
+  <canvas id="layout"></canvas>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
 <script>
 let es = null;
 let chart = null;
+const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a',
+                 '#dda0dd','#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
+let colorMap = {};
+let colorIdx = 0;
 
 function initChart() {
   const canvas = document.getElementById('chart');
@@ -130,10 +141,67 @@ function addPoint(generation, objective) {
   chart.update('none');
 }
 
+function pieceColor(name) {
+  if (colorMap[name] === undefined) { colorMap[name] = PALETTE[colorIdx++ % PALETTE.length]; }
+  return colorMap[name];
+}
+
+function drawLayout(solution, pieces, sheetW, sheetH) {
+  const canvas = document.getElementById('layout');
+  const placements = solution.placements;
+  if (!placements || placements.length === 0) return;
+
+  let nSheets = 0;
+  for (const pl of placements) { if (pl.sheet_idx >= nSheets) nSheets = pl.sheet_idx + 1; }
+
+  const cw = 900, GAP = 8;
+  const sdw = (cw - GAP * (nSheets - 1)) / nSheets;
+  const scale = sdw / sheetW;
+  const sdh = Math.round(sheetH * scale);
+
+  canvas.width  = cw;
+  canvas.height = sdh + 22;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < nSheets; i++) {
+    const ox = i * (sdw + GAP);
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(ox, 0, sdw, sdh);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ox, 0, sdw, sdh);
+    ctx.fillStyle = '#555';
+    ctx.font = '11px monospace';
+    ctx.fillText('Sheet ' + i, ox + 4, sdh + 15);
+  }
+
+  for (const pl of placements) {
+    const pc = pieces[pl.piece_idx];
+    const pw = pl.rotated ? pc.height : pc.width;
+    const ph = pl.rotated ? pc.width  : pc.height;
+    const ox = pl.sheet_idx * (sdw + GAP);
+    const rx = ox + pl.x * scale, ry = pl.y * scale;
+    const rw = Math.max(pw * scale, 1), rh = Math.max(ph * scale, 1);
+    ctx.fillStyle = pieceColor(pc.name || String(pl.piece_idx));
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(rx, ry, rw, rh);
+    if (rw > 30 && rh > 14) {
+      ctx.fillStyle = '#000';
+      ctx.font = '9px monospace';
+      ctx.fillText(pc.name || ('#' + pl.piece_idx), rx + 2, ry + 11);
+    }
+  }
+}
+
 document.getElementById('form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (es) { es.close(); es = null; }
   document.getElementById('results').innerHTML = '';
+  document.getElementById('layout-wrap').style.display = 'none';
+  colorMap = {}; colorIdx = 0;
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
   initChart();
@@ -149,6 +217,10 @@ document.getElementById('form').addEventListener('submit', (e) => {
   es.addEventListener('done', (ev) => {
     const d = JSON.parse(ev.data);
     document.getElementById('results').innerHTML = d.html;
+    if (d.solution) {
+      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h);
+      document.getElementById('layout-wrap').style.display = 'block';
+    }
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';
@@ -235,8 +307,16 @@ async fn stream_handler(
                     }
                     Some(GaEvent::Done(results)) => {
                         let elapsed = start.elapsed().as_secs_f64();
+                        let (_, best_ind) = &results[0];
+                        let best_sol = decode(&problem, &best_ind.genome);
                         let html = results_html(&problem, &results, elapsed);
-                        let data = json!({ "html": html }).to_string();
+                        let data = json!({
+                            "html":    html,
+                            "solution": best_sol,
+                            "pieces":   problem.pieces,
+                            "sheet_w":  problem.sheet.width,
+                            "sheet_h":  problem.sheet.height,
+                        }).to_string();
                         let evt = Event::default().event("done").data(data);
                         Some((Ok(evt), Ok(StreamState::Finished)))
                     }
