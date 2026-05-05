@@ -1,6 +1,6 @@
 use super::{ProgressMessage, ProgressSink};
 
-// ── Windows API FFI ────────────────────────────────────────────────────────
+// == Windows API FFI ========================================================
 
 type Handle = *mut std::ffi::c_void;
 type Bool = i32;
@@ -52,7 +52,7 @@ fn to_wstring(s: &str) -> Vec<u16> {
         .collect()
 }
 
-// ── Sink ──────────────────────────────────────────────────────────────────
+// == Sink ==================================================================
 
 pub struct WindowsPipeSink {
     handle: Handle,

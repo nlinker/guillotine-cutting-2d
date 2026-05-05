@@ -24,7 +24,7 @@ Attribute VB_Name = "cut"
 
 Option Explicit
 
-'' ── Windows API ─────────────────────────────────────────────────────────────
+'' == Windows API =============================================================
 
 Private Declare PtrSafe Function CreateFile Lib "kernel32" Alias "CreateFileW" ( _
     ByVal lpFileName       As LongPtr, _
@@ -57,7 +57,7 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
     ByVal dwMilliseconds As Long _
 )
 
-'' ── Constants ────────────────────────────────────────────────────────────────
+'' == Constants ================================================================
 
 Private Const PIPE_NAME        As String  = "\\.\pipe\cut_progress"
 Private Const GENERIC_READ     As Long    = &H80000000
@@ -70,11 +70,11 @@ Private Const DATA_START_ROW   As Long = 4   ' first piece row
 Private Const OUT_COL          As Long = 11  ' column K (1-based) for progress output
 Private Const RESULT_ROW       As Long = 6   ' first row of placement results table
 
-'' ── State ────────────────────────────────────────────────────────────────────
+'' == State ====================================================================
 
 Private g_Running As Boolean
 
-'' ── Helpers ──────────────────────────────────────────────────────────────────
+'' == Helpers ==================================================================
 
 ' Escapes a string for JSON: non-ASCII and control chars become \uXXXX.
 ' Ported from ../cutting/vba/cut_api.bas.
@@ -170,7 +170,7 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     DoEvents
 End Sub
 
-'' ── JSON builder ─────────────────────────────────────────────────────────────
+'' == JSON builder =============================================================
 
 Private Function BuildProblemJson(ws As Worksheet) As String
     Dim sheetWidth  As Long: sheetWidth  = ws.Cells(1, 8).Value  ' H1
@@ -214,7 +214,7 @@ Private Function BuildProblemJson(ws As Worksheet) As String
                        ",""pieces"":[" & sPieces & "]}"
 End Function
 
-'' ── Main macro ───────────────────────────────────────────────────────────────
+'' == Main macro ===============================================================
 
 Public Sub RunCut()
     If g_Running Then
@@ -280,7 +280,7 @@ Public Sub RunCut()
         Exit Sub
     End If
 
-    '' ── Message read loop ────────────────────────────────────────────────────
+    '' == Message read loop ====================================================
     g_Running = True
     SetProgress ws, "Running...", "", "", ""
 
@@ -362,7 +362,7 @@ NextLine:
     g_Running = False
 End Sub
 
-'' ── Stop ─────────────────────────────────────────────────────────────────────
+'' == Stop =====================================================================
 
 Public Sub StopCut()
     g_Running = False

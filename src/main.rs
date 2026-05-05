@@ -176,7 +176,7 @@ fn run_with_sink(
     Ok(())
 }
 
-// ── Legacy helpers used by web.rs ─────────────────────────────────────────
+// == Legacy helpers used by web.rs =========================================
 
 pub(crate) fn decode_results(problem: &Problem, results: &[(u64, Individual)]) -> Vec<(u64, i64, Solution, usize, String)> {
     results.iter().map(|(seed, ind)| {

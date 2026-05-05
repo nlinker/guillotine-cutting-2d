@@ -83,40 +83,40 @@ fn main() {
     println!("{}", "-".repeat(100));
 
     let variants = vec![
-        // ── baseline ──────────────────────────────────────────
+        // == baseline ==========================================
         Variant { name: "baseline  pop=100 gen=500",
                   cfg: cfg(100, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
-        // ── vary population size ──────────────────────────────
+        // == vary population size ==============================
         Variant { name: "pop=200 gen=500",
                   cfg: cfg(200, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         Variant { name: "pop=300 gen=500",
                   cfg: cfg(300, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
-        // ── vary generations ──────────────────────────────────
+        // == vary generations ==================================
         Variant { name: "pop=100 gen=1000",
                   cfg: cfg(100, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         Variant { name: "pop=100 gen=2000",
                   cfg: cfg(100, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
-        // ── both ─────────────────────────────────────────────
+        // == both =============================================
         Variant { name: "pop=200 gen=1000",
                   cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         Variant { name: "pop=200 gen=2000",
                   cfg: cfg(200, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
-        // ── vary elitism ──────────────────────────────────────
+        // == vary elitism ======================================
         Variant { name: "pop=200 gen=1000 elite=5",
                   cfg: cfg(200, 1000, 5, 3, 0.80, 0.15, 0.05, 0.10) },
-        // ── vary tournament pressure ──────────────────────────
+        // == vary tournament pressure ==========================
         Variant { name: "pop=200 gen=1000 k=2",
                   cfg: cfg(200, 1000, 2, 2, 0.80, 0.15, 0.05, 0.10) },
         Variant { name: "pop=200 gen=1000 k=5",
                   cfg: cfg(200, 1000, 2, 5, 0.80, 0.15, 0.05, 0.10) },
-        // ── vary mutation rates ───────────────────────────────
+        // == vary mutation rates ===============================
         Variant { name: "pop=200 gen=1000 p_swap=0.25",
                   cfg: cfg(200, 1000, 2, 3, 0.80, 0.25, 0.05, 0.10) },
         Variant { name: "pop=200 gen=1000 p_swap=0.05",
                   cfg: cfg(200, 1000, 2, 3, 0.80, 0.05, 0.05, 0.10) },
         Variant { name: "pop=200 gen=1000 p_point=0.20",
                   cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.20) },
-        // ── vary crossover probability ────────────────────────
+        // == vary crossover probability ========================
         Variant { name: "pop=200 gen=1000 p_cx=0.60",
                   cfg: cfg(200, 1000, 2, 3, 0.60, 0.15, 0.05, 0.10) },
         Variant { name: "pop=200 gen=1000 p_cx=0.95",
