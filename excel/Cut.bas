@@ -26,36 +26,61 @@ Option Explicit
 
 '' == Windows API =============================================================
 
-Private Declare PtrSafe Function CreateFile Lib "kernel32" Alias "CreateFileW" ( _
-    ByVal lpFileName       As LongPtr, _
-    ByVal dwDesiredAccess  As Long, _
-    ByVal dwShareMode      As Long, _
-    ByVal lpSecurityAttrib As LongPtr, _
-    ByVal dwCreationDisp   As Long, _
-    ByVal dwFlagsAndAttrib As Long, _
-    ByVal hTemplateFile    As LongPtr _
-) As LongPtr
-
-Private Declare PtrSafe Function ReadFile Lib "kernel32" ( _
-    ByVal hFile                As LongPtr, _
-    ByVal lpBuffer             As LongPtr, _
-    ByVal nNumberOfBytesToRead As Long, _
-    ByRef lpNumberOfBytesRead  As Long, _
-    ByVal lpOverlapped         As LongPtr _
-) As Long
-
-Private Declare PtrSafe Function CloseHandle Lib "kernel32" ( _
-    ByVal hObject As LongPtr _
-) As Long
-
-Private Declare PtrSafe Function WaitNamedPipe Lib "kernel32" Alias "WaitNamedPipeW" ( _
-    ByVal lpNamedPipeName As LongPtr, _
-    ByVal nTimeOut        As Long _
-) As Long
-
-Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
-    ByVal dwMilliseconds As Long _
-)
+#If VBA7 Then
+    Private Declare PtrSafe Function CreateFile Lib "kernel32" Alias "CreateFileW" ( _
+        ByVal lpFileName       As LongPtr, _
+        ByVal dwDesiredAccess  As Long, _
+        ByVal dwShareMode      As Long, _
+        ByVal lpSecurityAttrib As LongPtr, _
+        ByVal dwCreationDisp   As Long, _
+        ByVal dwFlagsAndAttrib As Long, _
+        ByVal hTemplateFile    As LongPtr _
+    ) As LongPtr
+    Private Declare PtrSafe Function ReadFile Lib "kernel32" ( _
+        ByVal hFile                As LongPtr, _
+        ByVal lpBuffer             As LongPtr, _
+        ByVal nNumberOfBytesToRead As Long, _
+        ByRef lpNumberOfBytesRead  As Long, _
+        ByVal lpOverlapped         As LongPtr _
+    ) As Long
+    Private Declare PtrSafe Function CloseHandle Lib "kernel32" ( _
+        ByVal hObject As LongPtr _
+    ) As Long
+    Private Declare PtrSafe Function WaitNamedPipe Lib "kernel32" Alias "WaitNamedPipeW" ( _
+        ByVal lpNamedPipeName As LongPtr, _
+        ByVal nTimeOut        As Long _
+    ) As Long
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
+        ByVal dwMilliseconds As Long _
+    )
+#Else
+    Private Declare Function CreateFile Lib "kernel32" Alias "CreateFileW" ( _
+        ByVal lpFileName       As Long, _
+        ByVal dwDesiredAccess  As Long, _
+        ByVal dwShareMode      As Long, _
+        ByVal lpSecurityAttrib As Long, _
+        ByVal dwCreationDisp   As Long, _
+        ByVal dwFlagsAndAttrib As Long, _
+        ByVal hTemplateFile    As Long _
+    ) As Long
+    Private Declare Function ReadFile Lib "kernel32" ( _
+        ByVal hFile                As Long, _
+        ByVal lpBuffer             As Long, _
+        ByVal nNumberOfBytesToRead As Long, _
+        ByRef lpNumberOfBytesRead  As Long, _
+        ByVal lpOverlapped         As Long _
+    ) As Long
+    Private Declare Function CloseHandle Lib "kernel32" ( _
+        ByVal hObject As Long _
+    ) As Long
+    Private Declare Function WaitNamedPipe Lib "kernel32" Alias "WaitNamedPipeW" ( _
+        ByVal lpNamedPipeName As Long, _
+        ByVal nTimeOut        As Long _
+    ) As Long
+    Private Declare Sub Sleep Lib "kernel32" ( _
+        ByVal dwMilliseconds As Long _
+    )
+#End If
 
 '' == Constants ================================================================
 
@@ -63,7 +88,11 @@ Private Const PIPE_NAME        As String  = "\\.\pipe\cut_progress"
 Private Const GENERIC_READ     As Long    = &H80000000
 Private Const OPEN_EXISTING    As Long    = 3
 Private Const FILE_ATTR_NORMAL As Long    = &H80
-Private Const INVALID_HANDLE   As LongPtr = -1
+#If VBA7 Then
+    Private Const INVALID_HANDLE As LongPtr = -1
+#Else
+    Private Const INVALID_HANDLE As Long = -1
+#End If
 Private Const BUFFER_SIZE      As Long    = 8192
 
 Private Const DATA_START_ROW   As Long = 4   ' first piece row
@@ -101,9 +130,15 @@ Private Function JsonEscapeStr(s As String) As String
     JsonEscapeStr = result
 End Function
 
+#If VBA7 Then
 Private Function WStrPtr(s As String) As LongPtr
     WStrPtr = StrPtr(s)
 End Function
+#Else
+Private Function WStrPtr(s As String) As Long
+    WStrPtr = StrPtr(s)
+End Function
+#End If
 
 ' Writes progress values to column K.
 Private Sub SetProgress(ws As Worksheet, status As String, gen As String, _
@@ -376,7 +411,11 @@ Public Sub RunCut()
     Dim pipeName As String
     pipeName = PIPE_NAME
 
-    Dim hPipe As LongPtr
+    #If VBA7 Then
+        Dim hPipe As LongPtr
+    #Else
+        Dim hPipe As Long
+    #End If
     Dim attempt As Integer
     For attempt = 1 To 15
         WaitNamedPipe WStrPtr(pipeName & Chr(0)), 2000
