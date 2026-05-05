@@ -108,10 +108,10 @@ Interactive visualizations (open in browser, no server needed):
 
 | Demo | What it shows                                                                |
 |------|------------------------------------------------------------------------------|
-| [Guillotine Decoder](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_decoder.html) | genome → sheet placements step by step                  |
-| [GA Crossover](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_ox_cx_gsap.html) | OX and CX operators animated                                  |
-| [GA Mutation](https://nlinker.github.io/gullotine-cutting-2d/demos/ga_mutation_gsap.html) | swap / flip / point-selector mutation animated                 |
-| [Guillotine Generator](https://nlinker.github.io/gullotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
+| [Guillotine Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_decoder.html) | genome → sheet placements step by step                  |
+| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html) | OX and CX operators animated                                  |
+| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html) | swap / flip / point-selector mutation animated                 |
+| [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
 
 ## References
 

@@ -201,21 +201,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cutting"
-version = "0.1.0"
-dependencies = [
- "axum",
- "clap",
- "futures-util",
- "rand",
- "rand_xoshiro",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -303,6 +288,21 @@ dependencies = [
  "rand_core",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "guillotine-cutting-2d"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "clap",
+ "futures-util",
+ "rand",
+ "rand_xoshiro",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
