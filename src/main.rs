@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, GaEvent, Individual, ga_channel, run_ga_mt_bg},
+    ga::{GaConfig, GaEvent, Individual, ProgressEvent, ga_channel, run_ga_mt_bg},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -57,6 +57,9 @@ enum Command {
         /// Progress sink: "pipe" (default, named pipe / FIFO) or "stdout"
         #[arg(long, default_value = "pipe")]
         sink: String,
+        /// Throttle sink: send at most one progress per N ms, includes solution; 0 = no throttle
+        #[arg(long, default_value_t = 1000)]
+        sink_interval: u64,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -69,10 +72,10 @@ enum Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Calc { problem, json, seeds, gens, pop, elite, k, progress, sink } => {
+        Command::Calc { problem, json, seeds, gens, pop, elite, k, progress, sink, sink_interval } => {
             let cfg = ga_config(gens, pop, elite, k);
             let parsed = load_problem(problem.as_deref(), json.as_deref())?;
-            run_calc_with_sink(&parsed, &cfg, seeds, progress, &sink)?;
+            run_calc_with_sink(&parsed, &cfg, seeds, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
@@ -97,36 +100,37 @@ fn run_calc_with_sink(
     n_seeds: usize,
     progress_interval: usize,
     sink_mode: &str,
+    sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     let seeds: Vec<u64> = (0..n_seeds as u64).collect();
 
     eprintln!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
     eprintln!("GA cfg  : {cfg}");
-    eprintln!("Sink    : {sink_mode}");
+    eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+            run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink)
+                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
         }
     }
@@ -138,27 +142,74 @@ fn run_with_sink(
     seeds: &[u64],
     progress_interval: usize,
     sink: &mut dyn ProgressSink,
+    sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     let (mut handle, ctx) = ga_channel(progress_interval);
     run_ga_mt_bg(Arc::new(problem.clone()), Arc::new(cfg.clone()), seeds.to_vec(), ctx);
+
+    let throttled = sink_interval_ms > 0;
+    let throttle = Duration::from_millis(sink_interval_ms);
+    let mut last_sent: Option<Instant> = None;
+    let mut best_pending: Option<ProgressEvent> = None;
 
     let t0 = Instant::now();
     loop {
         match handle.rx.blocking_recv() {
             None => break,
             Some(GaEvent::Progress(p)) => {
-                let msg = ProgressMessage::Progress {
-                    generation: p.generation,
-                    objective: p.objective,
-                    sheets_used: p.sheets_used,
-                    seed: p.seed,
-                };
-                if sink.send(&msg).is_err() {
-                    handle.stop();
-                    break;
+                if !throttled {
+                    let msg = ProgressMessage::Progress {
+                        generation: p.generation,
+                        objective: p.objective,
+                        sheets_used: p.sheets_used,
+                        seed: p.seed,
+                        solution: None,
+                        pieces: None,
+                    };
+                    if sink.send(&msg).is_err() {
+                        handle.stop();
+                        break;
+                    }
+                } else {
+                    let better = best_pending.as_ref()
+                        .map_or(true, |b| p.objective < b.objective);
+                    if better {
+                        best_pending = Some(p);
+                    }
+                    let should_flush = last_sent
+                        .map_or(true, |t| t.elapsed() >= throttle);
+                    if should_flush {
+                        if let Some(evt) = best_pending.take() {
+                            let sol = decode(problem, &evt.genome);
+                            let msg = ProgressMessage::Progress {
+                                generation: evt.generation,
+                                objective: evt.objective,
+                                sheets_used: evt.sheets_used,
+                                seed: evt.seed,
+                                solution: Some(sol),
+                                pieces: Some(problem.pieces.clone()),
+                            };
+                            if sink.send(&msg).is_err() {
+                                handle.stop();
+                                break;
+                            }
+                            last_sent = Some(Instant::now());
+                        }
+                    }
                 }
             }
             Some(GaEvent::Done(results)) => {
+                if let Some(evt) = best_pending.take() {
+                    let sol = decode(problem, &evt.genome);
+                    sink.send(&ProgressMessage::Progress {
+                        generation: evt.generation,
+                        objective: evt.objective,
+                        sheets_used: evt.sheets_used,
+                        seed: evt.seed,
+                        solution: Some(sol),
+                        pieces: Some(problem.pieces.clone()),
+                    }).ok();
+                }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
                 let (_, best) = &results[0];
                 let sol = decode(problem, &best.genome);

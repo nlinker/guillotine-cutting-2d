@@ -20,7 +20,7 @@ Attribute VB_Name = "cut"
 ''   1. Alt+F11 → Import File → cut.bas + JsonConverter.bas
 ''   2. Fill in data on Sheet1
 ''   3. Run macro RunCut
-'' ═══════════════════════════════════════════════════════════════════════════
+'' ============================================================================
 
 Option Explicit
 
@@ -337,6 +337,13 @@ Public Sub RunCut()
                         CStr(msg("generation")), _
                         CStr(msg("objective")), _
                         CStr(msg("sheets_used"))
+                    If msg.Exists("solution") Then
+                        Application.ScreenUpdating = False
+                        ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), _
+                                 ws.Cells(1000, OUT_COL + 5)).ClearContents
+                        RenderPlacements ws, msg("solution"), msg("pieces")
+                        Application.ScreenUpdating = True
+                    End If
 
                 Case "done"
                     SetProgress ws, "Done " & Chr(10003), "", _

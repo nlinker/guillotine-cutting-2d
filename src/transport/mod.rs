@@ -16,6 +16,10 @@ pub enum ProgressMessage {
         objective: i64,
         sheets_used: usize,
         seed: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        solution: Option<Solution>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pieces: Option<Vec<Piece>>,
     },
     Done {
         sheets_used: usize,
