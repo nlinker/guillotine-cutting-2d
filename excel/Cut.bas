@@ -84,6 +84,7 @@ Option Explicit
 
 '' == Constants ================================================================
 
+Private Const SHEET_NAME       As String  = "Sheet1"
 Private Const PIPE_NAME        As String  = "\\.\pipe\cut_progress"
 Private Const GENERIC_READ     As Long    = &H80000000
 Private Const OPEN_EXISTING    As Long    = 3
@@ -95,13 +96,16 @@ Private Const FILE_ATTR_NORMAL As Long    = &H80
 #End If
 Private Const BUFFER_SIZE      As Long    = 8192
 
-Private Const DATA_START_ROW   As Long = 4   ' first piece row
+Private Const DATA_COL         As Long = 1   ' leftmost column of piece table (Name)
+Private Const DATA_HEADER_ROW  As Long = 5   ' piece table header row (Name, Width, Height, Count, Rotate)
 Private Const OUT_COL          As Long = 11  ' column K (1-based) for progress output
 Private Const RESULT_ROW       As Long = 6   ' first row of placement results table
 
-Private Const CANVAS_COL       As Long   = 18    ' column R — drawing canvas left edge
-Private Const PT_PER_SHEET     As Double = 300#  ' display width per sheet in points
-Private Const CANVAS_SHEET_GAP As Double = 10#   ' gap between sheets in points
+Private Const CANVAS_COL       As Long   = 7     ' column G — drawing canvas left edge
+Private Const CANVAS_ROW       As Long   = 5     ' row 5 — drawing canvas top edge
+Private Const CANVAS_END_COL   As Long   = 12    ' column L — right boundary (drawing fills G:K)
+Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
+Private Const RESULT_COL       As Long   = 14    ' column N — placement table data column (label "Sheet" in M)
 
 '' == State ====================================================================
 
@@ -140,6 +144,27 @@ Private Function WStrPtr(s As String) As Long
 End Function
 #End If
 
+' Decodes a slice of a byte array from UTF-8 to a VBA Unicode string.
+Private Function Utf8ToStr(buf() As Byte, nBytes As Long) As String
+    If nBytes = 0 Then Utf8ToStr = "": Exit Function
+    Dim tmp() As Byte
+    ReDim tmp(nBytes - 1)
+    Dim i As Long
+    For i = 0 To nBytes - 1
+        tmp(i) = buf(i)
+    Next i
+    With CreateObject("ADODB.Stream")
+        .Open
+        .Type = 1        ' adTypeBinary
+        .Write tmp
+        .Position = 0
+        .Type = 2        ' adTypeText
+        .Charset = "UTF-8"
+        Utf8ToStr = .ReadText
+        .Close
+    End With
+End Function
+
 ' Writes progress values to column K.
 Private Sub SetProgress(ws As Worksheet, status As String, gen As String, _
                         obj As String, sheets As String)
@@ -160,8 +185,9 @@ Private Sub InitOutputArea(ws As Worksheet)
     ws.Cells(3, labCol).Value = "Objective"
     ws.Cells(4, labCol).Value = "Sheets"
 
-    ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), ws.Cells(1000, OUT_COL + 5)).ClearContents
+    ws.Range(ws.Cells(RESULT_ROW, RESULT_COL - 1), ws.Cells(1000, RESULT_COL + 5)).ClearContents
     ClearLayoutShapes ws
+    ClearPieceColors ws
 End Sub
 
 ' Renders the placement table after a Done message.
@@ -169,16 +195,16 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     Dim r As Long
     r = RESULT_ROW
     Dim labCol As Long
-    labCol = OUT_COL - 1
+    labCol = RESULT_COL - 1
 
     ' Headers
-    ws.Cells(r, labCol).Value      = "Sheet"
-    ws.Cells(r, OUT_COL).Value     = "Piece"
-    ws.Cells(r, OUT_COL + 1).Value = "Width"
-    ws.Cells(r, OUT_COL + 2).Value = "Height"
-    ws.Cells(r, OUT_COL + 3).Value = "X"
-    ws.Cells(r, OUT_COL + 4).Value = "Y"
-    ws.Cells(r, OUT_COL + 5).Value = "Rotated"
+    ws.Cells(r, labCol).Value          = "Sheet"
+    ws.Cells(r, RESULT_COL).Value      = "Piece"
+    ws.Cells(r, RESULT_COL + 1).Value  = "Width"
+    ws.Cells(r, RESULT_COL + 2).Value  = "Height"
+    ws.Cells(r, RESULT_COL + 3).Value  = "X"
+    ws.Cells(r, RESULT_COL + 4).Value  = "Y"
+    ws.Cells(r, RESULT_COL + 5).Value  = "Rotated"
     r = r + 1
 
     Dim pl As Object
@@ -198,13 +224,13 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
             ph = pieces(idx)("height")
         End If
 
-        ws.Cells(r, labCol).Value      = pl("sheet_idx")
-        ws.Cells(r, OUT_COL).Value     = pieceName
-        ws.Cells(r, OUT_COL + 1).Value = pw
-        ws.Cells(r, OUT_COL + 2).Value = ph
-        ws.Cells(r, OUT_COL + 3).Value = pl("x")
-        ws.Cells(r, OUT_COL + 4).Value = pl("y")
-        ws.Cells(r, OUT_COL + 5).Value = IIf(pl("rotated"), "yes", "")
+        ws.Cells(r, labCol).Value          = pl("sheet_idx")
+        ws.Cells(r, RESULT_COL).Value      = pieceName
+        ws.Cells(r, RESULT_COL + 1).Value  = pw
+        ws.Cells(r, RESULT_COL + 2).Value  = ph
+        ws.Cells(r, RESULT_COL + 3).Value  = pl("x")
+        ws.Cells(r, RESULT_COL + 4).Value  = pl("y")
+        ws.Cells(r, RESULT_COL + 5).Value  = IIf(pl("rotated"), "yes", "")
         r = r + 1
     Next pl
     DoEvents
@@ -213,7 +239,7 @@ End Sub
 '' == Layout drawing ===========================================================
 
 ' Maps piece name to a fill color from a 12-color palette.
-Private Function PieceColor(pieceName As String) As Long
+Private Function PieceColor(ByVal pieceName As String) As Long
     Dim p(11) As Long
     p(0)  = RGB(255, 182, 193): p(1)  = RGB(173, 216, 230)
     p(2)  = RGB(144, 238, 144): p(3)  = RGB(255, 255, 153)
@@ -255,10 +281,11 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
 
     ClearLayoutShapes ws
 
-    Dim originLeft As Double: originLeft = ws.Cells(1, CANVAS_COL).Left
-    Dim originTop  As Double: originTop  = ws.Cells(1, CANVAS_COL).Top
-    Dim scl        As Double: scl        = PT_PER_SHEET / sheetW
-    Dim sheetDispH As Double: sheetDispH = sheetH * scl
+    Dim originLeft  As Double: originLeft  = ws.Cells(CANVAS_ROW, CANVAS_COL).Left
+    Dim originTop   As Double: originTop   = ws.Cells(CANVAS_ROW, CANVAS_COL).Top
+    Dim sheetsDispW As Double: sheetsDispW = ws.Cells(1, CANVAS_END_COL).Left - originLeft
+    Dim scl         As Double: scl         = sheetsDispW / sheetW
+    Dim sheetDispH  As Double: sheetDispH  = sheetH * scl
 
     ' Count sheets
     Dim nSheets As Long: nSheets = 0
@@ -267,19 +294,20 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         If pl("sheet_idx") + 1 > nSheets Then nSheets = pl("sheet_idx") + 1
     Next pl
 
-    ' Draw sheet backgrounds first (drawn first = behind pieces)
+    ' Draw sheet backgrounds (stacked vertically)
     Dim si As Long
     For si = 0 To nSheets - 1
-        Dim bgLeft As Double: bgLeft = originLeft + si * (PT_PER_SHEET + CANVAS_SHEET_GAP)
+        Dim bgTop As Double: bgTop = originTop + si * (sheetDispH + CANVAS_SHEET_GAP)
         Dim bg As Shape
-        Set bg = ws.Shapes.AddShape(msoShapeRectangle, bgLeft, originTop, _
-                                    PT_PER_SHEET, sheetDispH)
+        Set bg = ws.Shapes.AddShape(msoShapeRectangle, originLeft, bgTop, _
+                                    sheetsDispW, sheetDispH)
         bg.Name = "cut_bg_" & si
         bg.Fill.ForeColor.RGB = RGB(248, 248, 248)
         bg.Fill.Transparency = 0
         bg.Line.ForeColor.RGB = RGB(60, 60, 60)
         bg.Line.Weight = 1#
-        bg.TextFrame2.TextRange.Text = ""
+        bg.TextFrame2.TextRange.Text = "Sheet " & si
+        bg.TextFrame2.TextRange.Font.Size = 8
     Next si
 
     ' Draw pieces
@@ -294,8 +322,8 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
             pw = pieces(idx)("width"):  ph = pieces(idx)("height")
         End If
 
-        Dim rLeft   As Double: rLeft   = originLeft + shIdx * (PT_PER_SHEET + CANVAS_SHEET_GAP) + pl("x") * scl
-        Dim rTop    As Double: rTop    = originTop + pl("y") * scl
+        Dim rLeft   As Double: rLeft   = originLeft + pl("x") * scl
+        Dim rTop    As Double: rTop    = originTop + shIdx * (sheetDispH + CANVAS_SHEET_GAP) + pl("y") * scl
         Dim rWidth  As Double: rWidth  = pw * scl
         Dim rHeight As Double: rHeight = ph * scl
         If rWidth  < 1# Then rWidth  = 1#
@@ -320,6 +348,30 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     Next pl
 End Sub
 
+'' == Piece row coloring =======================================================
+
+Private Sub ClearPieceColors(ws As Worksheet)
+    ws.Range(ws.Cells(DATA_HEADER_ROW + 1, DATA_COL), ws.Cells(200, DATA_COL + 4)).Interior.ColorIndex = xlNone
+End Sub
+
+Private Sub ColorPieceRows(ws As Worksheet, pieces As Object)
+    Dim i As Long
+    Dim pIdx As Long: pIdx = 1  ' 1-based index into expanded pieces array
+    For i = DATA_HEADER_ROW + 1 To 200
+        Dim w As Long, h As Long
+        w = 0: h = 0
+        If ws.Cells(i, DATA_COL + 1).Value <> "" Then w = CLng(ws.Cells(i, DATA_COL + 1).Value)
+        If ws.Cells(i, DATA_COL + 2).Value <> "" Then h = CLng(ws.Cells(i, DATA_COL + 2).Value)
+        If w = 0 Or h = 0 Then Exit For
+        Dim cnt As Long: cnt = 1
+        If ws.Cells(i, DATA_COL + 3).Value <> "" Then cnt = CLng(ws.Cells(i, DATA_COL + 3).Value)
+        If cnt < 1 Then cnt = 1
+        Dim pName As String: pName = pieces(pIdx)("name")
+        ws.Range(ws.Cells(i, DATA_COL), ws.Cells(i, DATA_COL + 4)).Interior.Color = PieceColor(pName)
+        pIdx = pIdx + cnt
+    Next i
+End Sub
+
 '' == JSON builder =============================================================
 
 Private Function BuildProblemJson(ws As Worksheet) As String
@@ -329,18 +381,18 @@ Private Function BuildProblemJson(ws As Worksheet) As String
 
     Dim sPieces As String
     Dim bFirst  As Boolean: bFirst = True
-    Dim i As Long: i = DATA_START_ROW
+    Dim i As Long: i = DATA_HEADER_ROW + 1
 
     Do
         Dim w As Long, h As Long
         w = 0: h = 0
-        If ws.Cells(i, 2).Value <> "" Then w = CLng(ws.Cells(i, 2).Value)
-        If ws.Cells(i, 3).Value <> "" Then h = CLng(ws.Cells(i, 3).Value)
+        If ws.Cells(i, DATA_COL + 1).Value <> "" Then w = CLng(ws.Cells(i, DATA_COL + 1).Value)
+        If ws.Cells(i, DATA_COL + 2).Value <> "" Then h = CLng(ws.Cells(i, DATA_COL + 2).Value)
         If w = 0 Or h = 0 Then Exit Do
 
-        Dim pName   As String:  pName   = Trim(ws.Cells(i, 1).Value)
-        Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, 4).Value)
-        Dim pRotate As Boolean: pRotate = (ws.Cells(i, 5).Value = True)
+        Dim pName   As String:  pName   = Trim(ws.Cells(i, DATA_COL).Value)
+        Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, DATA_COL + 3).Value)
+        Dim pRotate As Boolean: pRotate = (ws.Cells(i, DATA_COL + 4).Value = True)
 
         Dim sPiece As String
         sPiece = "{""name"":"""  & JsonEscapeStr(pName) & """" & _
@@ -373,7 +425,7 @@ Public Sub RunCut()
     End If
 
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets("Sheet1")
+    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
 
     Dim exePath As String
     exePath = Trim(ws.Cells(1, 2).Value)  ' B1
@@ -452,13 +504,7 @@ Public Sub RunCut()
 
         If ok = 0 Or nRead = 0 Then Exit Do   ' pipe closed
 
-        ' Convert bytes to string (messages are ASCII-compatible;
-        ' non-ASCII piece names arrive as \uXXXX escapes from serde_json)
-        raw = leftover
-        Dim b As Long
-        For b = 0 To nRead - 1
-            raw = raw & Chr(buf(b))
-        Next b
+        raw = leftover & Utf8ToStr(buf, nRead)
         leftover = ""
 
         ' Split into lines
@@ -491,26 +537,18 @@ Public Sub RunCut()
                         CStr(msg("generation")), _
                         CStr(msg("objective")), _
                         CStr(msg("sheets_used"))
-                    If msg.Exists("solution") Then
-                        Application.ScreenUpdating = False
-                        ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), _
-                                 ws.Cells(1000, OUT_COL + 5)).ClearContents
-                        RenderPlacements ws, msg("solution"), msg("pieces")
-                        DrawLayout ws, msg("solution"), msg("pieces"), _
-                            ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
-                        Application.ScreenUpdating = True
-                    End If
 
                 Case "done"
-                    SetProgress ws, "Done " & Chr(10003), "", _
+                    SetProgress ws, "Done " & ChrW(10003), "", _
                         CStr(msg("objective")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
-                    ws.Range(ws.Cells(RESULT_ROW, OUT_COL - 1), _
-                             ws.Cells(1000, OUT_COL + 5)).ClearContents
+                    ws.Range(ws.Cells(RESULT_ROW, RESULT_COL - 1), _
+                             ws.Cells(1000, RESULT_COL + 5)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
                     DrawLayout ws, msg("solution"), msg("pieces"), _
                         ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
+                    ColorPieceRows ws, msg("pieces")
                     Application.ScreenUpdating = True
                     g_Running = False
 
@@ -535,41 +573,40 @@ End Sub
 
 Public Sub StopCut()
     g_Running = False
-    ThisWorkbook.Sheets("Sheet1").Cells(1, OUT_COL).Value = "Stopped"
+    ThisWorkbook.Sheets(SHEET_NAME).Cells(1, OUT_COL).Value = "Stopped"
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================
 
 Sub CreateCheckboxes()
     Dim ws As Worksheet
-    Dim cb As CheckBox
-    Dim cell As Range
-    Dim i As Integer
-    Dim colWidth As Double
+    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
 
-    Set ws = ActiveSheet
-    colWidth = ws.Columns(6).Width  ' F column width
-
-    ' Remove existing checkboxes to avoid duplicates on re-run
     Dim shp As Object
     For Each shp In ws.CheckBoxes
         shp.Delete
     Next shp
 
-    ' Main checkbox in F3, linked to E3
-    Set cell = ws.Cells(3, 6)
-    Set cb = ws.CheckBoxes.Add(cell.Left, cell.Top, colWidth, cell.Height)
-    cb.Caption = "all"
-    cb.OnAction = "cut.MainCheckboxClick"
-    cb.Name = "cbMain"
+    Dim cbCol     As Long:   cbCol     = DATA_COL + 5
+    Dim colWidth  As Double: colWidth  = ws.Columns(cbCol).Width
+    Dim cell      As Range
+    Dim cb        As CheckBox
+    Dim i         As Integer
 
-    ' Individual checkboxes in F4:F103, linked to E4:E103
-    For i = 4 To 103
-        Set cell = ws.Cells(i, 6)
-        Set cb = ws.CheckBoxes.Add(cell.Left, cell.Top, colWidth, cell.Height)
-        cb.LinkedCell = ws.Cells(i, 5).Address
-        cb.Caption = "may rotate?"
-        cb.Name = "cbRow" & i
+    Dim mg As Double: mg = 1#
+
+    Set cell = ws.Cells(DATA_HEADER_ROW, cbCol)
+    Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
+    cb.Caption  = "all"
+    cb.OnAction = "cut.MainCheckboxClick"
+    cb.Name     = "cbMain"
+
+    For i = DATA_HEADER_ROW + 1 To DATA_HEADER_ROW + 100
+        Set cell = ws.Cells(i, cbCol)
+        Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
+        cb.LinkedCell = ws.Cells(i, DATA_COL + 4).Address
+        cb.Caption    = ""
+        cb.Name       = "cbRow" & i
     Next i
 End Sub
 
@@ -581,9 +618,9 @@ Sub MainCheckboxClick()
     Set ws = ActiveSheet
     mainVal = (ws.CheckBoxes("cbMain").Value = xlOn)
 
-    For i = 4 To 103
-        If ws.Cells(i, 5).Value <> "" Then
-            ws.Cells(i, 5).Value = mainVal
+    For i = DATA_HEADER_ROW + 1 To DATA_HEADER_ROW + 100
+        If ws.Cells(i, DATA_COL + 4).Value <> "" Then
+            ws.Cells(i, DATA_COL + 4).Value = mainVal
         End If
     Next i
 End Sub
