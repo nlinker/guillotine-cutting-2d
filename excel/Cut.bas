@@ -24,6 +24,35 @@ Attribute VB_Name = "cut"
 
 Option Explicit
 
+'' == Constants ================================================================
+
+Private Const SHEET_NAME       As String  = "Sheet1"
+Private Const PIPE_NAME        As String  = "\\.\pipe\cut_progress"
+Private Const GENERIC_READ     As Long    = &H80000000
+Private Const OPEN_EXISTING    As Long    = 3
+Private Const FILE_ATTR_NORMAL As Long    = &H80
+Private Const BUFFER_SIZE      As Long    = 8192
+
+Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
+Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
+
+Private Const CFG_SEED_CELL    As String = "L1"  ' base random seed (--seed)
+Private Const CFG_THREADS_CELL As String = "L2"  ' parallel threads (--threads)
+Private Const CFG_GENS_CELL    As String = "L3"  ' generations per run (--gens)
+Private Const CFG_POP_CELL     As String = "L4"  ' population size (--pop)
+Private Const OUT_STATUS_CELL  As String = "O1"  ' status text
+Private Const OUT_GEN_CELL     As String = "O2"  ' current generation
+Private Const OUT_OBJ_CELL     As String = "O3"  ' best objective
+Private Const OUT_SHEETS_CELL  As String = "O4"  ' sheets used
+
+Private Const CANVAS_RANGE     As String = "G5:L5"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
+#If VBA7 Then
+    Private Const INVALID_HANDLE As LongPtr = -1
+#Else
+    Private Const INVALID_HANDLE As Long = -1
+#End If
+
 '' == Windows API =============================================================
 
 #If VBA7 Then
