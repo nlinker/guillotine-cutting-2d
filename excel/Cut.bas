@@ -225,6 +225,7 @@ End Sub
 ' Writes progress labels (column to the left of status cells) and clears previous results.
 Private Sub InitOutputArea(ws As Worksheet)
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
+    ws.Range(OUT_OBJ_CELL).NumberFormat = "# ##0"
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
