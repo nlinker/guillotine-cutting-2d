@@ -1,6 +1,6 @@
 Attribute VB_Name = "cut"
 ''
-'' Сut.bas  —  VBA module: launches cut.exe and reads progress via named pipe
+'' Cut.bas  —  VBA module: launches cut.exe and reads progress via named pipe
 ''
 '' Sheet layout ("Sheet1"):
 ''   B1        : path to cut.exe
@@ -49,6 +49,7 @@ Private Const OUT_SHEETS_CELL  As String = "P4"  ' sheets used
 
 Private Const CANVAS_RANGE     As String = "G6:L6"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
+Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 #If VBA7 Then
     Private Const INVALID_HANDLE As LongPtr = -1
 #Else
@@ -225,7 +226,7 @@ End Sub
 ' Writes progress labels (column to the left of status cells) and clears previous results.
 Private Sub InitOutputArea(ws As Worksheet)
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
-    ws.Range(OUT_OBJ_CELL).NumberFormat = "# ##0"
+    ws.Range(OUT_OBJ_CELL).NumberFormat = "# ### ### ##0"
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
@@ -670,6 +671,114 @@ Public Sub StopCut()
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
     ClearLayoutShapes ws
     ClearPieceColors ws
+End Sub
+
+'' == AutoCAD export ==========================================================
+
+' Encode non-ASCII characters as \U+XXXX for AutoCAD MText Unicode escapes.
+' Also escapes MText control characters \ { }
+Private Function AcadEsc(s As String) As String
+    Dim result As String: result = ""
+    Dim i As Long
+    For i = 1 To Len(s)
+        Dim c As Long: c = AscW(Mid(s, i, 1))
+        If c < 0 Then c = c + 65536
+        Select Case c
+            Case 92:       result = result & "\\"
+            Case 123:      result = result & "\{"
+            Case 125:      result = result & "\}"
+            Case Is > 127: result = result & "\U+" & Right("0000" & Hex(c), 4)
+            Case Else:     result = result & Chr(c)
+        End Select
+    Next i
+    AcadEsc = result
+End Function
+
+Public Sub SendToAutoCAD()
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+
+    Dim shW As Long: shW = ws.Cells(1, 8).Value  ' H1 = sheet width
+    Dim shH As Long: shH = ws.Cells(1, 9).Value  ' I1 = sheet height
+    If shW = 0 Or shH = 0 Then
+        MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
+    End If
+
+    Dim rRow As Long: rRow = ws.Range(RESULT_CELL).Row + 1
+    Dim rCol As Long: rCol = ws.Range(RESULT_CELL).Column
+    If ws.Cells(rRow, rCol).Value = "" Then
+        MsgBox "No placements. Run solver first.", vbExclamation: Exit Sub
+    End If
+
+    Dim acad As Object, doc As Object
+    On Error Resume Next
+    Set acad = GetObject(, "AutoCAD.Application")
+    On Error GoTo 0
+    If acad Is Nothing Then
+        MsgBox "AutoCAD not running. Open a drawing first.", vbCritical: Exit Sub
+    End If
+    Set doc = acad.ActiveDocument
+    acad.Visible = True
+
+    doc.SendCommand "CMDECHO" & vbCr & "0" & vbCr
+    doc.SendCommand "ERASE" & vbCr & "ALL" & vbCr & vbCr
+
+    Const TX As Long = -10000: Const TY As Long = -10000
+    Const MARGIN As Long = 50
+
+    ' ms.AddText uses COM BSTR (Unicode) — bypasses ANSI code-page conversion in SendCommand
+    Dim ms As Object: Set ms = doc.ModelSpace
+
+    Dim r As Long
+    For r = rRow To 10000
+        If ws.Cells(r, rCol).Value = "" And ws.Cells(r, rCol + 1).Value = "" Then Exit For
+
+        Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)     ' sheet index (0-based)
+        Dim pName As String: pName = CStr(ws.Cells(r, rCol + 1).Value) ' piece name
+        Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 2).Value)        ' placed width
+        Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 3).Value)        ' placed height
+        Dim px As Long: px = CLng(ws.Cells(r, rCol + 4).Value)        ' X offset from sheet left (Y-down)
+        Dim py As Long: py = CLng(ws.Cells(r, rCol + 5).Value)        ' Y offset from sheet top (Y-down)
+
+        Dim xOff As Long: xOff = shIdx * (shW + SHEET_GAP_ACAD)      ' sheet left edge in drawing
+
+        doc.SendCommand "rectangle" & vbCr & _
+            Trim(Str(TX)) & "," & Trim(Str(TY)) & vbCr & _
+            Trim(Str(TX + pw)) & "," & Trim(Str(TY + ph)) & vbCr
+
+        Dim lbl As String
+        If Len(pName) > 0 Then lbl = pName & " " & pw & "x" & ph Else lbl = pw & "x" & ph
+        Dim txtPt(0 To 2) As Double
+        txtPt(0) = TX + CDbl(pw) / 2: txtPt(1) = TY + CDbl(ph) / 2: txtPt(2) = 0
+        Dim txtObj As Object
+        Set txtObj = ms.AddMText(txtPt, CDbl(pw) * 2, AcadEsc(lbl))
+        txtObj.AttachmentPoint = 5  ' acAttachmentPointMiddleCenter
+        txtObj.InsertionPoint = txtPt
+        If pw < ph Then txtObj.Rotation = 1.5707963265
+        Set txtObj = Nothing
+
+        Dim bName As String: bName = "cp" & r
+        doc.SendCommand "-block" & vbCr & bName & vbCr & "Y" & vbCr & _
+            Trim(Str(TX)) & "," & Trim(Str(TY)) & vbCr & "w" & vbCr & _
+            Trim(Str(TX - MARGIN)) & "," & Trim(Str(TY - MARGIN)) & vbCr & _
+            Trim(Str(TX + pw + MARGIN)) & "," & Trim(Str(TY + ph + MARGIN)) & vbCr & vbCr
+
+        ' Y-flip: solver uses Y-down (0 = sheet top), AutoCAD uses Y-up (0 = sheet bottom)
+        doc.SendCommand "-insert" & vbCr & bName & vbCr & _
+            Trim(Str(xOff + px)) & "," & Trim(Str(shH - py - ph)) & vbCr & "1" & vbCr & "1" & vbCr & "0" & vbCr
+    Next r
+
+    Dim nSheets As Long: nSheets = CLng(ws.Range(OUT_SHEETS_CELL).Value)
+    If nSheets < 1 Then nSheets = 1
+    Dim si As Long
+    For si = 0 To nSheets - 1
+        Dim sxOff As Long: sxOff = si * (shW + SHEET_GAP_ACAD)
+        doc.SendCommand "rectangle" & vbCr & _
+            Trim(Str(sxOff)) & ",0" & vbCr & _
+            Trim(Str(sxOff + shW)) & "," & Trim(Str(shH)) & vbCr
+    Next si
+
+    doc.SendCommand "ZOOM" & vbCr & "e" & vbCr
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================
