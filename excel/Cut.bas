@@ -98,6 +98,11 @@ Private Const BUFFER_SIZE      As Long    = 8192
 
 Private Const DATA_COL         As Long = 1   ' leftmost column of piece table (Name)
 Private Const DATA_HEADER_ROW  As Long = 5   ' piece table header row (Name, Width, Height, Count, Rotate)
+
+Private Const CFG_ROW          As Long = 1   ' row for GA config cells
+Private Const CFG_THREADS_CELL As Long = 3   ' C1 — parallel threads (--threads)
+Private Const CFG_GENS_CELL    As Long = 4   ' D1 — generations per run (--gens)
+Private Const CFG_POP_CELL     As Long = 5   ' E1 — population size (--pop)
 Private Const OUT_COL          As Long = 11  ' column K (1-based) for progress output
 Private Const RESULT_ROW       As Long = 6   ' first row of placement results table
 
@@ -451,9 +456,18 @@ Public Sub RunCut()
     Print #fNum, jsonStr
     Close #fNum
 
+    ' Read GA config from sheet (use defaults if cells empty)
+    Dim nThreads As Long: nThreads = 4
+    Dim nGens    As Long: nGens    = 2000
+    Dim nPop     As Long: nPop     = 200
+    If ws.Cells(CFG_ROW, CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Cells(CFG_ROW, CFG_THREADS_CELL).Value)
+    If ws.Cells(CFG_ROW, CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Cells(CFG_ROW, CFG_GENS_CELL).Value)
+    If ws.Cells(CFG_ROW, CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Cells(CFG_ROW, CFG_POP_CELL).Value)
+
     ' Launch cut.exe (non-blocking Shell)
     Dim cmd As String
-    cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34)
+    cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
+        & " --threads " & nThreads & " --gens " & nGens & " --pop " & nPop
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe

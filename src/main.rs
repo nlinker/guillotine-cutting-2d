@@ -36,9 +36,9 @@ enum Command {
         /// Path to a JSON problem file (mutually exclusive with positional problem string)
         #[arg(long)]
         json: Option<String>,
-        /// Number of parallel GA runs
+        /// Number of parallel threads (independent GA runs)
         #[arg(long, default_value_t = 8)]
-        seeds: usize,
+        threads: usize,
         /// Generations per run
         #[arg(long, default_value_t = 2000)]
         gens: usize,
@@ -72,10 +72,10 @@ enum Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Calc { problem, json, seeds, gens, pop, elite, k, progress, sink, sink_interval } => {
+        Command::Calc { problem, json, threads, gens, pop, elite, k, progress, sink, sink_interval } => {
             let cfg = ga_config(gens, pop, elite, k);
             let parsed = load_problem(problem.as_deref(), json.as_deref())?;
-            run_calc_with_sink(&parsed, &cfg, seeds, progress, &sink, sink_interval)?;
+            run_calc_with_sink(&parsed, &cfg, threads, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
@@ -97,12 +97,12 @@ fn load_problem(problem: Option<&str>, json: Option<&str>) -> Result<Problem, Bo
 fn run_calc_with_sink(
     problem: &Problem,
     cfg: &GaConfig,
-    n_seeds: usize,
+    n_threads: usize,
     progress_interval: usize,
     sink_mode: &str,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let seeds: Vec<u64> = (0..n_seeds as u64).collect();
+    let seeds: Vec<u64> = (0..n_threads as u64).collect();
 
     eprintln!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
     eprintln!("GA cfg  : {cfg}");
