@@ -88,9 +88,9 @@ const INDEX_HTML: &str = r##"<!doctype html>
 
 <form id="form">
   <div class="row">
-    <label>Sheet W <input type="number" id="sheet-w" value="200" min="1"></label>
-    <label>× H <input type="number" id="sheet-h" value="160" min="1"></label>
-    <label>Kerf <input type="number" id="kerf" value="1" min="0"></label>
+    <label>Sheet W <input type="number" id="sheet-w" value="3050" min="1"></label>
+    <label>× H <input type="number" id="sheet-h" value="1300" min="1"></label>
+    <label>Kerf <input type="number" id="kerf" value="7" min="0"></label>
   </div>
 
   <table id="pieces-table">
@@ -132,23 +132,17 @@ const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a',
 
 // ── default data ────────────────────────────────────────────────────────────
 const DEFAULT_PIECES = [
-  {name:'', w:22,  h:26,  count:4, rotate:false},
-  {name:'', w:32,  h:20,  count:7, rotate:false},
-  {name:'', w:35,  h:20,  count:2, rotate:false},
-  {name:'', w:42,  h:21,  count:5, rotate:false},
-  {name:'', w:46,  h:26,  count:1, rotate:true},
-  {name:'', w:67,  h:34,  count:3, rotate:false},
-  {name:'', w:75,  h:42,  count:2, rotate:false},
-  {name:'', w:76,  h:22,  count:4, rotate:false},
-  {name:'', w:83,  h:32,  count:4, rotate:true},
-  {name:'', w:83,  h:82,  count:1, rotate:false},
-  {name:'', w:93,  h:31,  count:1, rotate:false},
-  {name:'', w:106, h:31,  count:1, rotate:false},
-  {name:'', w:124, h:26,  count:5, rotate:false},
-  {name:'', w:130, h:22,  count:6, rotate:false},
-  {name:'', w:157, h:31,  count:3, rotate:false},
-  {name:'', w:164, h:21,  count:2, rotate:false},
-  {name:'', w:177, h:31,  count:1, rotate:false},
+  {name:'стойка ←',    w:2384, h:600, count:1, rotate:false},
+  {name:'стойка →',    w:2384, h:600, count:1, rotate:false},
+  {name:'стойка →←',  w:2288, h:500, count:1, rotate:false},
+  {name:'низ ↓',       w:1768, h:600, count:1, rotate:false},
+  {name:'цоколь ↓',   w:1768, h:80,  count:2, rotate:false},
+  {name:'крыша ↑',    w:1800, h:710, count:1, rotate:false},
+  {name:'полки ↔',    w:550,  h:490, count:5, rotate:false},
+  {name:'полки ↔',    w:1202, h:490, count:2, rotate:false},
+  {name:'ребро ↕',    w:1202, h:300, count:1, rotate:false},
+  {name:'распорка ↔', w:300,  h:490, count:1, rotate:false},
+  {name:'перегородка', w:150,  h:490, count:2, rotate:true},
 ];
 
 // ── pieces table ─────────────────────────────────────────────────────────────
