@@ -52,6 +52,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
+    placements.sort_unstable_by_key(|p| (p.sheet_idx, p.x, p.y));
     Solution {
         placements,
         leftovers: free,
@@ -236,11 +237,12 @@ mod tests {
         assert_eq!(sol.sheets_used(), 2);
         let p = &sol.placements;
         assert_eq!(p.len(), 5);
-        assert_eq!((p[0].sheet_idx, p[0].x, p[0].y, p[0].rotated), (0, 0, 0, false));
-        assert_eq!((p[1].sheet_idx, p[1].x, p[1].y, p[1].rotated), (0, 125, 0, false));
-        assert_eq!((p[2].sheet_idx, p[2].x, p[2].y, p[2].rotated), (1, 0, 0, false));
-        assert_eq!((p[3].sheet_idx, p[3].x, p[3].y, p[3].rotated), (1, 0, 65, true));
-        assert_eq!((p[4].sheet_idx, p[4].x, p[4].y, p[4].rotated), (0, 125, 85, true));
+        // sorted by (sheet_idx, x, y)
+        assert_eq!((p[0].sheet_idx, p[0].x, p[0].y, p[0].rotated), (0, 0,   0,  false)); // P0
+        assert_eq!((p[1].sheet_idx, p[1].x, p[1].y, p[1].rotated), (0, 125, 0,  false)); // P1
+        assert_eq!((p[2].sheet_idx, p[2].x, p[2].y, p[2].rotated), (0, 125, 85, true));  // P4r
+        assert_eq!((p[3].sheet_idx, p[3].x, p[3].y, p[3].rotated), (1, 0,   0,  false)); // P2
+        assert_eq!((p[4].sheet_idx, p[4].x, p[4].y, p[4].rotated), (1, 0,   65, true));  // P3r
     }
 
     #[test]
