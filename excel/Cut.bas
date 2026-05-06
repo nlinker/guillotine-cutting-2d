@@ -36,8 +36,9 @@ Private Const BUFFER_SIZE      As Long    = 8192
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
-Private Const CFG_SEED_CELL        As String = "L1"            ' base random seed (--seed)
-Private Const CFG_RANDOM_SEED_CHK  As String = "ChkRandomSeed"  ' checkbox: randomise seed on each run
+Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
+
+Private Const CFG_SEED_CELL    As String = "L1"  ' base random seed (--seed)
 Private Const CFG_THREADS_CELL As String = "L2"  ' parallel threads (--threads)
 Private Const CFG_GENS_CELL    As String = "L3"  ' generations per run (--gens)
 Private Const CFG_POP_CELL     As String = "L4"  ' population size (--pop)
