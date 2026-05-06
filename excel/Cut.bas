@@ -274,8 +274,8 @@ End Sub
 
 '' == Layout drawing ===========================================================
 
-' Maps piece name to a fill color from a 12-color palette.
-Private Function PieceColor(ByVal pieceName As String) As Long
+' Returns a deterministic fill color from a 12-color palette by row index (0-based).
+Private Function PieceColor(ByVal colorIdx As Long) As Long
     Dim p(11) As Long
     p(0)  = RGB(255, 182, 193): p(1)  = RGB(173, 216, 230)
     p(2)  = RGB(144, 238, 144): p(3)  = RGB(255, 255, 153)
@@ -283,12 +283,35 @@ Private Function PieceColor(ByVal pieceName As String) As Long
     p(6)  = RGB(135, 206, 235): p(7)  = RGB(240, 180, 180)
     p(8)  = RGB(180, 255, 180): p(9)  = RGB(255, 228, 196)
     p(10) = RGB(200, 200, 255): p(11) = RGB(255, 240, 180)
-    Dim h As Long: h = 0
-    Dim i As Integer
-    For i = 1 To Len(pieceName)
-        h = (h * 31 + AscW(Mid(pieceName, i, 1))) Mod 12
-    Next i
-    PieceColor = p(Abs(h) Mod 12)
+    PieceColor = p(colorIdx Mod 12)
+End Function
+
+' Builds a 1-based array clrMap(1..totalPieces): piece_idx+1 -> RGB color.
+' Color index = input table row order (0-based), expanding by count per row.
+' Assumes pieces[] in the JSON response are in the same order as the input table rows.
+' This holds because Rust returns Done { pieces: problem.pieces.clone(), ... } where
+' problem.pieces is built by expanding each PieceSpec in input order — no sorting or shuffling.
+Private Function BuildPieceColorMap(ws As Worksheet, totalPieces As Long) As Variant
+    Dim clrMap() As Long
+    ReDim clrMap(1 To totalPieces)
+    Dim dc As Long: dc = DataCol(ws)
+    Dim pi As Long: pi = 1
+    Dim ci As Long: ci = 0
+    Dim r  As Long: r  = DataStartRow(ws)
+    Do While ws.Cells(r, dc + 1).Value <> "" And pi <= totalPieces
+        Dim cnt As Long: cnt = 1
+        If ws.Cells(r, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(r, dc + 3).Value)
+        If cnt < 1 Then cnt = 1
+        Dim clr As Long: clr = PieceColor(ci)
+        Dim j As Long
+        For j = 0 To cnt - 1
+            clrMap(pi) = clr
+            pi = pi + 1
+        Next j
+        ci = ci + 1
+        r = r + 1
+    Loop
+    BuildPieceColorMap = clrMap
 End Function
 
 ' Deletes all shapes whose name starts with "cut_".
@@ -316,6 +339,8 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     If sheetW <= 0 Or sheetH <= 0 Then Exit Sub
 
     ClearLayoutShapes ws
+
+    Dim clrMap As Variant: clrMap = BuildPieceColorMap(ws, pieces.Count)
 
     Dim cvs         As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
     Dim originLeft  As Double: originLeft  = cvs.Cells(1, 1).Left
@@ -369,7 +394,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         Dim s As Shape
         Set s = ws.Shapes.AddShape(msoShapeRectangle, rLeft, rTop, rWidth, rHeight)
         s.Name = "cut_p_" & shIdx & "_" & (idx - 1)
-        s.Fill.ForeColor.RGB = PieceColor(pieces(idx)("name"))
+        s.Fill.ForeColor.RGB = clrMap(idx)
         s.Fill.Transparency = 0
         s.Line.ForeColor.RGB = RGB(80, 80, 80)
         s.Line.Weight = 0.5#
@@ -393,20 +418,12 @@ End Sub
 
 Private Sub ColorPieceRows(ws As Worksheet, pieces As Object)
     Dim dc As Long: dc = DataCol(ws)
+    Dim ci As Long: ci = 0
     Dim i As Long
-    Dim pIdx As Long: pIdx = 1  ' 1-based index into expanded pieces array
     For i = DataStartRow(ws) To 200
-        Dim w As Long, h As Long
-        w = 0: h = 0
-        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
-        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
-        If w = 0 Or h = 0 Then Exit For
-        Dim cnt As Long: cnt = 1
-        If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
-        If cnt < 1 Then cnt = 1
-        Dim pName As String: pName = pieces(pIdx)("name")
-        ws.Range(ws.Cells(i, dc), ws.Cells(i, dc + 4)).Interior.Color = PieceColor(pName)
-        pIdx = pIdx + cnt
+        If ws.Cells(i, dc + 1).Value = "" Then Exit For
+        ws.Range(ws.Cells(i, dc), ws.Cells(i, dc + 4)).Interior.Color = PieceColor(ci)
+        ci = ci + 1
     Next i
 End Sub
 
