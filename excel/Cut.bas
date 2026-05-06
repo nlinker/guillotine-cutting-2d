@@ -222,7 +222,7 @@ End Sub
 
 ' Writes progress labels (column to the left of status cells) and clears previous results.
 Private Sub InitOutputArea(ws As Worksheet)
-    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
+    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
@@ -491,9 +491,11 @@ Public Sub RunCut()
     Close #fNum
 
     ' Read GA config from sheet (use defaults if cells empty)
+    Dim nSeed    As Long: nSeed    = 42
     Dim nThreads As Long: nThreads = 4
     Dim nGens    As Long: nGens    = 2000
     Dim nPop     As Long: nPop     = 200
+    If ws.Range(CFG_SEED_CELL).Value    <> "" Then nSeed    = CLng(ws.Range(CFG_SEED_CELL).Value)
     If ws.Range(CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Range(CFG_THREADS_CELL).Value)
     If ws.Range(CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Range(CFG_GENS_CELL).Value)
     If ws.Range(CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Range(CFG_POP_CELL).Value)
@@ -501,7 +503,7 @@ Public Sub RunCut()
     ' Launch cut.exe (non-blocking Shell)
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
-        & " --threads " & nThreads & " --gens " & nGens & " --pop " & nPop
+        & " --seed " & nSeed & " --threads " & nThreads & " --gens " & nGens & " --pop " & nPop
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe
@@ -592,7 +594,7 @@ Public Sub RunCut()
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
                     ws.Range(ws.Range(RESULT_CELL), _
-                             ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
+                             ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
                     DrawLayout ws, msg("solution"), msg("pieces"), _
                         ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
@@ -624,7 +626,7 @@ Public Sub StopCut()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets(SHEET_NAME)
     ws.Range(OUT_STATUS_CELL).Value = "Stopped"
-    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
+    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
