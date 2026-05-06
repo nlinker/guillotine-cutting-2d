@@ -1,6 +1,6 @@
 Attribute VB_Name = "cut"
 ''
-'' cut.bas  —  VBA module: launches cut.exe and reads progress via named pipe
+'' Сut.bas  —  VBA module: launches cut.exe and reads progress via named pipe
 ''
 '' Sheet layout ("Sheet1"):
 ''   B1        : path to cut.exe
@@ -36,16 +36,17 @@ Private Const BUFFER_SIZE      As Long    = 8192
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
-Private Const CFG_SEED_CELL    As String = "L1"  ' base random seed (--seed)
+Private Const CFG_SEED_CELL        As String = "L1"            ' base random seed (--seed)
+Private Const CFG_RANDOM_SEED_CHK  As String = "ChkRandomSeed"  ' checkbox: randomise seed on each run
 Private Const CFG_THREADS_CELL As String = "L2"  ' parallel threads (--threads)
 Private Const CFG_GENS_CELL    As String = "L3"  ' generations per run (--gens)
 Private Const CFG_POP_CELL     As String = "L4"  ' population size (--pop)
-Private Const OUT_STATUS_CELL  As String = "O1"  ' status text
-Private Const OUT_GEN_CELL     As String = "O2"  ' current generation
-Private Const OUT_OBJ_CELL     As String = "O3"  ' best objective
-Private Const OUT_SHEETS_CELL  As String = "O4"  ' sheets used
+Private Const OUT_STATUS_CELL  As String = "P1"  ' status text
+Private Const OUT_GEN_CELL     As String = "P2"  ' current generation
+Private Const OUT_OBJ_CELL     As String = "P3"  ' best objective
+Private Const OUT_SHEETS_CELL  As String = "P4"  ' sheets used
 
-Private Const CANVAS_RANGE     As String = "G5:L5"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_RANGE     As String = "G6:L6"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 #If VBA7 Then
     Private Const INVALID_HANDLE As LongPtr = -1
@@ -512,7 +513,13 @@ Public Sub RunCut()
     Dim nThreads As Long: nThreads = 4
     Dim nGens    As Long: nGens    = 2000
     Dim nPop     As Long: nPop     = 200
-    If ws.Range(CFG_SEED_CELL).Value    <> "" Then nSeed    = CLng(ws.Range(CFG_SEED_CELL).Value)
+    If ws.CheckBoxes(CFG_RANDOM_SEED_CHK).Value = xlOn Then
+        Randomize
+        nSeed = Int(Rnd() * 10000)
+        ws.Range(CFG_SEED_CELL).Value = nSeed
+    ElseIf ws.Range(CFG_SEED_CELL).Value <> "" Then
+        nSeed = CLng(ws.Range(CFG_SEED_CELL).Value)
+    End If
     If ws.Range(CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Range(CFG_THREADS_CELL).Value)
     If ws.Range(CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Range(CFG_GENS_CELL).Value)
     If ws.Range(CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Range(CFG_POP_CELL).Value)
@@ -634,6 +641,21 @@ NextLine:
 
     CloseHandle hPipe
     g_Running = False
+End Sub
+
+Public Function IsRunning() As Boolean
+    IsRunning = g_Running
+End Function
+
+' Assign this macro to the seed Spinner control (right-click → Assign Macro → RestartCut).
+' Forms Spinner does not fire Worksheet_Change, so a direct macro assignment is required.
+Public Sub RestartCut()
+    If g_Running Then
+        StopCut
+        Application.OnTime Now + TimeValue("00:00:01"), "cut.RunCut"
+    Else
+        RunCut
+    End If
 End Sub
 
 '' == Stop =====================================================================
