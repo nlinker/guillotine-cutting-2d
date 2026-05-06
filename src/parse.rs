@@ -47,7 +47,9 @@ pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
     let (sheet_str, rest) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
     let (kerf_str, pieces_str) = rest.split_once(':').ok_or(ParseError::MissingKerf)?;
     let (sheet, default_rotate) = parse_sheet(sheet_str.trim())?;
-    let kerf = kerf_str.trim().parse::<u32>()
+    let kerf = kerf_str
+        .trim()
+        .parse::<u32>()
         .map_err(|_| ParseError::InvalidKerf(kerf_str.trim().to_string()))?;
     let mut pieces = Vec::new();
     for piece_str in pieces_str.split(',') {
@@ -101,7 +103,12 @@ fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseErr
     if width == 0 || height == 0 || count == 0 {
         return Err(err());
     }
-    Ok(PieceSpec { width, height, count, can_rotate })
+    Ok(PieceSpec {
+        width,
+        height,
+        count,
+        can_rotate,
+    })
 }
 
 fn parse_u32(s: &str, context: &str) -> Result<u32, ParseError> {
@@ -159,10 +166,7 @@ mod tests {
             ParseError::MissingSeparator
         );
         assert!(parse_problem("3000x4000F:7:100x100").is_ok());
-        assert_eq!(
-            parse_problem("3000x4000:100x100").unwrap_err(),
-            ParseError::MissingKerf
-        );
+        assert_eq!(parse_problem("3000x4000:100x100").unwrap_err(), ParseError::MissingKerf);
         assert_eq!(
             parse_problem("3000x4000F:abc:100x100").unwrap_err(),
             ParseError::InvalidKerf("abc".into())

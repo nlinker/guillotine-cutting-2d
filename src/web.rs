@@ -1,14 +1,14 @@
-use std::convert::Infallible;
-use std::fmt::Write as FmtWrite;
-use std::sync::Arc;
-use std::time::Instant;
+use std::{convert::Infallible, fmt::Write as FmtWrite, sync::Arc, time::Instant};
 
-use rand::{Rng, SeedableRng};
-use rand_xoshiro::Xoshiro256StarStar;
-
-use axum::extract::Query;
-use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::{Router, response::Html, routing::get};
+use axum::{
+    Router,
+    extract::Query,
+    response::{
+        Html,
+        sse::{Event, KeepAlive, Sse},
+    },
+    routing::get,
+};
 use cutting::{
     decoder::decode,
     ga::{GaEvent, Individual, ga_channel, run_ga_mt_bg},
@@ -16,6 +16,8 @@ use cutting::{
     parse::parse_problem,
 };
 use futures_util::{Stream, stream};
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -34,11 +36,21 @@ struct SolveParams {
     progress: usize,
 }
 
-fn default_seed() -> u64 { 42 }
-fn default_threads() -> usize { 8 }
-fn default_gens() -> usize { 500 }
-fn default_pop() -> usize { 200 }
-fn default_progress() -> usize { 50 }
+fn default_seed() -> u64 {
+    42
+}
+fn default_threads() -> usize {
+    8
+}
+fn default_gens() -> usize {
+    500
+}
+fn default_pop() -> usize {
+    200
+}
+fn default_progress() -> usize {
+    50
+}
 
 const INDEX_HTML: &str = r##"<!doctype html>
 <html lang="en">
@@ -265,13 +277,15 @@ pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
 }
 
 enum StreamState {
-    Running { handle: cutting::ga::GaHandle, problem: Arc<Problem>, start: Instant },
+    Running {
+        handle: cutting::ga::GaHandle,
+        problem: Arc<Problem>,
+        start: Instant,
+    },
     Finished,
 }
 
-async fn stream_handler(
-    Query(params): Query<SolveParams>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let initial = match parse_problem(&params.problem) {
         Err(e) => Err(e.to_string()),
         Ok(problem) => {
@@ -281,7 +295,11 @@ async fn stream_handler(
             let seeds: Vec<u64> = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect();
             let (handle, ctx) = ga_channel(params.progress);
             run_ga_mt_bg(Arc::clone(&problem), cfg, seeds, ctx);
-            Ok(StreamState::Running { handle, problem, start: Instant::now() })
+            Ok(StreamState::Running {
+                handle,
+                problem,
+                start: Instant::now(),
+            })
         }
     };
 
@@ -292,36 +310,40 @@ async fn stream_handler(
                 Some((Ok(evt), Err(String::new())))
             }
             Ok(StreamState::Finished) => None,
-            Ok(StreamState::Running { mut handle, problem, start }) => {
-                match handle.rx.recv().await {
-                    None => None,
-                    Some(GaEvent::Progress(p)) => {
-                        let data = json!({
-                            "generation": p.generation,
-                            "objective":  p.objective,
-                            "sheets":     p.sheets_used,
-                            "seed":       p.seed,
-                        }).to_string();
-                        let evt = Event::default().event("progress").data(data);
-                        Some((Ok(evt), Ok(StreamState::Running { handle, problem, start })))
-                    }
-                    Some(GaEvent::Done(results)) => {
-                        let elapsed = start.elapsed().as_secs_f64();
-                        let (_, best_ind) = &results[0];
-                        let best_sol = decode(&problem, &best_ind.genome);
-                        let html = results_html(&problem, &results, elapsed);
-                        let data = json!({
-                            "html":    html,
-                            "solution": best_sol,
-                            "pieces":   problem.pieces,
-                            "sheet_w":  problem.sheet.width,
-                            "sheet_h":  problem.sheet.height,
-                        }).to_string();
-                        let evt = Event::default().event("done").data(data);
-                        Some((Ok(evt), Ok(StreamState::Finished)))
-                    }
+            Ok(StreamState::Running {
+                mut handle,
+                problem,
+                start,
+            }) => match handle.rx.recv().await {
+                None => None,
+                Some(GaEvent::Progress(p)) => {
+                    let data = json!({
+                        "generation": p.generation,
+                        "objective":  p.objective,
+                        "sheets":     p.sheets_used,
+                        "seed":       p.seed,
+                    })
+                    .to_string();
+                    let evt = Event::default().event("progress").data(data);
+                    Some((Ok(evt), Ok(StreamState::Running { handle, problem, start })))
                 }
-            }
+                Some(GaEvent::Done(results)) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let (_, best_ind) = &results[0];
+                    let best_sol = decode(&problem, &best_ind.genome);
+                    let html = results_html(&problem, &results, elapsed);
+                    let data = json!({
+                        "html":    html,
+                        "solution": best_sol,
+                        "pieces":   problem.pieces,
+                        "sheet_w":  problem.sheet.width,
+                        "sheet_h":  problem.sheet.height,
+                    })
+                    .to_string();
+                    let evt = Event::default().event("done").data(data);
+                    Some((Ok(evt), Ok(StreamState::Finished)))
+                }
+            },
         }
     });
 
@@ -331,22 +353,31 @@ async fn stream_handler(
 fn results_html(problem: &Problem, results: &[(u64, Individual)], elapsed: f64) -> String {
     let decoded = crate::decode_results(problem, results);
     let mut out = String::new();
-    let _ = writeln!(out,
+    let _ = writeln!(
+        out,
         "<p><b>Done in {elapsed:.1}s</b> — {} pieces on {}×{} sheet, kerf={}</p>",
-        problem.pieces.len(), problem.sheet.width, problem.sheet.height, problem.kerf,
+        problem.pieces.len(),
+        problem.sheet.width,
+        problem.sheet.height,
+        problem.kerf,
     );
     out.push_str("<table><thead><tr><th>seed</th><th>sheets</th><th>objective</th><th>last_n</th><th>last sheet</th></tr></thead><tbody>\n");
     for (seed, obj, sol, n, summary) in &decoded {
-        let _ = writeln!(out,
+        let _ = writeln!(
+            out,
             "<tr><td>{seed}</td><td>{}</td><td>{obj}</td><td>{n}</td><td>{}</td></tr>",
-            sol.sheets_used(), he(summary));
+            sol.sheets_used(),
+            he(summary)
+        );
     }
     out.push_str("</tbody></table>\n");
 
     let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
-    let _ = writeln!(out,
+    let _ = writeln!(
+        out,
         "<p>Best — seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {}</p>",
-        best_sol.sheets_used(), he(best_summary),
+        best_sol.sheets_used(),
+        he(best_summary),
     );
     out
 }

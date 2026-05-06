@@ -12,8 +12,10 @@
 ///
 /// Run with:  cargo run --example ga_benchmark --release
 use cutting::ga::{GaConfig, run_ga};
-use cutting::generator::{GeneratorConfig, generate};
-use cutting::model::Sheet;
+use cutting::{
+    generator::{GeneratorConfig, generate},
+    model::Sheet,
+};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
@@ -43,8 +45,16 @@ fn run_suite(s: &Suite) -> Vec<InstanceResult> {
             let gen_seed = GEN_BASE_SEED + i as u64;
             let out = generate(&s.gen_cfg, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
             let ref_obj = out.optimal_solution.objective(&out.problem);
-            let best = run_ga(&out.problem, &s.ga_cfg, &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)));
-            InstanceResult { gen_seed, ref_obj, ga_obj: best.objective }
+            let best = run_ga(
+                &out.problem,
+                &s.ga_cfg,
+                &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)),
+            );
+            InstanceResult {
+                gen_seed,
+                ref_obj,
+                ga_obj: best.objective,
+            }
         })
         .collect()
 }
@@ -62,18 +72,13 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
     );
     println!("GA cfg: {}", s.ga_cfg);
     println!("Instances : {n}");
-    println!(
-        "Matched   : {:4} ({:.1}%)",
-        matched, matched as f64 / n as f64 * 100.0
-    );
+    println!("Matched   : {:4} ({:.1}%)", matched, matched as f64 / n as f64 * 100.0);
     println!(
         "Better    : {:4} ({:.1}%)  [GA found fewer sheets or better leftovers]",
-        better, better as f64 / n as f64 * 100.0
+        better,
+        better as f64 / n as f64 * 100.0
     );
-    println!(
-        "Worse     : {:4} ({:.1}%)",
-        worse, worse as f64 / n as f64 * 100.0
-    );
+    println!("Worse     : {:4} ({:.1}%)", worse, worse as f64 / n as f64 * 100.0);
 
     if worse > 0 {
         let mut gaps: Vec<i64> = results
@@ -95,8 +100,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
             p95,
         );
 
-        let mut by_gap: Vec<&InstanceResult> =
-            results.iter().filter(|r| r.ga_obj > r.ref_obj).collect();
+        let mut by_gap: Vec<&InstanceResult> = results.iter().filter(|r| r.ga_obj > r.ref_obj).collect();
         by_gap.sort_unstable_by_key(|r| -(r.ga_obj - r.ref_obj));
         println!("  worst instances (gen_seed / ref / ga / gap):");
         for r in by_gap.iter().take(5) {
@@ -117,7 +121,10 @@ fn main() {
     let suites = [Suite {
         name: "baseline",
         gen_cfg: GeneratorConfig {
-            sheet: Sheet { width: 200, height: 160 },
+            sheet: Sheet {
+                width: 200,
+                height: 160,
+            },
             k: 4,
             min_size: 20,
             kerf: 1,

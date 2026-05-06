@@ -1,6 +1,10 @@
-use std::fmt;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    fmt,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -56,8 +60,14 @@ impl fmt::Display for GaConfig {
         write!(
             f,
             "pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2}",
-            self.pop_size, self.n_generations, self.n_elite, self.tournament_k,
-            self.p_crossover, self.p_swap, self.p_flip, self.p_point,
+            self.pop_size,
+            self.n_generations,
+            self.n_elite,
+            self.tournament_k,
+            self.p_crossover,
+            self.p_swap,
+            self.p_flip,
+            self.p_point,
         )
     }
 }
@@ -139,8 +149,16 @@ pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
     let (tx, rx) = mpsc::unbounded_channel();
     let stop = Arc::new(AtomicBool::new(false));
     (
-        GaHandle { rx, stop: Arc::clone(&stop) },
-        GaContext { tx, stop, progress_interval, seed: 0 },
+        GaHandle {
+            rx,
+            stop: Arc::clone(&stop),
+        },
+        GaContext {
+            tx,
+            stop,
+            progress_interval,
+            seed: 0,
+        },
     )
 }
 
@@ -221,7 +239,9 @@ fn run_ga_inner<R: Rng>(
                 if pool.as_ref().is_none_or(|g| best.objective < g.objective) {
                     *pool = Some(best.clone());
                 }
-                let worst_idx = pop.iter().enumerate()
+                let worst_idx = pop
+                    .iter()
+                    .enumerate()
                     .max_by_key(|(_, i)| i.objective)
                     .map(|(i, _)| i)
                     .unwrap();
@@ -230,13 +250,15 @@ fn run_ga_inner<R: Rng>(
                 {
                     pop[worst_idx] = global.clone();
                 }
-                pool.as_ref().map(|g| GaEvent::Progress(ProgressEvent {
-                    seed: ctx.seed,
-                    generation: step + 1,
-                    objective: g.objective,
-                    sheets_used: g.sheets_used,
-                    genome: g.genome.clone(),
-                }))
+                pool.as_ref().map(|g| {
+                    GaEvent::Progress(ProgressEvent {
+                        seed: ctx.seed,
+                        generation: step + 1,
+                        objective: g.objective,
+                        sheets_used: g.sheets_used,
+                        genome: g.genome.clone(),
+                    })
+                })
             };
             if let Some(evt) = event {
                 ctx.tx.send(evt).ok();
@@ -267,7 +289,10 @@ pub fn run_ga_mt(
                 let thread_ctx = ctx.as_ref().map(|c| GaContext { seed, ..c.clone() });
                 s.spawn(move || {
                     let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                    (seed, run_ga_inner(problem, config, &mut rng, pool_ref, thread_ctx.as_ref()))
+                    (
+                        seed,
+                        run_ga_inner(problem, config, &mut rng, pool_ref, thread_ctx.as_ref()),
+                    )
                 })
             })
             .collect::<Vec<_>>()
@@ -284,12 +309,7 @@ pub fn run_ga_mt(
 /// Progress and final results arrive through the `GaHandle` from `ga_channel`.
 /// Sends `GaEvent::Progress` during the run and `GaEvent::Done` when finished.
 /// Dropping `GaHandle` requests early termination via the stop flag.
-pub fn run_ga_mt_bg(
-    problem: Arc<Problem>,
-    config: Arc<GaConfig>,
-    seeds: Vec<u64>,
-    ctx: GaContext,
-) {
+pub fn run_ga_mt_bg(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
     std::thread::spawn(move || {
         let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
         let pool_ref = &migration_pool;
@@ -488,7 +508,11 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
         .map(|_| {
             let genome = random_genome(problem, rng);
             let sol = decode(problem, &genome);
-            Individual { genome, objective: sol.objective(problem), sheets_used: sol.sheets_used() }
+            Individual {
+                genome,
+                objective: sol.objective(problem),
+                sheets_used: sol.sheets_used(),
+            }
         })
         .collect()
 }

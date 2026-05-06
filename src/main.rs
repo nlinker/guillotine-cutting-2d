@@ -1,7 +1,9 @@
-use std::collections::BTreeMap;
-use std::error::Error;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use clap::{Parser, Subcommand};
 use cutting::{
@@ -12,6 +14,8 @@ use cutting::{
     parse_json::parse_problem_json,
     transport::{ProgressMessage, ProgressSink},
 };
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
 
 mod web;
 
@@ -36,6 +40,9 @@ enum Command {
         /// Path to a JSON problem file (mutually exclusive with positional problem string)
         #[arg(long)]
         json: Option<String>,
+        /// Base random seed; different values produce different layouts
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
         /// Number of parallel threads (independent GA runs)
         #[arg(long, default_value_t = 8)]
         threads: usize,
@@ -72,10 +79,22 @@ enum Command {
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Calc { problem, json, threads, gens, pop, elite, k, progress, sink, sink_interval } => {
+        Command::Calc {
+            problem,
+            json,
+            seed,
+            threads,
+            gens,
+            pop,
+            elite,
+            k,
+            progress,
+            sink,
+            sink_interval,
+        } => {
             let cfg = ga_config(gens, pop, elite, k);
             let parsed = load_problem(problem.as_deref(), json.as_deref())?;
-            run_calc_with_sink(&parsed, &cfg, threads, progress, &sink, sink_interval)?;
+            run_calc_with_sink(&parsed, &cfg, seed, threads, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
@@ -97,14 +116,21 @@ fn load_problem(problem: Option<&str>, json: Option<&str>) -> Result<Problem, Bo
 fn run_calc_with_sink(
     problem: &Problem,
     cfg: &GaConfig,
+    base_seed: u64,
     n_threads: usize,
     progress_interval: usize,
     sink_mode: &str,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let seeds: Vec<u64> = (0..n_threads as u64).collect();
+    let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
+    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
 
-    eprintln!("Pieces  : {}   Sheet: {}×{}", problem.pieces.len(), problem.sheet.width, problem.sheet.height);
+    eprintln!(
+        "Pieces  : {}   Sheet: {}×{}",
+        problem.pieces.len(),
+        problem.sheet.width,
+        problem.sheet.height
+    );
     eprintln!("GA cfg  : {cfg}");
     eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
@@ -171,13 +197,11 @@ fn run_with_sink(
                         break;
                     }
                 } else {
-                    let better = best_pending.as_ref()
-                        .map_or(true, |b| p.objective < b.objective);
+                    let better = best_pending.as_ref().map_or(true, |b| p.objective < b.objective);
                     if better {
                         best_pending = Some(p);
                     }
-                    let should_flush = last_sent
-                        .map_or(true, |t| t.elapsed() >= throttle);
+                    let should_flush = last_sent.map_or(true, |t| t.elapsed() >= throttle);
                     if should_flush {
                         if let Some(evt) = best_pending.take() {
                             let sol = decode(problem, &evt.genome);
@@ -208,7 +232,8 @@ fn run_with_sink(
                         seed: evt.seed,
                         solution: Some(sol),
                         pieces: Some(problem.pieces.clone()),
-                    }).ok();
+                    })
+                    .ok();
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
                 let (_, best) = &results[0];
@@ -229,12 +254,18 @@ fn run_with_sink(
 
 // == Legacy helpers used by web.rs =========================================
 
-pub(crate) fn decode_results(problem: &Problem, results: &[(u64, Individual)]) -> Vec<(u64, i64, Solution, usize, String)> {
-    results.iter().map(|(seed, ind)| {
-        let sol = decode(problem, &ind.genome);
-        let (n, s) = summarize_last_sheet(problem, &sol);
-        (*seed, ind.objective, sol, n, s)
-    }).collect()
+pub(crate) fn decode_results(
+    problem: &Problem,
+    results: &[(u64, Individual)],
+) -> Vec<(u64, i64, Solution, usize, String)> {
+    results
+        .iter()
+        .map(|(seed, ind)| {
+            let sol = decode(problem, &ind.genome);
+            let (n, s) = summarize_last_sheet(problem, &sol);
+            (*seed, ind.objective, sol, n, s)
+        })
+        .collect()
 }
 
 pub(crate) fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize, String) {
@@ -243,10 +274,13 @@ pub(crate) fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize,
     let mut count = 0usize;
     for pl in sol.placements.iter().filter(|pl| pl.sheet_idx == last) {
         let p = &problem.pieces[pl.piece_idx];
-        *groups.entry((p.width.min(p.height), p.width.max(p.height))).or_default() += 1;
+        *groups
+            .entry((p.width.min(p.height), p.width.max(p.height)))
+            .or_default() += 1;
         count += 1;
     }
-    let summary = groups.iter()
+    let summary = groups
+        .iter()
         .map(|((w, h), n)| format!("{n}×{w}×{h}"))
         .collect::<Vec<_>>()
         .join(", ");
@@ -273,16 +307,31 @@ fn print_solution(problem: &Problem, sol: &Solution) {
         by_sheet.entry(pl.sheet_idx).or_default().push(pl);
     }
     for (sheet_idx, mut pls) in by_sheet {
-        println!("  Sheet {sheet_idx} ({}×{}):", problem.sheet.width, problem.sheet.height);
+        println!(
+            "  Sheet {sheet_idx} ({}×{}):",
+            problem.sheet.width, problem.sheet.height
+        );
         pls.sort_by_key(|p| (p.y, p.x));
         for pl in pls {
             let p = &problem.pieces[pl.piece_idx];
-            let (pw, ph) = if pl.rotated { (p.height, p.width) } else { (p.width, p.height) };
-            let name = if p.name.is_empty() { String::new() } else { format!("  \"{}\"", p.name) };
-            println!("    idx={:2}  {pw}×{ph}  at ({:4},{:4}){}{}",
-                pl.piece_idx, pl.x, pl.y,
+            let (pw, ph) = if pl.rotated {
+                (p.height, p.width)
+            } else {
+                (p.width, p.height)
+            };
+            let name = if p.name.is_empty() {
+                String::new()
+            } else {
+                format!("  \"{}\"", p.name)
+            };
+            println!(
+                "    idx={:2}  {pw}×{ph}  at ({:4},{:4}){}{}",
+                pl.piece_idx,
+                pl.x,
+                pl.y,
                 if pl.rotated { "  [rot]" } else { "" },
-                name);
+                name
+            );
         }
     }
     if let Ok(x) = serde_json::to_string(sol) {

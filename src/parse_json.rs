@@ -49,7 +49,10 @@ pub fn parse_problem_json(s: &str) -> Result<Problem, serde_json::Error> {
         }
     }
     Ok(Problem {
-        sheet: Sheet { width: spec.sheet.width, height: spec.sheet.height },
+        sheet: Sheet {
+            width: spec.sheet.width,
+            height: spec.sheet.height,
+        },
         kerf: spec.kerf,
         pieces,
     })
