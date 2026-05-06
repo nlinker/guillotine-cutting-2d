@@ -96,21 +96,20 @@ Private Const FILE_ATTR_NORMAL As Long    = &H80
 #End If
 Private Const BUFFER_SIZE      As Long    = 8192
 
-Private Const DATA_COL         As Long = 1   ' leftmost column of piece table (Name)
-Private Const DATA_HEADER_ROW  As Long = 5   ' piece table header row (Name, Width, Height, Count, Rotate)
+Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
+Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
-Private Const CFG_ROW          As Long = 1   ' row for GA config cells
-Private Const CFG_THREADS_CELL As Long = 3   ' C1 — parallel threads (--threads)
-Private Const CFG_GENS_CELL    As Long = 4   ' D1 — generations per run (--gens)
-Private Const CFG_POP_CELL     As Long = 5   ' E1 — population size (--pop)
-Private Const OUT_COL          As Long = 11  ' column K (1-based) for progress output
-Private Const RESULT_ROW       As Long = 6   ' first row of placement results table
+Private Const CFG_SEED_CELL    As String = "F3"  ' base random seed (--seed)
+Private Const CFG_THREADS_CELL As String = "G3"  ' parallel threads (--threads)
+Private Const CFG_GENS_CELL    As String = "H3"  ' generations per run (--gens)
+Private Const CFG_POP_CELL     As String = "I3"  ' population size (--pop)
+Private Const OUT_STATUS_CELL  As String = "L1"  ' status text
+Private Const OUT_GEN_CELL     As String = "L2"  ' current generation
+Private Const OUT_OBJ_CELL     As String = "L3"  ' best objective
+Private Const OUT_SHEETS_CELL  As String = "L4"  ' sheets used
 
-Private Const CANVAS_COL       As Long   = 7     ' column G — drawing canvas left edge
-Private Const CANVAS_ROW       As Long   = 5     ' row 5 — drawing canvas top edge
-Private Const CANVAS_END_COL   As Long   = 12    ' column L — right boundary (drawing fills G:K)
+Private Const CANVAS_RANGE     As String = "G5:L5"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
-Private Const RESULT_COL       As Long   = 14    ' column N — placement table data column (label "Sheet" in M)
 
 '' == State ====================================================================
 
@@ -170,46 +169,49 @@ Private Function Utf8ToStr(buf() As Byte, nBytes As Long) As String
     End With
 End Function
 
-' Writes progress values to column K.
+Private Function DataCol(ws As Worksheet) As Long
+    DataCol = ws.Range(DATA_CELL).Column
+End Function
+
+Private Function DataHeaderRow(ws As Worksheet) As Long
+    DataHeaderRow = ws.Range(DATA_CELL).Row
+End Function
+
+Private Function DataStartRow(ws As Worksheet) As Long
+    DataStartRow = ws.Range(DATA_CELL).Row + 1
+End Function
+
+' Writes progress values to status cells.
 Private Sub SetProgress(ws As Worksheet, status As String, gen As String, _
                         obj As String, sheets As String)
-    ws.Cells(1, OUT_COL).Value = status
-    If gen    <> "" Then ws.Cells(2, OUT_COL).Value = CLng(gen)
-    If obj    <> "" Then ws.Cells(3, OUT_COL).Value = CDbl(obj)
-    If sheets <> "" Then ws.Cells(4, OUT_COL).Value = CLng(sheets)
+    ws.Range(OUT_STATUS_CELL).Value = status
+    If gen    <> "" Then ws.Range(OUT_GEN_CELL).Value    = CLng(gen)
+    If obj    <> "" Then ws.Range(OUT_OBJ_CELL).Value    = CDbl(obj)
+    If sheets <> "" Then ws.Range(OUT_SHEETS_CELL).Value = CLng(sheets)
     DoEvents
 End Sub
 
-' Writes progress labels to column J and clears previous results.
+' Writes progress labels (column to the left of status cells) and clears previous results.
 Private Sub InitOutputArea(ws As Worksheet)
-    Dim labCol As Long
-    labCol = OUT_COL - 1  ' column J
-
-    ws.Cells(1, labCol).Value = "Status"
-    ws.Cells(2, labCol).Value = "Generation"
-    ws.Cells(3, labCol).Value = "Objective"
-    ws.Cells(4, labCol).Value = "Sheets"
-
-    ws.Range(ws.Cells(RESULT_ROW, RESULT_COL - 1), ws.Cells(1000, RESULT_COL + 5)).ClearContents
+    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
 
 ' Renders the placement table after a Done message.
 Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
-    Dim r As Long
-    r = RESULT_ROW
-    Dim labCol As Long
-    labCol = RESULT_COL - 1
+    Dim rRow As Long:  rRow  = ws.Range(RESULT_CELL).Row
+    Dim rCol As Long:  rCol  = ws.Range(RESULT_CELL).Column  ' "Sheet" label column
+    Dim r    As Long:  r     = rRow
 
     ' Headers
-    ws.Cells(r, labCol).Value          = "Sheet"
-    ws.Cells(r, RESULT_COL).Value      = "Piece"
-    ws.Cells(r, RESULT_COL + 1).Value  = "Width"
-    ws.Cells(r, RESULT_COL + 2).Value  = "Height"
-    ws.Cells(r, RESULT_COL + 3).Value  = "X"
-    ws.Cells(r, RESULT_COL + 4).Value  = "Y"
-    ws.Cells(r, RESULT_COL + 5).Value  = "Rotated"
+    ws.Cells(r, rCol).Value     = "Sheet"
+    ws.Cells(r, rCol + 1).Value = "Piece"
+    ws.Cells(r, rCol + 2).Value = "Width"
+    ws.Cells(r, rCol + 3).Value = "Height"
+    ws.Cells(r, rCol + 4).Value = "X"
+    ws.Cells(r, rCol + 5).Value = "Y"
+    ws.Cells(r, rCol + 6).Value = "Rotated"
     r = r + 1
 
     Dim pl As Object
@@ -229,13 +231,13 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
             ph = pieces(idx)("height")
         End If
 
-        ws.Cells(r, labCol).Value          = pl("sheet_idx")
-        ws.Cells(r, RESULT_COL).Value      = pieceName
-        ws.Cells(r, RESULT_COL + 1).Value  = pw
-        ws.Cells(r, RESULT_COL + 2).Value  = ph
-        ws.Cells(r, RESULT_COL + 3).Value  = pl("x")
-        ws.Cells(r, RESULT_COL + 4).Value  = pl("y")
-        ws.Cells(r, RESULT_COL + 5).Value  = IIf(pl("rotated"), "yes", "")
+        ws.Cells(r, rCol).Value     = pl("sheet_idx")
+        ws.Cells(r, rCol + 1).Value = pieceName
+        ws.Cells(r, rCol + 2).Value = pw
+        ws.Cells(r, rCol + 3).Value = ph
+        ws.Cells(r, rCol + 4).Value = pl("x")
+        ws.Cells(r, rCol + 5).Value = pl("y")
+        ws.Cells(r, rCol + 6).Value = IIf(pl("rotated"), "yes", "")
         r = r + 1
     Next pl
     DoEvents
@@ -278,7 +280,7 @@ Private Sub ClearLayoutShapes(ws As Worksheet)
     Next i
 End Sub
 
-' Draws cutting layout as Excel shapes starting at column CANVAS_COL, row 1.
+' Draws cutting layout as Excel shapes; origin and width taken from CANVAS_RANGE.
 ' Sheets are displayed side-by-side; pieces are color-coded by name.
 Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
                        sheetW As Long, sheetH As Long)
@@ -286,9 +288,10 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
 
     ClearLayoutShapes ws
 
-    Dim originLeft  As Double: originLeft  = ws.Cells(CANVAS_ROW, CANVAS_COL).Left
-    Dim originTop   As Double: originTop   = ws.Cells(CANVAS_ROW, CANVAS_COL).Top
-    Dim sheetsDispW As Double: sheetsDispW = ws.Cells(1, CANVAS_END_COL).Left - originLeft
+    Dim cvs         As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
+    Dim originLeft  As Double: originLeft  = cvs.Cells(1, 1).Left
+    Dim originTop   As Double: originTop   = cvs.Cells(1, 1).Top
+    Dim sheetsDispW As Double: sheetsDispW = cvs.Cells(1, cvs.Columns.Count).Left - originLeft
     Dim scl         As Double: scl         = sheetsDispW / sheetW
     Dim sheetDispH  As Double: sheetDispH  = sheetH * scl
 
@@ -356,23 +359,24 @@ End Sub
 '' == Piece row coloring =======================================================
 
 Private Sub ClearPieceColors(ws As Worksheet)
-    ws.Range(ws.Cells(DATA_HEADER_ROW + 1, DATA_COL), ws.Cells(200, DATA_COL + 4)).Interior.ColorIndex = xlNone
+    ws.Range(ws.Cells(DataStartRow(ws), DataCol(ws)), ws.Cells(200, DataCol(ws) + 4)).Interior.ColorIndex = xlNone
 End Sub
 
 Private Sub ColorPieceRows(ws As Worksheet, pieces As Object)
+    Dim dc As Long: dc = DataCol(ws)
     Dim i As Long
     Dim pIdx As Long: pIdx = 1  ' 1-based index into expanded pieces array
-    For i = DATA_HEADER_ROW + 1 To 200
+    For i = DataStartRow(ws) To 200
         Dim w As Long, h As Long
         w = 0: h = 0
-        If ws.Cells(i, DATA_COL + 1).Value <> "" Then w = CLng(ws.Cells(i, DATA_COL + 1).Value)
-        If ws.Cells(i, DATA_COL + 2).Value <> "" Then h = CLng(ws.Cells(i, DATA_COL + 2).Value)
+        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
         If w = 0 Or h = 0 Then Exit For
         Dim cnt As Long: cnt = 1
-        If ws.Cells(i, DATA_COL + 3).Value <> "" Then cnt = CLng(ws.Cells(i, DATA_COL + 3).Value)
+        If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
         If cnt < 1 Then cnt = 1
         Dim pName As String: pName = pieces(pIdx)("name")
-        ws.Range(ws.Cells(i, DATA_COL), ws.Cells(i, DATA_COL + 4)).Interior.Color = PieceColor(pName)
+        ws.Range(ws.Cells(i, dc), ws.Cells(i, dc + 4)).Interior.Color = PieceColor(pName)
         pIdx = pIdx + cnt
     Next i
 End Sub
@@ -384,20 +388,21 @@ Private Function BuildProblemJson(ws As Worksheet) As String
     Dim sheetHeight As Long: sheetHeight = ws.Cells(1, 9).Value  ' I1
     Dim kerf        As Long: kerf        = ws.Cells(2, 9).Value  ' I2
 
+    Dim dc As Long: dc = DataCol(ws)
     Dim sPieces As String
     Dim bFirst  As Boolean: bFirst = True
-    Dim i As Long: i = DATA_HEADER_ROW + 1
+    Dim i As Long: i = DataStartRow(ws)
 
     Do
         Dim w As Long, h As Long
         w = 0: h = 0
-        If ws.Cells(i, DATA_COL + 1).Value <> "" Then w = CLng(ws.Cells(i, DATA_COL + 1).Value)
-        If ws.Cells(i, DATA_COL + 2).Value <> "" Then h = CLng(ws.Cells(i, DATA_COL + 2).Value)
+        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
         If w = 0 Or h = 0 Then Exit Do
 
-        Dim pName   As String:  pName   = Trim(ws.Cells(i, DATA_COL).Value)
-        Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, DATA_COL + 3).Value)
-        Dim pRotate As Boolean: pRotate = (ws.Cells(i, DATA_COL + 4).Value = True)
+        Dim pName   As String:  pName   = Trim(ws.Cells(i, dc).Value)
+        Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, dc + 3).Value)
+        Dim pRotate As Boolean: pRotate = (ws.Cells(i, dc + 4).Value = True)
 
         Dim sPiece As String
         sPiece = "{""name"":"""  & JsonEscapeStr(pName) & """" & _
@@ -460,9 +465,9 @@ Public Sub RunCut()
     Dim nThreads As Long: nThreads = 4
     Dim nGens    As Long: nGens    = 2000
     Dim nPop     As Long: nPop     = 200
-    If ws.Cells(CFG_ROW, CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Cells(CFG_ROW, CFG_THREADS_CELL).Value)
-    If ws.Cells(CFG_ROW, CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Cells(CFG_ROW, CFG_GENS_CELL).Value)
-    If ws.Cells(CFG_ROW, CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Cells(CFG_ROW, CFG_POP_CELL).Value)
+    If ws.Range(CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Range(CFG_THREADS_CELL).Value)
+    If ws.Range(CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Range(CFG_GENS_CELL).Value)
+    If ws.Range(CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Range(CFG_POP_CELL).Value)
 
     ' Launch cut.exe (non-blocking Shell)
     Dim cmd As String
@@ -557,8 +562,8 @@ Public Sub RunCut()
                         CStr(msg("objective")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
-                    ws.Range(ws.Cells(RESULT_ROW, RESULT_COL - 1), _
-                             ws.Cells(1000, RESULT_COL + 5)).ClearContents
+                    ws.Range(ws.Range(RESULT_CELL), _
+                             ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
                     DrawLayout ws, msg("solution"), msg("pieces"), _
                         ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
@@ -587,7 +592,12 @@ End Sub
 
 Public Sub StopCut()
     g_Running = False
-    ThisWorkbook.Sheets(SHEET_NAME).Cells(1, OUT_COL).Value = "Stopped"
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    ws.Range(OUT_STATUS_CELL).Value = "Stopped"
+    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 5)).ClearContents
+    ClearLayoutShapes ws
+    ClearPieceColors ws
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================
@@ -601,7 +611,7 @@ Sub CreateCheckboxes()
         shp.Delete
     Next shp
 
-    Dim cbCol     As Long:   cbCol     = DATA_COL + 5
+    Dim cbCol     As Long:   cbCol     = DataCol(ws) + 5
     Dim colWidth  As Double: colWidth  = ws.Columns(cbCol).Width
     Dim cell      As Range
     Dim cb        As CheckBox
@@ -609,16 +619,16 @@ Sub CreateCheckboxes()
 
     Dim mg As Double: mg = 1#
 
-    Set cell = ws.Cells(DATA_HEADER_ROW, cbCol)
+    Set cell = ws.Cells(DataHeaderRow(ws), cbCol)
     Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
     cb.Caption  = "all"
     cb.OnAction = "cut.MainCheckboxClick"
     cb.Name     = "cbMain"
 
-    For i = DATA_HEADER_ROW + 1 To DATA_HEADER_ROW + 100
+    For i = DataStartRow(ws) To DataStartRow(ws) + 99
         Set cell = ws.Cells(i, cbCol)
         Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
-        cb.LinkedCell = ws.Cells(i, DATA_COL + 4).Address
+        cb.LinkedCell = ws.Cells(i, DataCol(ws) + 4).Address
         cb.Caption    = ""
         cb.Name       = "cbRow" & i
     Next i
@@ -632,9 +642,10 @@ Sub MainCheckboxClick()
     Set ws = ActiveSheet
     mainVal = (ws.CheckBoxes("cbMain").Value = xlOn)
 
-    For i = DATA_HEADER_ROW + 1 To DATA_HEADER_ROW + 100
-        If ws.Cells(i, DATA_COL + 4).Value <> "" Then
-            ws.Cells(i, DATA_COL + 4).Value = mainVal
+    Dim dc As Long: dc = DataCol(ws)
+    For i = DataStartRow(ws) To DataStartRow(ws) + 99
+        If ws.Cells(i, dc + 4).Value <> "" Then
+            ws.Cells(i, dc + 4).Value = mainVal
         End If
     Next i
 End Sub
