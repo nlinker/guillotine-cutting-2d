@@ -35,7 +35,7 @@ struct Cli {
 enum Command {
     /// Run the GA on a problem and print ranked results
     Calc {
-        /// Problem string e.g. "2600x1800F:3:400x400-6,495x495-6" (mutually exclusive with --json)
+        /// Problem string e.g. "2600x1800F:3:400x400/6,495x495/6" (mutually exclusive with --json)
         problem: Option<String>,
         /// Path to a JSON problem file (mutually exclusive with positional problem string)
         #[arg(long)]

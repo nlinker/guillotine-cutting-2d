@@ -15,7 +15,7 @@ remaining rectangle).
 
 Solve a problem and print ranked results 
 ```
-cargo run --release -- calc "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r" \
+cargo run --release -- calc "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" \
     --seeds 12 --gens 2000
 ```
 
@@ -31,7 +31,7 @@ use cutting::decoder::{Gene, Genome, decode};
 
 fn main() {
   // 3000x4000 sheet, 7 mm kerf, 9 pieces (R = rotatable by default)
-  let problem = parse_problem("3000x4000R:7:835x620-4,1020x620-4f,1750x900").unwrap();
+  let problem = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap();
 
   // Build a genome (one Gene per piece, in placement order)
   let genome: Genome = problem.pieces.iter().enumerate()
@@ -57,18 +57,18 @@ fn main() {
 | Piece token | Meaning                                        |
 |-------------|------------------------------------------------|
 | `WxH`       | one piece, rotation = sheet default            |
-| `WxH-N`     | N identical pieces, rotation = sheet default   |
+| `WxH/N`     | N identical pieces, rotation = sheet default   |
 | `WxHr`      | one piece, **rotatable** (overrides default)   |
 | `WxHf`      | one piece, **fixed** (overrides default)       |
-| `WxH-Nr`    | N pieces, rotatable                            |
-| `WxH-Nf`    | N pieces, fixed                                |
+| `WxH/Nr`    | N pieces, rotatable                            |
+| `WxH/Nf`    | N pieces, fixed                                |
 
 To control orientation of a fixed piece, put the shorter side first or last as desired:
 `620x1020` places 620 mm along X and 1020 mm along Y.
 
 Examples:
-- `"3000x4000R:7:835x620-4,1020x620-4f,1750x900"` — R default; only the `1020x620` batch is fixed
-- `"2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r"` — F default; only `150x450` is rotatable
+- `"3000x4000R:7:835x620/4,1020x620/4f,1750x900"` — R default; only the `1020x620` batch is fixed
+- `"2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r"` — F default; only `150x450` is rotatable
 
 
 ## Concepts

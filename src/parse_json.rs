@@ -1,20 +1,11 @@
 use serde::Deserialize;
 
-use crate::model::{Piece, Problem, Sheet};
+use crate::model::{Piece, PieceSpec, Problem, Sheet};
 
 #[derive(Deserialize)]
 pub struct SheetSpec {
     pub width: u32,
     pub height: u32,
-}
-
-#[derive(Deserialize)]
-pub struct PieceSpec {
-    pub name: String,
-    pub width: u32,
-    pub height: u32,
-    pub count: u32,
-    pub can_rotate: bool,
 }
 
 #[derive(Deserialize)]

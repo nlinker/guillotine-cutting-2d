@@ -1,10 +1,22 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Stock sheet — all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Sheet {
     pub width: u32,
     pub height: u32,
+}
+
+/// Input spec for a piece type: expanded into `count` individual `Piece` instances when building a `Problem`.
+/// `name` is optional (defaults to empty string) — present in JSON input, absent in compact CLI format.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PieceSpec {
+    #[serde(default)]
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub count: u32,
+    pub can_rotate: bool,
 }
 
 /// A rectangular piece to be cut from a sheet.

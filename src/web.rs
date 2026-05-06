@@ -84,7 +84,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
 <form id="form">
   <label>Problem string
     <input type="text" name="problem"
-      value="200x160F:1:22x26-4,32x20-7,35x20-2,42x21-5,46x26r,67x34-3,75x42-2,76x22-4,83x32-4r,83x82,93x31,106x31,124x26-5,130x22-6,157x31-3,164x21-2,177x31">
+      value="200x160F:1:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34/3,75x42/2,76x22/4,83x32/4r,83x82,93x31,106x31,124x26/5,130x22/6,157x31/3,164x21/2,177x31">
   </label>
   <div class="row">
     <label>Seed    <input type="number" name="seed"     value="42"  min="0"></label>
