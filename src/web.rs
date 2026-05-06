@@ -1,4 +1,4 @@
-use std::{convert::Infallible, fmt::Write as FmtWrite, sync::Arc, time::Instant};
+use std::{convert::Infallible, sync::Arc, time::Instant};
 
 use axum::{
     Router,
@@ -11,7 +11,7 @@ use axum::{
 };
 use cutting::{
     decoder::decode,
-    ga::{GaEvent, Individual, ga_channel, run_ga_mt_bg},
+    ga::{GaEvent, ga_channel, run_ga_mt_bg},
     model::{Piece, PieceSpec, Problem, Sheet},
 };
 use futures_util::{Stream, stream};
@@ -239,6 +239,31 @@ function buildRowColors(pieces) {
   return rowColor;
 }
 
+// ── placements table ─────────────────────────────────────────────────────────
+function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed) {
+  const fmtObj = objective.toLocaleString('ru-RU');
+  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> — ${sheets} sheet(s), `
+           + `objective: ${fmtObj}, seed: ${seed}</p>`;
+  html += '<table><thead><tr>'
+        + '<th>Sheet</th><th>Piece</th><th>W</th><th>H</th>'
+        + '<th>X</th><th>Y</th><th>Rot</th>'
+        + '</tr></thead><tbody>';
+  for (const pl of solution.placements) {
+    const pc = pieces[pl.piece_idx];
+    const pw = pl.rotated ? pc.height : pc.width;
+    const ph = pl.rotated ? pc.width  : pc.height;
+    html += `<tr>`
+          + `<td>${pl.sheet_idx + 1}</td>`
+          + `<td style="text-align:left">${pc.name || '#' + pl.piece_idx}</td>`
+          + `<td>${pw}</td><td>${ph}</td>`
+          + `<td>${pl.x}</td><td>${pl.y}</td>`
+          + `<td>${pl.rotated ? 'yes' : ''}</td>`
+          + `</tr>`;
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
 // ── layout canvas ─────────────────────────────────────────────────────────────
 function drawLayout(solution, pieces, sheetW, sheetH) {
   const canvas = document.getElementById('layout');
@@ -333,7 +358,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
       drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h);
       document.getElementById('layout-wrap').style.display = 'block';
     }
-    document.getElementById('results').innerHTML = d.html;
+    document.getElementById('results').innerHTML =
+      buildPlacementsTable(d.solution, d.pieces, d.elapsed, d.objective, d.sheets, d.seed);
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';
@@ -428,15 +454,17 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
                 }
                 Some(GaEvent::Done(results)) => {
                     let elapsed = start.elapsed().as_secs_f64();
-                    let (_, best_ind) = &results[0];
+                    let (best_seed, best_ind) = &results[0];
                     let best_sol = decode(&problem, &best_ind.genome);
-                    let html = results_html(&problem, &results, elapsed);
                     let data = json!({
-                        "html":    html,
-                        "solution": best_sol,
-                        "pieces":   problem.pieces,
-                        "sheet_w":  problem.sheet.width,
-                        "sheet_h":  problem.sheet.height,
+                        "elapsed":   elapsed,
+                        "seed":      best_seed,
+                        "objective": best_ind.objective,
+                        "sheets":    best_sol.sheets_used(),
+                        "solution":  best_sol,
+                        "pieces":    problem.pieces,
+                        "sheet_w":   problem.sheet.width,
+                        "sheet_h":   problem.sheet.height,
                     })
                     .to_string();
                     let evt = Event::default().event("done").data(data);
@@ -473,38 +501,3 @@ fn build_problem(params: &SolveParams) -> Result<Problem, String> {
     })
 }
 
-fn results_html(problem: &Problem, results: &[(u64, Individual)], elapsed: f64) -> String {
-    let decoded = crate::decode_results(problem, results);
-    let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "<p><b>Done in {elapsed:.1}s</b> — {} pieces on {}×{} sheet, kerf={}</p>",
-        problem.pieces.len(),
-        problem.sheet.width,
-        problem.sheet.height,
-        problem.kerf,
-    );
-    out.push_str("<table><thead><tr><th>seed</th><th>sheets</th><th>objective</th><th>last_n</th><th>last sheet</th></tr></thead><tbody>\n");
-    for (seed, obj, sol, n, summary) in &decoded {
-        let _ = writeln!(
-            out,
-            "<tr><td>{seed}</td><td>{}</td><td>{obj}</td><td>{n}</td><td>{}</td></tr>",
-            sol.sheets_used(),
-            he(summary)
-        );
-    }
-    out.push_str("</tbody></table>\n");
-
-    let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
-    let _ = writeln!(
-        out,
-        "<p>Best — seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {}</p>",
-        best_sol.sheets_used(),
-        he(best_summary),
-    );
-    out
-}
-
-fn he(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}

@@ -8,7 +8,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, GaEvent, Individual, ProgressEvent, ga_channel, run_ga_mt_bg},
+    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt_bg},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -252,38 +252,6 @@ fn run_with_sink(
 
 // == Legacy helpers used by web.rs =========================================
 
-pub(crate) fn decode_results(
-    problem: &Problem,
-    results: &[(u64, Individual)],
-) -> Vec<(u64, i64, Solution, usize, String)> {
-    results
-        .iter()
-        .map(|(seed, ind)| {
-            let sol = decode(problem, &ind.genome);
-            let (n, s) = summarize_last_sheet(problem, &sol);
-            (*seed, ind.objective, sol, n, s)
-        })
-        .collect()
-}
-
-pub(crate) fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize, String) {
-    let last = sol.sheets_used().saturating_sub(1);
-    let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
-    let mut count = 0usize;
-    for pl in sol.placements.iter().filter(|pl| pl.sheet_idx == last) {
-        let p = &problem.pieces[pl.piece_idx];
-        *groups
-            .entry((p.width.min(p.height), p.width.max(p.height)))
-            .or_default() += 1;
-        count += 1;
-    }
-    let summary = groups
-        .iter()
-        .map(|((w, h), n)| format!("{n}×{w}×{h}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    (count, summary)
-}
 
 pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
     GaConfig {
