@@ -205,7 +205,10 @@ function initChart() {
       plugins: { legend: { display: false } },
       scales: {
         x: { title: { display: true, text: 'generation' } },
-        y: { title: { display: true, text: 'objective' } }
+        y: {
+          title: { display: true, text: 'objective' },
+          ticks: { callback: (v) => v.toLocaleString('ru-RU') }
+        }
       }
     }
   });
