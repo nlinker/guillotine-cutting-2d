@@ -12,8 +12,7 @@ use axum::{
 use cutting::{
     decoder::decode,
     ga::{GaEvent, Individual, ga_channel, run_ga_mt_bg},
-    model::Problem,
-    parse::parse_problem,
+    model::{Piece, PieceSpec, Problem, Sheet},
 };
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
@@ -23,7 +22,10 @@ use serde_json::json;
 
 #[derive(Deserialize)]
 struct SolveParams {
-    problem: String,
+    sheet_w:  u32,
+    sheet_h:  u32,
+    kerf:     u32,
+    pieces:   String,
     #[serde(default = "default_seed")]
     seed: u64,
     #[serde(default = "default_threads")]
@@ -36,21 +38,11 @@ struct SolveParams {
     progress: usize,
 }
 
-fn default_seed() -> u64 {
-    42
-}
-fn default_threads() -> usize {
-    8
-}
-fn default_gens() -> usize {
-    500
-}
-fn default_pop() -> usize {
-    200
-}
-fn default_progress() -> usize {
-    50
-}
+fn default_seed() -> u64 { 42 }
+fn default_threads() -> usize { 8 }
+fn default_gens() -> usize { 500 }
+fn default_pop() -> usize { 200 }
+fn default_progress() -> usize { 50 }
 
 const INDEX_HTML: &str = r##"<!doctype html>
 <html lang="en">
@@ -58,40 +50,66 @@ const INDEX_HTML: &str = r##"<!doctype html>
 <meta charset="utf-8">
 <title>Cutting optimizer</title>
 <style>
-  body { font-family: monospace; max-width: 960px; margin: 2em auto; padding: 0 1em; }
-  label { display: block; margin-bottom: .4em; }
-  input[type=text] { width: 100%; box-sizing: border-box; font-family: monospace; }
-  input[type=number] { width: 6em; font-family: monospace; }
-  .row { display: flex; gap: 1.5em; align-items: flex-end; margin-top: .8em; flex-wrap: wrap; }
-  button { padding: .3em 1.2em; cursor: pointer; }
+  body { font-family: monospace; max-width: 1000px; margin: 2em auto; padding: 0 1em; }
+  label { display: inline-flex; align-items: center; gap: .3em; }
+  input[type=text], input[type=number] { font-family: monospace; }
+  input[type=number] { width: 5.5em; }
+  .row { display: flex; gap: 1.2em; align-items: center; margin: .6em 0; flex-wrap: wrap; }
+  button { padding: .25em 1em; cursor: pointer; font-family: monospace; }
   #cancel { display: none; }
   #status { color: #888; }
   .error { color: red; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th, td { border: 1px solid #ccc; padding: 4px 8px; }
-  th { background: #f0f0f0; text-align: center; }
-  td { text-align: right; }
-  td:last-child { text-align: left; }
+
+  /* pieces input table */
+  #pieces-table { border-collapse: collapse; margin: .5em 0; }
+  #pieces-table th, #pieces-table td { border: 1px solid #ccc; padding: 2px 5px; }
+  #pieces-table th { background: #f0f0f0; text-align: center; font-size: .85em; }
+  #pieces-table td { text-align: center; }
+  #pieces-table input[type=text]   { width: 9em; }
+  #pieces-table input[type=number] { width: 4.5em; }
+  .rm-btn { background: none; border: none; color: #c00; cursor: pointer; font-size: 1em; padding: 0 .2em; }
+
+  /* results table (from server) */
+  #results table { border-collapse: collapse; width: 100%; margin: .8em 0; }
+  #results th, #results td { border: 1px solid #ccc; padding: 4px 8px; }
+  #results th { background: #f0f0f0; text-align: center; }
+  #results td { text-align: right; }
+  #results td:last-child { text-align: left; }
+
   pre { background: #f8f8f8; padding: 1em; overflow-x: auto; }
-  h3 { margin-bottom: .3em; }
-  #chart-wrap { margin: 1em 0; display: none; }
-  #layout-wrap { margin: 1em 0; display: none; }
+  h3 { margin: .6em 0 .2em; }
+  #chart-wrap { margin: .4em 0; display: none; }
+  #layout-wrap { margin: .8em 0; display: none; }
   #layout { width: 100%; display: block; }
 </style>
 </head>
 <body>
 <h2>2D Guillotine Cutting Optimizer</h2>
+
 <form id="form">
-  <label>Problem string
-    <input type="text" name="problem"
-      value="200x160F:1:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34/3,75x42/2,76x22/4,83x32/4r,83x82,93x31,106x31,124x26/5,130x22/6,157x31/3,164x21/2,177x31">
-  </label>
   <div class="row">
-    <label>Seed    <input type="number" name="seed"     value="42"  min="0"></label>
-    <label>Threads <input type="number" name="threads"  value="8"   min="1" max="64"></label>
-    <label>Gens    <input type="number" name="gens"     value="500" min="10"></label>
-    <label>Pop     <input type="number" name="pop"      value="200" min="10"></label>
-    <label>Progress<input type="number" name="progress" value="50"  min="1"></label>
+    <label>Sheet W <input type="number" id="sheet-w" value="200" min="1"></label>
+    <label>× H <input type="number" id="sheet-h" value="160" min="1"></label>
+    <label>Kerf <input type="number" id="kerf" value="1" min="0"></label>
+  </div>
+
+  <table id="pieces-table">
+    <thead><tr>
+      <th>Name</th><th>W</th><th>H</th><th>Count</th><th>Rotate</th><th></th>
+    </tr></thead>
+    <tbody id="pieces-tbody"></tbody>
+  </table>
+  <div class="row">
+    <button type="button" id="add-row">+ Add row</button>
+  </div>
+
+  <div class="row">
+    <label>Seed <input type="number" id="seed" value="42" min="0"></label>
+    <label><input type="checkbox" id="random-seed"> random</label>
+    <label>Threads <input type="number" id="threads" value="8" min="1" max="64"></label>
+    <label>Gens <input type="number" id="gens" value="500" min="10"></label>
+    <label>Pop <input type="number" id="pop" value="200" min="10"></label>
+    <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -99,22 +117,75 @@ const INDEX_HTML: &str = r##"<!doctype html>
 </form>
 
 <div id="chart-wrap">
-  <canvas id="chart" height="120"></canvas>
+  <canvas id="chart" height="60"></canvas>
 </div>
-<div id="results"></div>
 <div id="layout-wrap">
   <h3>Layout</h3>
   <canvas id="layout"></canvas>
 </div>
+<div id="results"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
 <script>
-let es = null;
-let chart = null;
 const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a',
                  '#dda0dd','#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
-let colorMap = {};
-let colorIdx = 0;
+
+// ── default data ────────────────────────────────────────────────────────────
+const DEFAULT_PIECES = [
+  {name:'', w:22,  h:26,  count:4, rotate:false},
+  {name:'', w:32,  h:20,  count:7, rotate:false},
+  {name:'', w:35,  h:20,  count:2, rotate:false},
+  {name:'', w:42,  h:21,  count:5, rotate:false},
+  {name:'', w:46,  h:26,  count:1, rotate:true},
+  {name:'', w:67,  h:34,  count:3, rotate:false},
+  {name:'', w:75,  h:42,  count:2, rotate:false},
+  {name:'', w:76,  h:22,  count:4, rotate:false},
+  {name:'', w:83,  h:32,  count:4, rotate:true},
+  {name:'', w:83,  h:82,  count:1, rotate:false},
+  {name:'', w:93,  h:31,  count:1, rotate:false},
+  {name:'', w:106, h:31,  count:1, rotate:false},
+  {name:'', w:124, h:26,  count:5, rotate:false},
+  {name:'', w:130, h:22,  count:6, rotate:false},
+  {name:'', w:157, h:31,  count:3, rotate:false},
+  {name:'', w:164, h:21,  count:2, rotate:false},
+  {name:'', w:177, h:31,  count:1, rotate:false},
+];
+
+// ── pieces table ─────────────────────────────────────────────────────────────
+function addRow(p) {
+  p = p || {name:'', w:'', h:'', count:1, rotate:false};
+  const tbody = document.getElementById('pieces-tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    `<td><input type="text"   value="${p.name}"></td>` +
+    `<td><input type="number" value="${p.w}" min="1"></td>` +
+    `<td><input type="number" value="${p.h}" min="1"></td>` +
+    `<td><input type="number" value="${p.count}" min="1"></td>` +
+    `<td><input type="checkbox"${p.rotate ? ' checked' : ''}></td>` +
+    `<td><button class="rm-btn" type="button">×</button></td>`;
+  tr.querySelector('.rm-btn').addEventListener('click', () => tr.remove());
+  tbody.appendChild(tr);
+}
+
+function serializePieces() {
+  return [...document.querySelectorAll('#pieces-tbody tr')].map(tr => {
+    const inp = tr.querySelectorAll('input');
+    return {
+      name:       inp[0].value,
+      width:      +inp[1].value,
+      height:     +inp[2].value,
+      count:      +inp[3].value,
+      can_rotate:  inp[4].checked,
+    };
+  });
+}
+
+DEFAULT_PIECES.forEach(addRow);
+document.getElementById('add-row').addEventListener('click', () => addRow());
+
+// ── chart ─────────────────────────────────────────────────────────────────────
+let es = null;
+let chart = null;
 
 function initChart() {
   const canvas = document.getElementById('chart');
@@ -124,7 +195,7 @@ function initChart() {
     data: {
       labels: [],
       datasets: [{
-        label: 'global best objective',
+        label: 'objective',
         data: [],
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59,130,246,0.08)',
@@ -153,11 +224,25 @@ function addPoint(generation, objective) {
   chart.update('none');
 }
 
-function pieceColor(name) {
-  if (colorMap[name] === undefined) { colorMap[name] = PALETTE[colorIdx++ % PALETTE.length]; }
-  return colorMap[name];
+// ── color helpers ─────────────────────────────────────────────────────────────
+function buildRowColors(pieces) {
+  const rowColor = [];
+  const seen = new Map();
+  let ci = 0;
+  for (let i = 0; i < pieces.length; i++) {
+    const key = pieces[i].name || null;
+    if (key && seen.has(key)) {
+      rowColor.push(PALETTE[seen.get(key) % PALETTE.length]);
+    } else {
+      rowColor.push(PALETTE[ci % PALETTE.length]);
+      if (key) seen.set(key, ci);
+      ci++;
+    }
+  }
+  return rowColor;
 }
 
+// ── layout canvas ─────────────────────────────────────────────────────────────
 function drawLayout(solution, pieces, sheetW, sheetH) {
   const canvas = document.getElementById('layout');
   const placements = solution.placements;
@@ -188,6 +273,8 @@ function drawLayout(solution, pieces, sheetW, sheetH) {
     ctx.fillText('Sheet ' + i, ox + 4, sdh + 15);
   }
 
+  const rowColor = buildRowColors(pieces);
+
   for (const pl of placements) {
     const pc = pieces[pl.piece_idx];
     const pw = pl.rotated ? pc.height : pc.width;
@@ -195,7 +282,7 @@ function drawLayout(solution, pieces, sheetW, sheetH) {
     const ox = pl.sheet_idx * (sdw + GAP);
     const rx = ox + pl.x * scale, ry = pl.y * scale;
     const rw = Math.max(pw * scale, 1), rh = Math.max(ph * scale, 1);
-    ctx.fillStyle = pieceColor(pc.name || String(pl.piece_idx));
+    ctx.fillStyle = rowColor[pl.piece_idx];
     ctx.fillRect(rx, ry, rw, rh);
     ctx.strokeStyle = '#555';
     ctx.lineWidth = 0.5;
@@ -208,17 +295,34 @@ function drawLayout(solution, pieces, sheetW, sheetH) {
   }
 }
 
+// ── form submit ───────────────────────────────────────────────────────────────
+const seedInput      = document.getElementById('seed');
+const randomSeedChk  = document.getElementById('random-seed');
+
 document.getElementById('form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (es) { es.close(); es = null; }
   document.getElementById('results').innerHTML = '';
   document.getElementById('layout-wrap').style.display = 'none';
-  colorMap = {}; colorIdx = 0;
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
   initChart();
 
-  const params = new URLSearchParams(new FormData(e.target));
+  if (randomSeedChk.checked) {
+    seedInput.value = Math.floor(Math.random() * 10000);
+  }
+
+  const params = new URLSearchParams();
+  params.set('sheet_w',  document.getElementById('sheet-w').value);
+  params.set('sheet_h',  document.getElementById('sheet-h').value);
+  params.set('kerf',     document.getElementById('kerf').value);
+  params.set('pieces',   JSON.stringify(serializePieces()));
+  params.set('seed',     seedInput.value);
+  params.set('threads',  document.getElementById('threads').value);
+  params.set('gens',     document.getElementById('gens').value);
+  params.set('pop',      document.getElementById('pop').value);
+  params.set('progress', document.getElementById('progress').value);
+
   es = new EventSource('/stream?' + params);
 
   es.addEventListener('progress', (ev) => {
@@ -228,11 +332,11 @@ document.getElementById('form').addEventListener('submit', (e) => {
 
   es.addEventListener('done', (ev) => {
     const d = JSON.parse(ev.data);
-    document.getElementById('results').innerHTML = d.html;
     if (d.solution) {
       drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h);
       document.getElementById('layout-wrap').style.display = 'block';
     }
+    document.getElementById('results').innerHTML = d.html;
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';
@@ -286,22 +390,20 @@ enum StreamState {
 }
 
 async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let initial = match parse_problem(&params.problem) {
-        Err(e) => Err(e.to_string()),
-        Ok(problem) => {
+    let initial = build_problem(&params)
+        .map(|problem| {
             let problem = Arc::new(problem);
             let cfg = Arc::new(crate::ga_config(params.gens, params.pop, 5, 5));
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds: Vec<u64> = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect();
             let (handle, ctx) = ga_channel(params.progress);
             run_ga_mt_bg(Arc::clone(&problem), cfg, seeds, ctx);
-            Ok(StreamState::Running {
+            StreamState::Running {
                 handle,
                 problem,
                 start: Instant::now(),
-            })
-        }
-    };
+            }
+        });
 
     let stream = stream::unfold(initial, |state| async move {
         match state {
@@ -348,6 +450,30 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
     });
 
     Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+fn build_problem(params: &SolveParams) -> Result<Problem, String> {
+    let specs: Vec<PieceSpec> = serde_json::from_str(&params.pieces)
+        .map_err(|e| format!("invalid pieces JSON: {e}"))?;
+    if specs.is_empty() {
+        return Err("no pieces specified".into());
+    }
+    let pieces: Vec<Piece> = specs
+        .iter()
+        .flat_map(|ps| {
+            (0..ps.count).map(|_| Piece {
+                name:       ps.name.clone(),
+                width:      ps.width,
+                height:     ps.height,
+                can_rotate: ps.can_rotate,
+            })
+        })
+        .collect();
+    Ok(Problem {
+        sheet: Sheet { width: params.sheet_w, height: params.sheet_h },
+        kerf: params.kerf,
+        pieces,
+    })
 }
 
 fn results_html(problem: &Problem, results: &[(u64, Individual)], elapsed: f64) -> String {

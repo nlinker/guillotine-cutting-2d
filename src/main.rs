@@ -197,28 +197,26 @@ fn run_with_sink(
                         break;
                     }
                 } else {
-                    let better = best_pending.as_ref().map_or(true, |b| p.objective < b.objective);
+                    let better = best_pending.as_ref().is_none_or(|b| p.objective < b.objective);
                     if better {
                         best_pending = Some(p);
                     }
-                    let should_flush = last_sent.map_or(true, |t| t.elapsed() >= throttle);
-                    if should_flush {
-                        if let Some(evt) = best_pending.take() {
-                            let sol = decode(problem, &evt.genome);
-                            let msg = ProgressMessage::Progress {
-                                generation: evt.generation,
-                                objective: evt.objective,
-                                sheets_used: evt.sheets_used,
-                                seed: evt.seed,
-                                solution: Some(sol),
-                                pieces: Some(problem.pieces.clone()),
-                            };
-                            if sink.send(&msg).is_err() {
-                                handle.stop();
-                                break;
-                            }
-                            last_sent = Some(Instant::now());
+                    let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
+                    if should_flush && let Some(evt) = best_pending.take() {
+                        let sol = decode(problem, &evt.genome);
+                        let msg = ProgressMessage::Progress {
+                            generation: evt.generation,
+                            objective: evt.objective,
+                            sheets_used: evt.sheets_used,
+                            seed: evt.seed,
+                            solution: Some(sol),
+                            pieces: Some(problem.pieces.clone()),
+                        };
+                        if sink.send(&msg).is_err() {
+                            handle.stop();
+                            break;
                         }
+                        last_sent = Some(Instant::now());
                     }
                 }
             }
