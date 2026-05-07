@@ -5,9 +5,11 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+use std::sync::Arc;
+
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, run_ga_mt},
+    ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
     model::{Piece, Placement, Problem, Solution},
     parse::parse_problem,
 };
@@ -67,7 +69,14 @@ fn main() {
     println!();
 
     let t0 = Instant::now();
-    let results = run_ga_mt(&problem, &cfg, &seeds, None);
+    let (mut handle, ctx) = ga_channel(0);
+    run_ga_mt(Arc::new(problem.clone()), Arc::new(cfg.clone()), seeds.clone(), ctx);
+    let results = loop {
+        match handle.rx.blocking_recv() {
+            Some(GaEvent::Done(r)) => break r,
+            _ => {}
+        }
+    };
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
 
     // compute per-result summaries (decode once each)

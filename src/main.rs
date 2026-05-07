@@ -8,7 +8,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
-    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt_bg},
+    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
     model::{Placement, Problem, Solution},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -134,44 +134,46 @@ fn run_calc_with_sink(
     eprintln!("GA cfg  : {cfg}");
     eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
+    let problem = Arc::new(problem.clone());
+    let cfg = Arc::new(cfg.clone());
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
+            run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink(problem, cfg, &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
             }
         }
     }
 }
 
-fn run_with_sink(
-    problem: &Problem,
-    cfg: &GaConfig,
+pub(crate) fn run_with_sink(
+    problem: Arc<Problem>,
+    cfg: Arc<GaConfig>,
     seeds: &[u64],
     progress_interval: usize,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     let (mut handle, ctx) = ga_channel(progress_interval);
-    run_ga_mt_bg(Arc::new(problem.clone()), Arc::new(cfg.clone()), seeds.to_vec(), ctx);
+    run_ga_mt(Arc::clone(&problem), Arc::clone(&cfg), seeds.to_vec(), ctx);
 
     let throttled = sink_interval_ms > 0;
     let throttle = Duration::from_millis(sink_interval_ms);
@@ -203,7 +205,7 @@ fn run_with_sink(
                     }
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
                     if should_flush && let Some(evt) = best_pending.take() {
-                        let sol = decode(problem, &evt.genome);
+                        let sol = decode(&*problem, &evt.genome);
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
                             objective: evt.objective,
@@ -222,7 +224,7 @@ fn run_with_sink(
             }
             Some(GaEvent::Done(results)) => {
                 if let Some(evt) = best_pending.take() {
-                    let sol = decode(problem, &evt.genome);
+                    let sol = decode(&*problem, &evt.genome);
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
                         objective: evt.objective,
@@ -234,9 +236,10 @@ fn run_with_sink(
                     .ok();
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (_, best) = &results[0];
-                let sol = decode(problem, &best.genome);
+                let (best_seed, best) = &results[0];
+                let sol = decode(&*problem, &best.genome);
                 let msg = ProgressMessage::Done {
+                    seed: *best_seed,
                     sheets_used: sol.sheets_used(),
                     objective: best.objective,
                     solution: sol,

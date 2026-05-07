@@ -143,7 +143,7 @@ impl Clone for GaContext {
 
 /// Creates a linked `(GaHandle, GaContext)` pair.
 ///
-/// Pass `ctx` to `run_ga_mt` or `run_ga_mt_bg`; use `handle` to read events and
+/// Pass `ctx` to `run_ga_mt`; use `handle` to read events and
 /// call `handle.stop()` for early termination.
 pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
     let (tx, rx) = mpsc::unbounded_channel();
@@ -173,7 +173,7 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
     run_ga_inner(problem, config, rng, &pool, None)
 }
 
-/// Inner GA loop shared by `run_ga`, `run_ga_mt`, and `run_ga_mt_bg`.
+/// Inner GA loop shared by `run_ga` and `run_ga_mt`.
 ///
 /// When `ctx` is `Some`, every `progress_interval` generations:
 /// - checks the stop flag and exits early if set
@@ -269,47 +269,12 @@ fn run_ga_inner<R: Rng>(
     best
 }
 
-/// Runs the GA synchronously in parallel (one thread per seed); returns results sorted
-/// by objective ascending. Does NOT send `GaEvent::Done` - use `run_ga_mt_bg` for that.
-///
-/// Pass `ctx = None` to disable migration and progress. Panics if `seeds` is empty.
-pub fn run_ga_mt(
-    problem: &Problem,
-    config: &GaConfig,
-    seeds: &[u64],
-    ctx: Option<GaContext>,
-) -> Vec<(u64, Individual)> {
-    assert!(!seeds.is_empty(), "seeds must not be empty");
-    let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
-    let pool_ref = &migration_pool;
-    let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
-        seeds
-            .iter()
-            .map(|&seed| {
-                let thread_ctx = ctx.as_ref().map(|c| GaContext { seed, ..c.clone() });
-                s.spawn(move || {
-                    let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                    (
-                        seed,
-                        run_ga_inner(problem, config, &mut rng, pool_ref, thread_ctx.as_ref()),
-                    )
-                })
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .map(|h| h.join().unwrap())
-            .collect()
-    });
-    results.sort_by_key(|(_, ind)| ind.objective);
-    results
-}
-
 /// Spawns the GA in a background thread and returns immediately.
 ///
 /// Progress and final results arrive through the `GaHandle` from `ga_channel`.
 /// Sends `GaEvent::Progress` during the run and `GaEvent::Done` when finished.
 /// Dropping `GaHandle` requests early termination via the stop flag.
-pub fn run_ga_mt_bg(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
+pub fn run_ga_mt(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
     std::thread::spawn(move || {
         let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
         let pool_ref = &migration_pool;

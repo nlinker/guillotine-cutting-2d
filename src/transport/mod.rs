@@ -22,6 +22,7 @@ pub enum ProgressMessage {
         pieces: Option<Vec<Piece>>,
     },
     Done {
+        seed: u64,
         sheets_used: usize,
         objective: i64,
         solution: Solution,

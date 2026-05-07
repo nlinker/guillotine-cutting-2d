@@ -61,7 +61,7 @@
     <label>Seed <input type="number" id="seed" value="42" min="0"></label>
     <label><input type="checkbox" id="random-seed"> random</label>
     <label>Threads <input type="number" id="threads" value="8" min="1" max="64"></label>
-    <label>Gens <input type="number" id="gens" value="500" min="10"></label>
+    <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <button type="submit">Solve</button>
@@ -344,7 +344,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
-      buildPlacementsTable(d.solution, d.pieces, d.elapsed, d.objective, d.sheets, d.seed);
+      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.objective, d.sheets_used, d.seed);
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';
