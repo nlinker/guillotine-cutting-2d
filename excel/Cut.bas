@@ -33,6 +33,9 @@ Private Const OPEN_EXISTING    As Long    = 3
 Private Const FILE_ATTR_NORMAL As Long    = &H80
 Private Const BUFFER_SIZE      As Long    = 8192
 
+Private Const SHEET_W_CELL     As String = "H1"  ' sheet width (mm)
+Private Const SHEET_H_CELL     As String = "I1"  ' sheet height (mm)
+Private Const KERF_CELL        As String = "I2"  ' blade kerf width (mm)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -433,9 +436,9 @@ End Sub
 '' == JSON builder =============================================================
 
 Private Function BuildProblemJson(ws As Worksheet) As String
-    Dim sheetWidth  As Long: sheetWidth  = ws.Cells(1, 8).Value  ' H1
-    Dim sheetHeight As Long: sheetHeight = ws.Cells(1, 9).Value  ' I1
-    Dim kerf        As Long: kerf        = ws.Cells(2, 9).Value  ' I2
+    Dim sheetWidth  As Long: sheetWidth  = ws.Range(SHEET_W_CELL).Value
+    Dim sheetHeight As Long: sheetHeight = ws.Range(SHEET_H_CELL).Value
+    Dim kerf        As Long: kerf        = ws.Range(KERF_CELL).Value
 
     Dim dc As Long: dc = DataCol(ws)
     Dim sPieces As String
@@ -623,7 +626,7 @@ Public Sub RunCut()
                              ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
                     DrawLayout ws, msg("solution"), msg("pieces"), _
-                        ws.Cells(1, 8).Value, ws.Cells(1, 9).Value
+                        ws.Range(SHEET_W_CELL).Value, ws.Range(SHEET_H_CELL).Value
                     ColorPieceRows ws, msg("pieces")
                     Application.ScreenUpdating = True
                     g_Running = False
@@ -690,8 +693,8 @@ Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets(SHEET_NAME)
 
-    Dim shW As Long: shW = ws.Cells(1, 8).Value  ' H1 = sheet width
-    Dim shH As Long: shH = ws.Cells(1, 9).Value  ' I1 = sheet height
+    Dim shW As Long: shW = ws.Range(SHEET_W_CELL).Value
+    Dim shH As Long: shH = ws.Range(SHEET_H_CELL).Value
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
     End If
@@ -772,6 +775,7 @@ Public Sub SendToAutoCAD()
         ' Label at block center
         Dim lbl As String
         If Len(pName) > 0 Then lbl = CStr(pw) & "x" & CStr(ph) & " - " & pName Else lbl = CStr(pw) & "x" & CStr(ph)
+        ' the point in (x, y, z)
         Dim txtPt(0 To 2) As Double
         txtPt(0) = CDbl(ph) / 2
         txtPt(1) = CDbl(pw) / 2
@@ -786,7 +790,9 @@ Public Sub SendToAutoCAD()
         ' Insert point = bottom-left of block in drawing space
         ' acad_x = xOff + py,  acad_y = shW - px - pw
         Dim insPt(0 To 2) As Double
-        insPt(0) = xOff + py: insPt(1) = shW - px - pw: insPt(2) = 0
+        insPt(0) = xOff + py
+        insPt(1) = shW - px - pw
+        insPt(2) = 0
         ms.InsertBlock insPt, bName, 1, 1, 1, 0
 
         Set rectObj = Nothing: Set txtObj = Nothing: Set blkDef = Nothing
