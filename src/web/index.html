@@ -34,7 +34,7 @@
   h3 { margin: .6em 0 .2em; }
   #chart-wrap { margin: .4em 0; display: none; }
   #layout-wrap { margin: .8em 0; display: none; }
-  #layout { width: 100%; display: block; }
+  #layout { width: 100%; }
 </style>
 </head>
 <body>
@@ -75,7 +75,7 @@
 </div>
 <div id="layout-wrap">
   <h3>Layout</h3>
-  <canvas id="layout"></canvas>
+  <div id="layout"></div>
 </div>
 <div id="results"></div>
 
@@ -176,21 +176,28 @@ function addPoint(generation, objective) {
 }
 
 // == color helpers =============================================================
-function buildRowColors(pieces) {
-  const rowColor = [];
-  const seen = new Map();
-  let ci = 0;
-  for (let i = 0; i < pieces.length; i++) {
-    const key = pieces[i].name || null;
-    if (key && seen.has(key)) {
-      rowColor.push(PALETTE[seen.get(key) % PALETTE.length]);
-    } else {
-      rowColor.push(PALETTE[ci % PALETTE.length]);
-      if (key) seen.set(key, ci);
-      ci++;
+// Builds rowColor[piece_idx] = css color string, matching input table row order.
+// specs = array of {count, ...} from serializePieces(); pieces.length = total expanded count.
+function buildRowColors(specs, totalPieces) {
+  const rowColor = new Array(totalPieces);
+  let pi = 0;
+  for (let ci = 0; ci < specs.length; ci++) {
+    const cnt = specs[ci].count || 1;
+    const color = PALETTE[ci % PALETTE.length];
+    for (let j = 0; j < cnt && pi < totalPieces; j++) {
+      rowColor[pi++] = color;
     }
   }
   return rowColor;
+}
+
+function colorInputRows(specs) {
+  const rows = document.querySelectorAll('#pieces-tbody tr');
+  rows.forEach((tr, ci) => { tr.style.background = PALETTE[ci % PALETTE.length]; });
+}
+
+function clearInputRowColors() {
+  document.querySelectorAll('#pieces-tbody tr').forEach(tr => { tr.style.background = ''; });
 }
 
 // == placements table =========================================================
@@ -207,7 +214,7 @@ function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed
     const pw = pl.rotated ? pc.height : pc.width;
     const ph = pl.rotated ? pc.width  : pc.height;
     html += `<tr>`
-          + `<td>${pl.sheet_idx + 1}</td>`
+          + `<td>${pl.sheet_idx}</td>`
           + `<td style="text-align:left">${pc.name || '#' + pl.piece_idx}</td>`
           + `<td>${pw}</td><td>${ph}</td>`
           + `<td>${pl.x}</td><td>${pl.y}</td>`
@@ -218,62 +225,82 @@ function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed
   return html;
 }
 
-// == layout canvas =============================================================
-function drawLayout(solution, pieces, sheetW, sheetH) {
-  const canvas = document.getElementById('layout');
+// == layout SVG ================================================================
+function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
+  const container = document.getElementById('layout');
   const placements = solution.placements;
+  container.innerHTML = '';
   if (!placements || placements.length === 0) return;
 
   let nSheets = 0;
   for (const pl of placements) { if (pl.sheet_idx >= nSheets) nSheets = pl.sheet_idx + 1; }
 
-  const cw = 900, GAP = 8;
-  const sdw = (cw - GAP * (nSheets - 1)) / nSheets;
+  const COLS = 2, GAP = 8, LABEL_H = 16;
+  const nRows = Math.ceil(nSheets / COLS);
+  const cw = 900;
+  const sdw = (cw - GAP * (COLS - 1)) / COLS;
   const scale = sdw / sheetW;
-  const sdh = Math.round(sheetH * scale);
+  const sdh = sheetH * scale;
+  const cellH = sdh + LABEL_H + GAP;
+  const svgH = nRows * cellH - GAP;
 
-  canvas.width  = cw;
-  canvas.height = sdh + 22;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', cw);
+  svg.setAttribute('height', svgH);
+  svg.setAttribute('viewBox', `0 0 ${cw} ${svgH}`);
+  svg.style.display = 'block';
 
-  for (let i = 0; i < nSheets; i++) {
-    const ox = i * (sdw + GAP);
-    ctx.fillStyle = '#f0f0f0';
-    ctx.fillRect(ox, 0, sdw, sdh);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(ox, 0, sdw, sdh);
-    ctx.fillStyle = '#555';
-    ctx.font = '11px monospace';
-    ctx.fillText('Sheet ' + i, ox + 4, sdh + 15);
+  function el(tag, attrs) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
   }
 
-  const rowColor = buildRowColors(pieces);
+  for (let i = 0; i < nSheets; i++) {
+    const col = i % COLS, row = Math.floor(i / COLS);
+    const ox = col * (sdw + GAP), oy = row * cellH;
+    svg.appendChild(el('rect', { x: ox, y: oy, width: sdw, height: sdh,
+      fill: '#f0f0f0', stroke: '#333', 'stroke-width': 1.5 }));
+    const lbl = document.createElementNS(NS, 'text');
+    lbl.setAttribute('x', ox + 4);
+    lbl.setAttribute('y', oy + sdh + 12);
+    lbl.setAttribute('font-size', 11);
+    lbl.setAttribute('font-family', 'monospace');
+    lbl.setAttribute('fill', '#555');
+    lbl.textContent = 'Sheet ' + i;
+    svg.appendChild(lbl);
+  }
 
   for (const pl of placements) {
     const pc = pieces[pl.piece_idx];
     const pw = pl.rotated ? pc.height : pc.width;
     const ph = pl.rotated ? pc.width  : pc.height;
-    const ox = pl.sheet_idx * (sdw + GAP);
-    const rx = ox + pl.x * scale, ry = pl.y * scale;
-    const rw = Math.max(pw * scale, 1), rh = Math.max(ph * scale, 1);
-    ctx.fillStyle = rowColor[pl.piece_idx];
-    ctx.fillRect(rx, ry, rw, rh);
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(rx, ry, rw, rh);
+    const col = pl.sheet_idx % COLS, row = Math.floor(pl.sheet_idx / COLS);
+    const ox = col * (sdw + GAP), oy = row * cellH;
+    const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
+    const rw = Math.max(pw * scale, 0.5), rh = Math.max(ph * scale, 0.5);
+    svg.appendChild(el('rect', { x: rx, y: ry, width: rw, height: rh,
+      fill: rowColor[pl.piece_idx], stroke: '#555', 'stroke-width': 0.5 }));
     if (rw > 30 && rh > 14) {
-      ctx.fillStyle = '#000';
-      ctx.font = '9px monospace';
-      ctx.fillText(pc.name || ('#' + pl.piece_idx), rx + 2, ry + 11);
+      const t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', rx + 2);
+      t.setAttribute('y', ry + 11);
+      t.setAttribute('font-size', 9);
+      t.setAttribute('font-family', 'monospace');
+      t.setAttribute('fill', '#000');
+      t.textContent = pc.name || ('#' + pl.piece_idx);
+      svg.appendChild(t);
     }
   }
+
+  container.appendChild(svg);
 }
 
 // == form submit ===============================================================
 const seedInput      = document.getElementById('seed');
 const randomSeedChk  = document.getElementById('random-seed');
+let lastSpecs = null;
 
 document.getElementById('form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -282,6 +309,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   document.getElementById('layout-wrap').style.display = 'none';
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
+  clearInputRowColors();
   initChart();
 
   if (randomSeedChk.checked) {
@@ -292,7 +320,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('sheet_w',  document.getElementById('sheet-w').value);
   params.set('sheet_h',  document.getElementById('sheet-h').value);
   params.set('kerf',     document.getElementById('kerf').value);
-  params.set('pieces',   JSON.stringify(serializePieces()));
+  lastSpecs = serializePieces();
+  params.set('pieces',   JSON.stringify(lastSpecs));
   params.set('seed',     seedInput.value);
   params.set('threads',  document.getElementById('threads').value);
   params.set('gens',     document.getElementById('gens').value);
@@ -309,7 +338,9 @@ document.getElementById('form').addEventListener('submit', (e) => {
   es.addEventListener('done', (ev) => {
     const d = JSON.parse(ev.data);
     if (d.solution) {
-      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h);
+      const rowColor = buildRowColors(lastSpecs || [], d.pieces.length);
+      colorInputRows(lastSpecs || []);
+      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
