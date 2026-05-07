@@ -1,6 +1,6 @@
 Attribute VB_Name = "cut"
 ''
-'' Cut.bas  —  VBA module: launches cut.exe and reads progress via named pipe
+'' Cut.bas  -  VBA module: launches cut.exe and reads progress via named pipe
 ''
 '' Sheet layout ("Sheet1"):
 ''   B1        : path to cut.exe
@@ -594,7 +594,7 @@ Public Sub RunCut()
             ln = Trim(lines(li))
             If ln = "" Then GoTo NextLine
 
-            ' Last element from Split without trailing \n — incomplete line
+            ' Last element from Split without trailing \n - incomplete line
             If li = UBound(lines) And Right(raw, 1) <> Chr(10) Then
                 leftover = ln
                 GoTo NextLine
@@ -677,7 +677,7 @@ End Sub
 
 ' Returns the name of a text style using Tahoma TTF (creates it if absent).
 ' Tahoma is a TrueType font with full Unicode/Cyrillic glyph support.
-' CharSet 204 = RUSSIAN_CHARSET — tells GDI to use the Cyrillic code page for hinting.
+' CharSet 204 = RUSSIAN_CHARSET - tells GDI to use the Cyrillic code page for hinting.
 Private Function EnsureCutTextStyle(doc As Object) As String
     Const STYLE_NAME As String = "CUT_STYLE"
     Dim sty As Object
@@ -719,7 +719,7 @@ Public Sub SendToAutoCAD()
 
     Dim cutStyle As String: cutStyle = EnsureCutTextStyle(doc)
 
-    ' Clear all entities from model space (AOM — synchronous, no timing issues)
+    ' Clear all entities from model space (AOM - synchronous, no timing issues)
     Dim ms As Object: Set ms = doc.ModelSpace
     Dim i As Long
     For i = ms.Count - 1 To 0 Step -1
