@@ -754,7 +754,9 @@ Public Sub SendToAutoCAD()
         Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 3).Value)          ' placed height
         Dim px As Long: px = CLng(ws.Cells(r, rCol + 4).Value)          ' X from sheet left (Y-down coords)
         Dim py As Long: py = CLng(ws.Cells(r, rCol + 5).Value)          ' Y from sheet top  (Y-down coords)
-        Dim xOff As Long: xOff = shIdx * (shW + SHEET_GAP_ACAD)        ' sheet left edge in drawing
+        ' Rotated layout: solver-X (width) maps to AutoCAD-Y, solver-Y (height) maps to AutoCAD-X.
+        ' Sheet occupies [xOff, xOff+shH] x [0, shW] in drawing space.
+        Dim xOff As Long: xOff = shIdx * (shH + SHEET_GAP_ACAD)        ' sheet left edge in drawing
 
         ' Create block definition (origin at 0,0)
         Dim bName As String: bName = "cp" & pIdx
@@ -762,12 +764,12 @@ Public Sub SendToAutoCAD()
         Dim blkDef As Object
         Set blkDef = doc.Blocks.Add(basePt, bName)
 
-        ' Rectangle (0,0)-(pw,ph) in block space
+        ' Block space: ph wide (AutoCAD X = solver Y direction), pw tall (AutoCAD Y = solver X direction)
         Dim rPts(0 To 7) As Double
         rPts(0) = 0:  rPts(1) = 0
-        rPts(2) = pw: rPts(3) = 0
-        rPts(4) = pw: rPts(5) = ph
-        rPts(6) = 0:  rPts(7) = ph
+        rPts(2) = ph: rPts(3) = 0
+        rPts(4) = ph: rPts(5) = pw
+        rPts(6) = 0:  rPts(7) = pw
         Dim rectObj As Object
         Set rectObj = blkDef.AddLightWeightPolyline(rPts)
         rectObj.Closed = True
@@ -776,17 +778,18 @@ Public Sub SendToAutoCAD()
         Dim lbl As String
         If Len(pName) > 0 Then lbl = CStr(pw) & "x" & CStr(ph) & " - " & pName Else lbl = CStr(pw) & "x" & CStr(ph)
         Dim txtPt(0 To 2) As Double
-        txtPt(0) = CDbl(pw) / 2: txtPt(1) = CDbl(ph) / 2: txtPt(2) = 0
+        txtPt(0) = CDbl(ph) / 2: txtPt(1) = CDbl(pw) / 2: txtPt(2) = 0
         Dim txtObj As Object
         Set txtObj = blkDef.AddText(lbl, txtPt, 30)
         txtObj.StyleName = cutStyle
         txtObj.Alignment = 4  ' acAlignmentMiddleCenter
         txtObj.TextAlignmentPoint = txtPt
-        If pw < ph Then txtObj.Rotation = 1.5707963265  ' 90° for tall pieces
+        If ph < pw Then txtObj.Rotation = 1.5707963265  ' 90° when block is wider than tall
 
-        ' Y-flip: solver Y-down (0=top) -> AutoCAD Y-up (0=bottom); insPt = bottom-left corner
+        ' Insert point = bottom-left of block in drawing space
+        ' acad_x = xOff + py,  acad_y = shW - px - pw
         Dim insPt(0 To 2) As Double
-        insPt(0) = xOff + px: insPt(1) = shH - py - ph: insPt(2) = 0
+        insPt(0) = xOff + py: insPt(1) = shW - px - pw: insPt(2) = 0
         ms.InsertBlock insPt, bName, 1, 1, 1, 0
 
         Set rectObj = Nothing: Set txtObj = Nothing: Set blkDef = Nothing
@@ -798,12 +801,12 @@ Public Sub SendToAutoCAD()
     If nSheets < 1 Then nSheets = 1
     Dim si As Long
     For si = 0 To nSheets - 1
-        Dim sxOff As Long: sxOff = si * (shW + SHEET_GAP_ACAD)
+        Dim sxOff As Long: sxOff = si * (shH + SHEET_GAP_ACAD)
         Dim sPts(0 To 7) As Double
-        sPts(0) = sxOff:       sPts(1) = 0
-        sPts(2) = sxOff + shW: sPts(3) = 0
-        sPts(4) = sxOff + shW: sPts(5) = shH
-        sPts(6) = sxOff:       sPts(7) = shH
+        sPts(0) = sxOff:        sPts(1) = 0
+        sPts(2) = sxOff + shH:  sPts(3) = 0
+        sPts(4) = sxOff + shH:  sPts(5) = shW
+        sPts(6) = sxOff:        sPts(7) = shW
         Dim shRect As Object
         Set shRect = ms.AddLightWeightPolyline(sPts)
         shRect.Closed = True
