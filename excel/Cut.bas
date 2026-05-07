@@ -675,25 +675,6 @@ End Sub
 
 '' == AutoCAD export ==========================================================
 
-' Encode non-ASCII characters as \U+XXXX for AutoCAD MText Unicode escapes.
-' Also escapes MText control characters \ { }
-Private Function AcadEsc(s As String) As String
-    Dim result As String: result = ""
-    Dim i As Long
-    For i = 1 To Len(s)
-        Dim c As Long: c = AscW(Mid(s, i, 1))
-        If c < 0 Then c = c + 65536
-        Select Case c
-            Case 92:       result = result & "\\"
-            Case 123:      result = result & "\{"
-            Case 125:      result = result & "\}"
-            Case Is > 127: result = result & "\U+" & Right("0000" & Hex(c), 4)
-            Case Else:     result = result & Chr(c)
-        End Select
-    Next i
-    AcadEsc = result
-End Function
-
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets(SHEET_NAME)
@@ -720,62 +701,94 @@ Public Sub SendToAutoCAD()
     Set doc = acad.ActiveDocument
     acad.Visible = True
 
-    doc.SendCommand "CMDECHO" & vbCr & "0" & vbCr
-    doc.SendCommand "ERASE" & vbCr & "ALL" & vbCr & vbCr
-
-    Const TX As Long = -10000: Const TY As Long = -10000
-    Const MARGIN As Long = 50
-
-    ' ms.AddText uses COM BSTR (Unicode) — bypasses ANSI code-page conversion in SendCommand
+    ' Clear all entities from model space (AOM — synchronous, no timing issues)
     Dim ms As Object: Set ms = doc.ModelSpace
+    Dim i As Long
+    For i = ms.Count - 1 To 0 Step -1
+        ms.Item(i).Delete
+    Next i
 
-    Dim r As Long
+    ' Remove old cp* block definitions so names can be reused
+    Dim blkNames() As String
+    Dim nOld As Long: nOld = 0
+    Dim blk As Object
+    For Each blk In doc.Blocks
+        If Left(blk.Name, 2) = "cp" Then
+            ReDim Preserve blkNames(nOld)
+            blkNames(nOld) = blk.Name
+            nOld = nOld + 1
+        End If
+    Next blk
+    For i = 0 To nOld - 1
+        On Error Resume Next
+        doc.Blocks(blkNames(i)).Delete
+        On Error GoTo 0
+    Next i
+
+    ' Build one block per placement and insert it via AOM
+    Dim r As Long: Dim pIdx As Long: pIdx = 0
     For r = rRow To 10000
         If ws.Cells(r, rCol).Value = "" And ws.Cells(r, rCol + 1).Value = "" Then Exit For
 
-        Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)     ' sheet index (0-based)
-        Dim pName As String: pName = CStr(ws.Cells(r, rCol + 1).Value) ' piece name
-        Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 2).Value)        ' placed width
-        Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 3).Value)        ' placed height
-        Dim px As Long: px = CLng(ws.Cells(r, rCol + 4).Value)        ' X offset from sheet left (Y-down)
-        Dim py As Long: py = CLng(ws.Cells(r, rCol + 5).Value)        ' Y offset from sheet top (Y-down)
+        Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)       ' sheet index (0-based)
+        Dim pName As String: pName = CStr(ws.Cells(r, rCol + 1).Value)  ' piece name
+        Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 2).Value)          ' placed width
+        Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 3).Value)          ' placed height
+        Dim px As Long: px = CLng(ws.Cells(r, rCol + 4).Value)          ' X from sheet left (Y-down coords)
+        Dim py As Long: py = CLng(ws.Cells(r, rCol + 5).Value)          ' Y from sheet top  (Y-down coords)
+        Dim xOff As Long: xOff = shIdx * (shW + SHEET_GAP_ACAD)        ' sheet left edge in drawing
 
-        Dim xOff As Long: xOff = shIdx * (shW + SHEET_GAP_ACAD)      ' sheet left edge in drawing
+        ' Create block definition (origin at 0,0)
+        Dim bName As String: bName = "cp" & pIdx
+        Dim basePt(0 To 2) As Double  ' (0,0,0)
+        Dim blkDef As Object
+        Set blkDef = doc.Blocks.Add(basePt, bName)
 
-        doc.SendCommand "rectangle" & vbCr & _
-            Trim(Str(TX)) & "," & Trim(Str(TY)) & vbCr & _
-            Trim(Str(TX + pw)) & "," & Trim(Str(TY + ph)) & vbCr
+        ' Rectangle (0,0)-(pw,ph) in block space
+        Dim rPts(0 To 7) As Double
+        rPts(0) = 0:  rPts(1) = 0
+        rPts(2) = pw: rPts(3) = 0
+        rPts(4) = pw: rPts(5) = ph
+        rPts(6) = 0:  rPts(7) = ph
+        Dim rectObj As Object
+        Set rectObj = blkDef.AddLightWeightPolyline(rPts)
+        rectObj.Closed = True
 
+        ' Label at block center
         Dim lbl As String
-        If Len(pName) > 0 Then lbl = pName & " " & pw & "x" & ph Else lbl = pw & "x" & ph
+        If Len(pName) > 0 Then lbl = CStr(pw) & "x" & CStr(ph) & " - " & pName Else lbl = CStr(pw) & "x" & CStr(ph)
         Dim txtPt(0 To 2) As Double
-        txtPt(0) = TX + CDbl(pw) / 2: txtPt(1) = TY + CDbl(ph) / 2: txtPt(2) = 0
+        txtPt(0) = CDbl(pw) / 2: txtPt(1) = CDbl(ph) / 2: txtPt(2) = 0
         Dim txtObj As Object
-        Set txtObj = ms.AddMText(txtPt, CDbl(pw) * 2, AcadEsc(lbl))
-        txtObj.AttachmentPoint = 5  ' acAttachmentPointMiddleCenter
-        txtObj.InsertionPoint = txtPt
-        If pw < ph Then txtObj.Rotation = 1.5707963265
-        Set txtObj = Nothing
+        Set txtObj = blkDef.AddText(lbl, txtPt, 30)
+        txtObj.Alignment = 4  ' acAlignmentMiddleCenter
+        txtObj.TextAlignmentPoint = txtPt
+        If pw < ph Then txtObj.Rotation = 1.5707963265  ' 90° for tall pieces
 
-        Dim bName As String: bName = "cp" & r
-        doc.SendCommand "-block" & vbCr & bName & vbCr & "Y" & vbCr & _
-            Trim(Str(TX)) & "," & Trim(Str(TY)) & vbCr & "w" & vbCr & _
-            Trim(Str(TX - MARGIN)) & "," & Trim(Str(TY - MARGIN)) & vbCr & _
-            Trim(Str(TX + pw + MARGIN)) & "," & Trim(Str(TY + ph + MARGIN)) & vbCr & vbCr
+        ' Y-flip: solver Y-down (0=top) → AutoCAD Y-up (0=bottom); insPt = bottom-left corner
+        Dim insPt(0 To 2) As Double
+        insPt(0) = xOff + px: insPt(1) = shH - py - ph: insPt(2) = 0
+        ms.InsertBlock insPt, bName, 1, 1, 1, 0
 
-        ' Y-flip: solver uses Y-down (0 = sheet top), AutoCAD uses Y-up (0 = sheet bottom)
-        doc.SendCommand "-insert" & vbCr & bName & vbCr & _
-            Trim(Str(xOff + px)) & "," & Trim(Str(shH - py - ph)) & vbCr & "1" & vbCr & "1" & vbCr & "0" & vbCr
+        Set rectObj = Nothing: Set txtObj = Nothing: Set blkDef = Nothing
+        pIdx = pIdx + 1
     Next r
 
+    ' Draw sheet outlines
     Dim nSheets As Long: nSheets = CLng(ws.Range(OUT_SHEETS_CELL).Value)
     If nSheets < 1 Then nSheets = 1
     Dim si As Long
     For si = 0 To nSheets - 1
         Dim sxOff As Long: sxOff = si * (shW + SHEET_GAP_ACAD)
-        doc.SendCommand "rectangle" & vbCr & _
-            Trim(Str(sxOff)) & ",0" & vbCr & _
-            Trim(Str(sxOff + shW)) & "," & Trim(Str(shH)) & vbCr
+        Dim sPts(0 To 7) As Double
+        sPts(0) = sxOff:       sPts(1) = 0
+        sPts(2) = sxOff + shW: sPts(3) = 0
+        sPts(4) = sxOff + shW: sPts(5) = shH
+        sPts(6) = sxOff:       sPts(7) = shH
+        Dim shRect As Object
+        Set shRect = ms.AddLightWeightPolyline(sPts)
+        shRect.Closed = True
+        Set shRect = Nothing
     Next si
 
     doc.SendCommand "ZOOM" & vbCr & "e" & vbCr
