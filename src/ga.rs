@@ -104,7 +104,7 @@ pub enum GaEvent {
 
 /// Caller-facing handle for observing and stopping a running GA.
 ///
-/// Dropping the handle requests early termination — useful when an SSE client disconnects.
+/// Dropping the handle requests early termination - useful when an SSE client disconnects.
 pub struct GaHandle {
     pub rx: UnboundedReceiver<GaEvent>,
     stop: Arc<AtomicBool>,
@@ -270,7 +270,7 @@ fn run_ga_inner<R: Rng>(
 }
 
 /// Runs the GA synchronously in parallel (one thread per seed); returns results sorted
-/// by objective ascending. Does NOT send `GaEvent::Done` — use `run_ga_mt_bg` for that.
+/// by objective ascending. Does NOT send `GaEvent::Done` - use `run_ga_mt_bg` for that.
 ///
 /// Pass `ctx = None` to disable migration and progress. Panics if `seeds` is empty.
 pub fn run_ga_mt(
@@ -387,7 +387,7 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
 
-/// CX (Cycle Crossover) for two genomes. No RNG required — cycle structure is
+/// CX (Cycle Crossover) for two genomes. No RNG required - cycle structure is
 /// fully determined by the two parents.
 ///
 /// Traces cycles by following P2 values back to their positions in P1. Even cycles
@@ -701,8 +701,8 @@ mod tests {
     #[test]
     fn cx_known() {
         // P1=[0,1,2,3,4], P2=[3,0,4,1,2]
-        // cycle 0 (even): positions {0,3,1} — trace: 0->pos_of(3)=3->pos_of(1)=1->pos_of(0)=0
-        // cycle 1 (odd):  positions {2,4}   — trace: 2->pos_of(4)=4->pos_of(2)=2
+        // cycle 0 (even): positions {0,3,1} - trace: 0->pos_of(3)=3->pos_of(1)=1->pos_of(0)=0
+        // cycle 1 (odd):  positions {2,4}   - trace: 2->pos_of(4)=4->pos_of(2)=2
         // C1 = [0,1,4,3,2],  C2 = [3,0,2,1,4]
         let p1: Genome = (0..5usize).map(g).collect();
         let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();

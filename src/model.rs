@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Stock sheet — all sheets in the problem are identical.
+/// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Sheet {
     pub width: u32,
@@ -8,7 +8,7 @@ pub struct Sheet {
 }
 
 /// Input spec for a piece type: expanded into `count` individual `Piece` instances when building a `Problem`.
-/// `name` is optional (defaults to empty string) — present in JSON input, absent in compact CLI format.
+/// `name` is optional (defaults to empty string) - present in JSON input, absent in compact CLI format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieceSpec {
     #[serde(default)]
@@ -41,7 +41,7 @@ pub struct Problem {
 
 /// Position of a placed piece. `(x, y)` is the top-left corner of the piece on the sheet;
 /// `rotated` means the piece was placed as (height × width) instead of (width × height).
-/// `piece_idx` is the 0-based index into `Problem::pieces` — the unambiguous internal key.
+/// `piece_idx` is the 0-based index into `Problem::pieces` - the unambiguous internal key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Placement {
     pub sheet_idx: usize,

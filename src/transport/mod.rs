@@ -39,6 +39,6 @@ impl ProgressMessage {
 }
 
 pub trait ProgressSink {
-    /// Returns `Err` when the client disconnected — caller should stop the GA.
+    /// Returns `Err` when the client disconnected - caller should stop the GA.
     fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error>;
 }

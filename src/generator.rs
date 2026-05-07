@@ -70,8 +70,8 @@ pub struct GeneratorConfig {
 }
 
 /// Generate a 2-D guillotine cutting-stock instance with a known optimal solution.
-/// * `cfg` — generator settings (see [`GeneratorConfig`]).
-/// * `rng` — random-number source.
+/// * `cfg` - generator settings (see [`GeneratorConfig`]).
+/// * `rng` - random-number source.
 pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     let sheet = cfg.sheet;
     assert!(cfg.min_size >= 1, "min_size must be at least 1");

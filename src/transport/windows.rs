@@ -59,7 +59,7 @@ pub struct WindowsPipeSink {
 }
 
 // SAFETY: Handle is a raw pointer to a kernel object. We never share it across
-// threads — the sink is moved into the event loop thread and used from there only.
+// threads - the sink is moved into the event loop thread and used from there only.
 unsafe impl Send for WindowsPipeSink {}
 
 impl WindowsPipeSink {
@@ -83,7 +83,7 @@ impl WindowsPipeSink {
         }
         let connected = unsafe { ConnectNamedPipe(handle, std::ptr::null_mut()) };
         if connected == 0 {
-            // ERROR_PIPE_CONNECTED (535) means client already connected — that is success.
+            // ERROR_PIPE_CONNECTED (535) means client already connected - that is success.
             let err = unsafe { GetLastError() };
             if err != 535 {
                 unsafe { CloseHandle(handle) };

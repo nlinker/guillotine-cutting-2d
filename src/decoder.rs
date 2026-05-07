@@ -12,7 +12,7 @@ pub struct Gene {
     pub point_selector: u32,
 }
 
-/// Ordered genome — one gene per piece, defining placement order, rotation
+/// Ordered genome - one gene per piece, defining placement order, rotation
 /// preference, and free-rect selection. `piece_idx` values must be a permutation
 /// of `0..problem.pieces.len()`.
 pub type Genome = Vec<Gene>;

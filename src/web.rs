@@ -130,7 +130,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
 const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a',
                  '#dda0dd','#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
 
-// ── default data ────────────────────────────────────────────────────────────
+// == default data ============================================================
 const DEFAULT_PIECES = [
   {name:'стойка ←',    w:2384, h:600, count:1, rotate:false},
   {name:'стойка →',    w:2384, h:600, count:1, rotate:false},
@@ -145,7 +145,7 @@ const DEFAULT_PIECES = [
   {name:'перегородка', w:150,  h:490, count:2, rotate:true},
 ];
 
-// ── pieces table ─────────────────────────────────────────────────────────────
+// == pieces table =============================================================
 function addRow(p) {
   p = p || {name:'', w:'', h:'', count:1, rotate:false};
   const tbody = document.getElementById('pieces-tbody');
@@ -177,7 +177,7 @@ function serializePieces() {
 DEFAULT_PIECES.forEach(addRow);
 document.getElementById('add-row').addEventListener('click', () => addRow());
 
-// ── chart ─────────────────────────────────────────────────────────────────────
+// == chart =====================================================================
 let es = null;
 let chart = null;
 
@@ -221,7 +221,7 @@ function addPoint(generation, objective) {
   chart.update('none');
 }
 
-// ── color helpers ─────────────────────────────────────────────────────────────
+// == color helpers =============================================================
 function buildRowColors(pieces) {
   const rowColor = [];
   const seen = new Map();
@@ -239,10 +239,10 @@ function buildRowColors(pieces) {
   return rowColor;
 }
 
-// ── placements table ─────────────────────────────────────────────────────────
+// == placements table =========================================================
 function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed) {
   const fmtObj = objective.toLocaleString('ru-RU');
-  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> — ${sheets} sheet(s), `
+  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), `
            + `objective: ${fmtObj}, seed: ${seed}</p>`;
   html += '<table><thead><tr>'
         + '<th>Sheet</th><th>Piece</th><th>W</th><th>H</th>'
@@ -264,7 +264,7 @@ function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed
   return html;
 }
 
-// ── layout canvas ─────────────────────────────────────────────────────────────
+// == layout canvas =============================================================
 function drawLayout(solution, pieces, sheetW, sheetH) {
   const canvas = document.getElementById('layout');
   const placements = solution.placements;
@@ -317,7 +317,7 @@ function drawLayout(solution, pieces, sheetW, sheetH) {
   }
 }
 
-// ── form submit ───────────────────────────────────────────────────────────────
+// == form submit ===============================================================
 const seedInput      = document.getElementById('seed');
 const randomSeedChk  = document.getElementById('random-seed');
 
