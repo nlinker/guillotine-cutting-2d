@@ -17,7 +17,7 @@ Attribute VB_Name = "cut"
 '' Requires JsonConverter module (excel/JsonConverter.bas) imported into the workbook.
 ''
 '' Usage:
-''   1. Alt+F11 → Import File → cut.bas + JsonConverter.bas
+''   1. Alt+F11 -> Import File -> cut.bas + JsonConverter.bas
 ''   2. Fill in data on Sheet1
 ''   3. Run macro RunCut
 '' ============================================================================
@@ -650,7 +650,7 @@ Public Function IsRunning() As Boolean
     IsRunning = g_Running
 End Function
 
-' Assign this macro to the seed Spinner control (right-click → Assign Macro → RestartCut).
+' Assign this macro to the seed Spinner control (right-click -> Assign Macro -> RestartCut).
 ' Forms Spinner does not fire Worksheet_Change, so a direct macro assignment is required.
 Public Sub RestartCut()
     If g_Running Then
@@ -674,6 +674,25 @@ Public Sub StopCut()
 End Sub
 
 '' == AutoCAD export ==========================================================
+
+' Returns name of a text style using Tahoma TTF (creates it if absent).
+' Tahoma is a TrueType font with full Cyrillic support.
+Private Function EnsureCutTextStyle(doc As Object) As String
+    Const STYLE_NAME As String = "CUT_STYLE"
+    Dim sty As Object
+    On Error Resume Next
+    Set sty = doc.TextStyles(STYLE_NAME)
+    On Error GoTo 0
+    If sty Is Nothing Then
+        Set sty = doc.TextStyles.Add(STYLE_NAME)
+        sty.SetFont "Tahoma", False, False, 204, 0
+    End If
+    ' Readback: что реально установлено в стиле
+    Dim fName As String, fBold As Boolean, fItalic As Boolean, fCharSet As Long, fPitch As Long
+    sty.GetFont fName, fBold, fItalic, fCharSet, fPitch
+    Debug.Print "CUT_STYLE font: [" & fName & "] bold=" & fBold & " charset=" & fCharSet
+    EnsureCutTextStyle = STYLE_NAME
+End Function
 
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
@@ -765,7 +784,7 @@ Public Sub SendToAutoCAD()
         txtObj.TextAlignmentPoint = txtPt
         If pw < ph Then txtObj.Rotation = 1.5707963265  ' 90° for tall pieces
 
-        ' Y-flip: solver Y-down (0=top) → AutoCAD Y-up (0=bottom); insPt = bottom-left corner
+        ' Y-flip: solver Y-down (0=top) -> AutoCAD Y-up (0=bottom); insPt = bottom-left corner
         Dim insPt(0 To 2) As Double
         insPt(0) = xOff + px: insPt(1) = shH - py - ph: insPt(2) = 0
         ms.InsertBlock insPt, bName, 1, 1, 1, 0
@@ -791,6 +810,104 @@ Public Sub SendToAutoCAD()
         Set shRect = Nothing
     Next si
 
+    doc.SendCommand "ZOOM" & vbCr & "e" & vbCr
+End Sub
+
+' Idempotent encoding test: places a Russian pangram in the active drawing.
+' Re-running deletes the previous entity first.
+' Check Immediate Window (Ctrl+G) for char code output.
+' To test a different encoding: uncomment one of the three variants below.
+Public Sub TestAcadEncoding()
+    Const TEST_STR As String = "Съешь ещё этих мягких французских булок да выпей чаю"
+
+    ' --- Диагностика: распечатать Unicode-коды символов строки ---
+    ' VBA строки — UTF-16LE (BSTR); AscW возвращает Unicode code point.
+    ' Кириллица: U+0410..U+044F (1040..1103), пробел 32.
+    Dim dbg As String: dbg = "Char codes in TEST_STR: "
+    Dim ci As Long
+    For ci = 1 To Len(TEST_STR)
+        Dim cp As Long: cp = AscW(Mid(TEST_STR, ci, 1))
+        If cp < 0 Then cp = cp + 65536
+        dbg = dbg & cp & " "
+    Next ci
+    Debug.Print dbg
+
+    ' --- Выбор кодировки для передачи в AutoCAD ---
+    Dim txtForAcad As String
+
+    ' Вариант 1 (активен): UTF-16 — VBA BSTR передаётся как есть (Unicode code points).
+    ' AutoCAD получает Unicode; отображение зависит от шрифта и внутренней конвертации AutoCAD.
+    txtForAcad = TEST_STR
+
+    ' Вариант 2: CP1251 байты, закодированные как Latin1-символы (Chr(byte)).
+    ' Работает, если AutoCAD внутри интерпретирует ANSI-байты как CP1251.
+    ' Dim stm As Object: Set stm = CreateObject("ADODB.Stream")
+    ' stm.Open: stm.Type = 2: stm.Charset = "windows-1251": stm.WriteText TEST_STR
+    ' stm.Position = 0: stm.Type = 1
+    ' Dim cp1251b() As Byte: cp1251b = stm.Read: stm.Close
+    ' txtForAcad = "": Dim b As Long
+    ' For b = 0 To UBound(cp1251b): txtForAcad = txtForAcad & Chr(cp1251b(b)): Next b
+
+    ' Вариант 3: UTF-8 байты, закодированные как Latin1-символы.
+    ' Работает, если AutoCAD принимает UTF-8 через BSTR-байты.
+    ' Dim stm As Object: Set stm = CreateObject("ADODB.Stream")
+    ' stm.Open: stm.Type = 2: stm.Charset = "UTF-8": stm.WriteText TEST_STR
+    ' stm.Position = 3: stm.Type = 1  ' пропустить BOM (EF BB BF)
+    ' Dim utf8b() As Byte: utf8b = stm.Read: stm.Close
+    ' txtForAcad = "": Dim b As Long
+    ' For b = 0 To UBound(utf8b): txtForAcad = txtForAcad & Chr(utf8b(b)): Next b
+
+    ' --- Подключение к AutoCAD ---
+    Const TEST_TAG As String = "cut_enc_test"
+    Dim acad As Object, doc As Object
+    On Error Resume Next
+    Set acad = GetObject(, "AutoCAD.Application")
+    On Error GoTo 0
+    If acad Is Nothing Then MsgBox "AutoCAD not running.", vbCritical: Exit Sub
+    Set doc = acad.ActiveDocument
+    acad.Visible = True
+
+    ' Удалить предыдущий тест (идемпотентность)
+    Dim ms As Object: Set ms = doc.ModelSpace
+    Dim i As Long
+    For i = ms.Count - 1 To 0 Step -1
+        Dim ent As Object: Set ent = ms.Item(i)
+        On Error Resume Next
+        If ent.EntityName = "AcDbBlockReference" Then
+            If ent.Name = TEST_TAG Then ent.Delete
+        End If
+        On Error GoTo 0
+    Next i
+    On Error Resume Next
+    doc.Blocks(TEST_TAG).Delete
+    On Error GoTo 0
+
+    ' Создать блок с тестовым текстом
+    Dim basePt(0 To 2) As Double
+    Dim blkDef As Object
+    Set blkDef = doc.Blocks.Add(basePt, TEST_TAG)
+    Dim cutStyle As String: cutStyle = EnsureCutTextStyle(doc)
+
+    Dim txtPt(0 To 2) As Double
+    Dim txtObj As Object
+    Set txtObj = blkDef.AddText(txtForAcad, txtPt, 30)
+    txtObj.StyleName = cutStyle
+    Debug.Print "Entity StyleName after set: [" & txtObj.StyleName & "]"
+
+    ' Readback: что AutoCAD реально сохранил (63=?, 1040..1103=кириллица, значит проблема в шрифте)
+    Dim readBack As String: readBack = txtObj.TextString
+    Dim dbg2 As String: dbg2 = "AutoCAD stored codes: "
+    Dim ri As Long
+    For ri = 1 To Len(readBack)
+        Dim rc As Long: rc = AscW(Mid(readBack, ri, 1))
+        If rc < 0 Then rc = rc + 65536
+        dbg2 = dbg2 & rc & " "
+    Next ri
+    Debug.Print dbg2
+
+    Set txtObj = Nothing: Set blkDef = Nothing
+
+    ms.InsertBlock basePt, TEST_TAG, 1, 1, 1, 0
     doc.SendCommand "ZOOM" & vbCr & "e" & vbCr
 End Sub
 
