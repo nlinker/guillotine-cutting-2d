@@ -150,7 +150,6 @@ Private g_Running As Boolean
 '' == Helpers ==================================================================
 
 ' Escapes a string for JSON: non-ASCII and control chars become \uXXXX.
-' Ported from ../cutting/vba/cut_api.bas.
 Private Function JsonEscapeStr(s As String) As String
     Dim result As String
     Dim i As Integer
@@ -650,8 +649,6 @@ Public Function IsRunning() As Boolean
     IsRunning = g_Running
 End Function
 
-' Assign this macro to the seed Spinner control (right-click -> Assign Macro -> RestartCut).
-' Forms Spinner does not fire Worksheet_Change, so a direct macro assignment is required.
 Public Sub RestartCut()
     If g_Running Then
         StopCut
@@ -660,8 +657,6 @@ Public Sub RestartCut()
         RunCut
     End If
 End Sub
-
-'' == Stop =====================================================================
 
 Public Sub StopCut()
     g_Running = False
@@ -778,7 +773,9 @@ Public Sub SendToAutoCAD()
         Dim lbl As String
         If Len(pName) > 0 Then lbl = CStr(pw) & "x" & CStr(ph) & " - " & pName Else lbl = CStr(pw) & "x" & CStr(ph)
         Dim txtPt(0 To 2) As Double
-        txtPt(0) = CDbl(ph) / 2: txtPt(1) = CDbl(pw) / 2: txtPt(2) = 0
+        txtPt(0) = CDbl(ph) / 2
+        txtPt(1) = CDbl(pw) / 2
+        txtPt(2) = 0
         Dim txtObj As Object
         Set txtObj = blkDef.AddText(lbl, txtPt, 30)
         txtObj.StyleName = cutStyle
