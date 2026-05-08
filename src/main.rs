@@ -35,16 +35,19 @@ struct Cli {
 enum Command {
     /// Run the GA on a problem and print ranked results
     Calc {
-        /// Problem string e.g. "2600x1800F:3:400x400/6,495x495/6" (mutually exclusive with --json)
-        problem: Option<String>,
-        /// Path to a JSON problem file (mutually exclusive with positional problem string)
+        /// Compact problem string, e.g. "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r".
+        /// Mutually exclusive with --json; exactly one must be provided.
+        #[arg(long)]
+        compact: Option<String>,
+        /// Path to a JSON problem file. Mutually exclusive with --compact; exactly one must be provided.
         #[arg(long)]
         json: Option<String>,
         /// Base random seed; different values produce different layouts
         #[arg(long, default_value_t = 42)]
         seed: u64,
-        /// Number of parallel threads (independent GA runs)
-        #[arg(long, default_value_t = 8)]
+        /// Number of parallel threads (independent GA runs).
+        /// 0 = auto-detect: uses std::thread::available_parallelism() (logical CPU count).
+        #[arg(long, default_value_t = 0)]
         threads: usize,
         /// Generations per run
         #[arg(long, default_value_t = 2000)]
@@ -80,7 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
         Command::Calc {
-            problem,
+            compact,
             json,
             seed,
             threads,
@@ -93,18 +96,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink_interval,
         } => {
             let cfg = ga_config(gens, pop, elite, k);
-            let parsed = load_problem(problem.as_deref(), json.as_deref())?;
-            run_calc_with_sink(&parsed, &cfg, seed, threads, progress, &sink, sink_interval)?;
+            let parsed = load_problem(compact.as_deref(), json.as_deref())?;
+            let n_threads = resolve_threads(threads);
+            run_calc_with_sink(&parsed, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
     }
     Ok(())
 }
 
-fn load_problem(problem: Option<&str>, json: Option<&str>) -> Result<Problem, Box<dyn Error>> {
-    match (problem, json) {
-        (Some(_), Some(_)) => Err("specify either a problem string or --json, not both".into()),
-        (None, None) => Err("provide a problem string or --json <path>".into()),
+fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<Problem, Box<dyn Error>> {
+    match (compact, json) {
+        (Some(_), Some(_)) => Err("--compact and --json are mutually exclusive".into()),
+        (None, None) => Err("provide exactly one of --compact <string> or --json <path>".into()),
         (Some(s), None) => Ok(parse_problem(s)?),
         (None, Some(path)) => {
             let s = std::fs::read_to_string(path)?;
@@ -279,6 +283,14 @@ pub(crate) fn run_with_sink(
         }
     }
     Ok(())
+}
+
+fn resolve_threads(n: usize) -> usize {
+    if n == 0 {
+        std::thread::available_parallelism().map_or(8, |p| p.get())
+    } else {
+        n
+    }
 }
 
 // == Legacy helpers used by web.rs =========================================

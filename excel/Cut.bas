@@ -515,7 +515,7 @@ Public Sub RunCut()
 
     ' Read GA config from sheet (use defaults if cells empty)
     Dim nSeed    As Long: nSeed    = 42
-    Dim nThreads As Long: nThreads = 4
+    Dim nThreads As Long: nThreads = 0  ' 0 = auto-detect via available_parallelism() in cut.exe
     Dim nGens    As Long: nGens    = 2000
     Dim nPop     As Long: nPop     = 200
     If ws.CheckBoxes(CFG_RANDOM_SEED_CHK).Value = xlOn Then

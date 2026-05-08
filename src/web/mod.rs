@@ -40,7 +40,7 @@ fn default_seed() -> u64 {
     42
 }
 fn default_threads() -> usize {
-    8
+    std::thread::available_parallelism().map_or(8, |p| p.get())
 }
 fn default_gens() -> usize {
     1000

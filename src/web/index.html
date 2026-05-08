@@ -60,7 +60,7 @@
   <div class="row">
     <label>Seed <input type="number" id="seed" value="42" min="0"></label>
     <label><input type="checkbox" id="random-seed"> random</label>
-    <label>Threads <input type="number" id="threads" value="8" min="1" max="64"></label>
+    <label>Threads <input type="number" id="threads" min="1" max="64"></label>
     <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
@@ -129,6 +129,7 @@ function serializePieces() {
 }
 
 DEFAULT_PIECES.forEach(addRow);
+document.getElementById('threads').value = navigator.hardwareConcurrency || 8;
 document.getElementById('add-row').addEventListener('click', () => addRow());
 
 // == chart =====================================================================

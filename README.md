@@ -9,20 +9,38 @@ the library finds placements that minimizes the number of sheets used.
 All cuts are guillotine cuts (straight lines across the full 
 remaining rectangle).
 
-![Cutting example](docs/cutting_example.png)
+![Excel example](docs/img/excel_workbook.png)
 
 ## Usage
 
-Solve a problem and print ranked results 
+In console solve a problem and print the best solution found in 5000 iterations of GA (`--gens 5000`)
 ```
-cargo run --release -- calc "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" \
-    --seeds 12 --gens 2000
+cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --seed 42 --gens 5000
 ```
 
-Start the web UI at http://localhost:8080
+Alternatively in console you can pass the json
+```
+bat -p task.json
+  {
+    "sheet": {"width": 2600, "height": 1800},
+    "kerf": 3,
+    "pieces": [
+      {"name": "A", "width": 400, "height": 400, "count": 6, "can_rotate": false},
+      {"name": "B", "width": 495, "height": 495, "count": 6, "can_rotate": false},
+      {"name": "C", "width": 270, "height": 320, "count": 10, "can_rotate": false},
+      {"name": "D", "width": 150, "height": 450, "count": 17, "can_rotate": true}
+    ]
+  }
+
+cargo run --release -- calc --json task.json --sink stdout --seed 42 --gens 5000
+```
+
+Or start the web UI at http://localhost:8080
 ```
 cargo run --release -- serve --port 8080
 ```
+
+Or (under Windows) run the [Excel workbook](excel/workbook.xlsm)
 
 You can use the library directly with the code:
 ```rust
@@ -39,8 +57,8 @@ fn main() {
           .collect();
 
   let solution = decode(&problem, &genome);
-  println!("{} sheet(s) used", solution.sheets_used());
-  println!("the objective value is {}", solution.objective(&problem));
+  let (sheets, last_area) = solution.objective(&problem);
+  println!("{sheets} sheet(s) used, last-sheet piece area = {last_area}");
 }
 ```
 
