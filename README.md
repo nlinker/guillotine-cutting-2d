@@ -106,16 +106,25 @@ cargo run --example ga_benchmark --release          # GA quality benchmark
 
 Interactive visualizations (open in browser, no server needed):
 
-| Demo | What it shows                                                                |
-|------|------------------------------------------------------------------------------|
-| [Guillotine Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_decoder.html) | genome → sheet placements step by step                  |
-| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html) | OX and CX operators animated                                  |
-| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html) | swap / flip / point-selector mutation animated                 |
+(**NOTE**: it is AI generated from the Rust code, might be not accurate enough!)
+
+| Demo                                                                                                    | What it shows                                         |
+|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| [Guillotine Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_decoder.html)             | genome → sheet placements step by step                |
+| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                | OX and CX operators animated                          |
+| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)              | swap / flip / point-selector mutation animated        |
 | [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
 
 ## References
 
 - [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/sirazetdinova_t_u.pdf)
-- Genetic Algorithm in Java [2d-cutting-stock-problem-master](https://github.com/fabiofdsantos/2d-cutting-stock-problem)
-- Simple heuristic in Python [guillotine-cutting-master](third-party/guillotine-cutting-master)
-- Cutting algorithm in C++ from Gadsky [gadsky-cutting](third-party/gadsky-cutting)
+  The genome and the decoder is this project is very influenced by this thesis. The thesis is very good for the initial immersion in the topic.
+- [bin-packing](https://github.com/doublesharp/bin-packing) - Rust code, many heuristics
+  (MaxRects, Skyline, Guillotine beam search), no GA, feature-rich, solid implementation (kerf, trim).
+- [cut-optimizer-2d](https://github.com/jasonrhansen/cut-optimizer-2d) - Rust code, GA + GuillotineBin decoder,
+  solid implementation, supports patterns/grain direction tracking. Doesn't support multi-sheet packing for now. 
+- [2d-cutting-stock-problem-master](https://github.com/fabiofdsantos/2d-cutting-stock-problem) - Genetic Algorithm in Java for 2D packing, no guillotine, no kerf
+- [guillotine-cutting-master](third-party/guillotine-cutting-master) - Simple heuristic in Python, 2D guillotine
+- [gadsky-cutting](third-party/gadsky-cutting) - Cutting algorithm in C++ from Gadsky, has pretty simple GA implementation
+- [monte-carlo](third-party/monte-carlo) - Monte-Carlo algorithm shows the usage of named pipes for the feedback channel
+

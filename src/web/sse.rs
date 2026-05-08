@@ -16,8 +16,7 @@ impl ProgressSink for SseSink {
         let (event_name, data) = match msg {
             ProgressMessage::Progress { .. } => ("progress", msg.to_line()),
             ProgressMessage::Done { .. } => {
-                let mut val = serde_json::to_value(msg)
-                    .expect("ProgressMessage serialization is infallible");
+                let mut val = serde_json::to_value(msg).expect("ProgressMessage serialization is infallible");
                 val["elapsed_secs"] = self.start.elapsed().as_secs_f64().into();
                 val["sheet_w"] = self.sheet_w.into();
                 val["sheet_h"] = self.sheet_h.into();
