@@ -53,7 +53,7 @@ pub struct Placement {
 
 /// An unused rectangle remaining after all pieces are placed. `(x, y)` is the top-left corner;
 /// `x` increases rightward, `y` increases downward.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct FreeRect {
     pub sheet_idx: usize,
     pub x: u32,

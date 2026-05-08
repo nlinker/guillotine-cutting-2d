@@ -1,4 +1,9 @@
+use smallvec::{SmallVec, smallvec};
+
 use crate::model::{FreeRect, Piece, Placement, Problem, Solution};
+
+type FreeList = SmallVec<[FreeRect; 16]>;
+type FreePair = SmallVec<[FreeRect; 2]>;
 
 /// One element of the solution genome (V-vector encoding).
 /// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
@@ -25,7 +30,7 @@ pub type Genome = Vec<Gene>;
 ///
 /// Precondition: every piece fits on an empty sheet.
 pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
-    let mut free: Vec<FreeRect> = vec![sheet_rect(problem, 0)];
+    let mut free: FreeList = smallvec![sheet_rect(problem, 0)];
     let mut placements: Vec<Placement> = Vec::with_capacity(genome.len());
     let mut sheets_open: usize = 1;
     for gene in genome {
@@ -55,12 +60,12 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
     placements.sort_unstable_by_key(|p| (p.sheet_idx, p.x, p.y));
     Solution {
         placements,
-        leftovers: free,
+        leftovers: free.into_vec(),
     }
 }
 
 fn open_new_sheet(
-    free: &mut Vec<FreeRect>,
+    free: &mut FreeList,
     sheets_open: &mut usize,
     problem: &Problem,
     piece: &Piece,
@@ -124,11 +129,11 @@ fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u3
 /// narrower than the bottom leftover, the right child gets the piece's height
 /// and the bottom child spans the full rect width (and vice versa).
 /// The blade kerf is subtracted from each internal cut; boundary edges are exempt.
-fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> Vec<FreeRect> {
+fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
     let lw = fr.w - pw; // right leftover before kerf
     let lh = fr.h - ph; // bottom leftover before kerf
-    let mut out = Vec::with_capacity(2);
+    let mut out = SmallVec::new();
     if lw <= lh {
         // right child: narrow (piece height); bottom child: full width:
         // ┌──────────┬─────────────────┐
