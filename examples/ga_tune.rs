@@ -75,7 +75,7 @@ fn cfg(
     p_crossover: f64,
     p_swap: f64,
     p_flip: f64,
-    p_point: f64,
+    point_p: f64,
 ) -> GaConfig {
     GaConfig {
         pop_size,
@@ -85,7 +85,8 @@ fn cfg(
         p_crossover,
         p_swap,
         p_flip,
-        p_point,
+        point_p,
+        point_delta: (1, 3),
     }
 }
 

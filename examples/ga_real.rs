@@ -3,9 +3,7 @@
 ///
 /// Run with:  cargo run --example ga_real --release
 use std::collections::BTreeMap;
-use std::time::Instant;
-
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use cutting::{
     decoder::decode,
@@ -26,7 +24,8 @@ fn ga_cfg() -> GaConfig {
         p_crossover: 0.80,
         p_swap: 0.15,
         p_flip: 0.05,
-        p_point: 0.10,
+        point_p: 0.10,
+        point_delta: (1, 3),
     }
 }
 

@@ -139,7 +139,8 @@ fn main() {
             p_crossover: 0.80,
             p_swap: 0.15,
             p_flip: 0.05,
-            p_point: 0.10,
+            point_p: 0.10,
+            point_delta: (1, 3),
         },
     }];
 

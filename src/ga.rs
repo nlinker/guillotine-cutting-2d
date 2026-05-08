@@ -49,17 +49,23 @@ pub struct GaConfig {
     /// Typical value: 0.02-0.1.
     pub p_flip: f64,
 
-    /// Per-gene probability of assigning a new random `point_selector`.
+    /// Per-gene probability of nudging `point_selector` by a random amount.
     /// Controls which free rectangle the decoder tries first for this piece.
+    /// Small steps let the GA explore rect choices smoothly rather than jumping.
     /// Typical value: 0.05-0.15.
-    pub p_point: f64,
+    pub point_p: f64,
+
+    /// Inclusive range `(lo, hi)` for the nudge magnitude applied to `point_selector`.
+    /// A value is drawn uniformly from `lo..=hi` and added or subtracted (wrapping).
+    /// Default: `(1, 3)`.
+    pub point_delta: (u32, u32),
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2}",
+            "pop={} gens={} elite={} k={} p_cx={:.2} p_sw={:.2} p_fl={:.2} p_pt={:.2} delta={}..={}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -67,7 +73,9 @@ impl fmt::Display for GaConfig {
             self.p_crossover,
             self.p_swap,
             self.p_flip,
-            self.p_point,
+            self.point_p,
+            self.point_delta.0,
+            self.point_delta.1,
         )
     }
 }
@@ -203,7 +211,14 @@ fn run_ga_inner<R: Rng>(
                 (p1, p2)
             };
 
-            mutate(&mut g1, rng, config.p_swap, config.p_flip, config.p_point);
+            mutate(
+                &mut g1,
+                rng,
+                config.p_swap,
+                config.p_flip,
+                config.point_p,
+                config.point_delta,
+            );
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
@@ -212,7 +227,14 @@ fn run_ga_inner<R: Rng>(
             });
 
             if next_pop.len() < config.pop_size {
-                mutate(&mut g2, rng, config.p_swap, config.p_flip, config.p_point);
+                mutate(
+                    &mut g2,
+                    rng,
+                    config.p_swap,
+                    config.p_flip,
+                    config.point_p,
+                    config.point_delta,
+                );
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
@@ -421,12 +443,20 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 /// Mutate a genome in-place. For each gene, independently:
 /// - with probability `p_swap`: swap it with a random other gene (preserves permutation)
 /// - with probability `p_flip`: flip `rotate`
-/// - with probability `p_point`: assign a new random `point_selector`
-pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64, p_point: f64) {
+/// - with probability `point_p`: nudge `point_selector` by ±`point_delta` wrapping
+pub fn mutate<R: Rng>(
+    genome: &mut Genome,
+    rng: &mut R,
+    p_swap: f64,
+    p_flip: f64,
+    point_p: f64,
+    point_delta: (u32, u32),
+) {
     let n = genome.len();
     if n < 2 {
         return;
     }
+    let span = (point_delta.1.saturating_sub(point_delta.0) + 1).max(1) as u64;
     for i in 0..n {
         if rng_01(rng) < p_swap {
             let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
@@ -435,8 +465,13 @@ pub fn mutate<R: Rng>(genome: &mut Genome, rng: &mut R, p_swap: f64, p_flip: f64
         if rng_01(rng) < p_flip {
             genome[i].rotate = !genome[i].rotate;
         }
-        if rng_01(rng) < p_point {
-            genome[i].point_selector = rng.next_u64() as u32;
+        if rng_01(rng) < point_p {
+            let delta = point_delta.0 + (rng.next_u64() % span) as u32;
+            genome[i].point_selector = if rng.next_u64() & 1 == 0 {
+                genome[i].point_selector.wrapping_add(delta)
+            } else {
+                genome[i].point_selector.wrapping_sub(delta)
+            };
         }
     }
 }
@@ -533,7 +568,14 @@ mod tests {
     fn mutate_preserves_permutation() {
         let n = 8;
         let mut genome: Genome = (0..n).map(g).collect();
-        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(1), 1.0, 1.0, 1.0);
+        mutate(
+            &mut genome,
+            &mut Xoshiro256StarStar::seed_from_u64(1),
+            1.0,
+            1.0,
+            1.0,
+            (1, 3),
+        );
         assert_eq!(sorted_ids(&genome), (0..n).collect::<Vec<_>>());
     }
 
@@ -541,7 +583,14 @@ mod tests {
     fn mutate_no_op_at_zero_prob() {
         let orig: Genome = (0..5usize).map(g).collect();
         let mut genome = orig.clone();
-        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(2), 0.0, 0.0, 0.0);
+        mutate(
+            &mut genome,
+            &mut Xoshiro256StarStar::seed_from_u64(2),
+            0.0,
+            0.0,
+            0.0,
+            (1, 3),
+        );
         assert_eq!(genome, orig);
     }
 
@@ -549,7 +598,14 @@ mod tests {
     fn mutate_flips_all_rotate() {
         let n = 4;
         let mut genome: Genome = (0..n).map(g).collect();
-        mutate(&mut genome, &mut Xoshiro256StarStar::seed_from_u64(3), 0.0, 1.0, 0.0);
+        mutate(
+            &mut genome,
+            &mut Xoshiro256StarStar::seed_from_u64(3),
+            0.0,
+            1.0,
+            0.0,
+            (1, 3),
+        );
         assert!(genome.iter().all(|g| g.rotate));
     }
 
@@ -558,8 +614,22 @@ mod tests {
         let orig: Genome = (0..6usize).map(g).collect();
         let mut g1 = orig.clone();
         let mut g2 = orig.clone();
-        mutate(&mut g1, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
-        mutate(&mut g2, &mut Xoshiro256StarStar::seed_from_u64(42), 0.3, 0.2, 0.2);
+        mutate(
+            &mut g1,
+            &mut Xoshiro256StarStar::seed_from_u64(42),
+            0.3,
+            0.2,
+            0.2,
+            (1, 3),
+        );
+        mutate(
+            &mut g2,
+            &mut Xoshiro256StarStar::seed_from_u64(42),
+            0.3,
+            0.2,
+            0.2,
+            (1, 3),
+        );
         assert_eq!(g1, g2);
     }
 
@@ -610,7 +680,8 @@ mod tests {
             p_crossover: 0.8,
             p_swap: 0.1,
             p_flip: 0.05,
-            p_point: 0.05,
+            point_p: 0.05,
+            point_delta: (1, 3),
         }
     }
 

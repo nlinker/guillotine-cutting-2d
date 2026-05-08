@@ -139,26 +139,54 @@ fn run_calc_with_sink(
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
+            run_with_sink(
+                Arc::clone(&problem),
+                Arc::clone(&cfg),
+                &seeds,
+                progress_interval,
+                &mut sink,
+                sink_interval_ms,
+            )
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(
+                    Arc::clone(&problem),
+                    Arc::clone(&cfg),
+                    &seeds,
+                    progress_interval,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(
+                    Arc::clone(&problem),
+                    Arc::clone(&cfg),
+                    &seeds,
+                    progress_interval,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink(Arc::clone(&problem), Arc::clone(&cfg), &seeds, progress_interval, &mut sink, sink_interval_ms)
+                run_with_sink(
+                    Arc::clone(&problem),
+                    Arc::clone(&cfg),
+                    &seeds,
+                    progress_interval,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
         }
     }
@@ -255,7 +283,6 @@ pub(crate) fn run_with_sink(
 
 // == Legacy helpers used by web.rs =========================================
 
-
 pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
     GaConfig {
         pop_size: pop,
@@ -265,7 +292,8 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         p_crossover: 0.80,
         p_swap: 0.15,
         p_flip: 0.05,
-        p_point: 0.10,
+        point_p: 0.10,
+        point_delta: (1, 3),
     }
 }
 
