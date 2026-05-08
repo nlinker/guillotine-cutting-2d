@@ -44,21 +44,40 @@ Or (under Windows) run the [Excel workbook](excel/workbook.xlsm)
 
 You can use the library directly with the code:
 ```rust
-use cutting::parse::parse_problem;
-use cutting::decoder::{Gene, Genome, decode};
+use std::sync::Arc;
+use cutting::{
+    decoder::decode,
+    ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
+    parse::parse_problem,
+};
 
 fn main() {
-  // 3000x4000 sheet, 7 mm kerf, 9 pieces (R = rotatable by default)
-  let problem = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap();
+    let problem = Arc::new(
+        parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap()
+    );
+    let cfg = Arc::new(GaConfig {
+        pop_size: 200, n_generations: 1000, n_elite: 5, tournament_k: 5,
+        p_crossover: 0.80, p_swap: 0.15, p_flip: 0.05,
+        point_p: 0.10, point_delta: (1, 3),
+    });
 
-  // Build a genome (one Gene per piece, in placement order)
-  let genome: Genome = problem.pieces.iter().enumerate()
-          .map(|(i, _)| Gene { piece_idx: i, rotate: true, point_selector: 0 })
-          .collect();
+    // Run 8 independent GA islands (one per seed) in parallel
+    let seeds: Vec<u64> = (0..8).collect();
+    let (mut handle, ctx) = ga_channel(0); // 0 = no progress events
+    run_ga_mt(Arc::clone(&problem), Arc::clone(&cfg), seeds, ctx);
 
-  let solution = decode(&problem, &genome);
-  let (sheets, last_area) = solution.objective(&problem);
-  println!("{sheets} sheet(s) used, last-sheet piece area = {last_area}");
+    // Block until all islands finish; results are sorted best-first
+    let results = loop {
+        match handle.rx.blocking_recv() {
+            Some(GaEvent::Done(r)) => break r,
+            _ => {}
+        }
+    };
+
+    let (best_seed, best_ind) = &results[0];
+    let solution = decode(&problem, &best_ind.genome);
+    let (sheets, last_area) = solution.objective(&problem);
+    println!("seed={best_seed}  {sheets} sheet(s)  last_area={last_area}");
 }
 ```
 
