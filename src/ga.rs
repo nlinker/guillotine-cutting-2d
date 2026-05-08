@@ -35,9 +35,9 @@ pub struct GaConfig {
     pub tournament_k: usize,
 
     /// Probability that two parents produce children via OX crossover.
-    /// With probability `1 - p_crossover` children are clones of their parents.
+    /// With probability `1 - crossover_p` children are clones of their parents.
     /// Typical value: 0.7-0.9.
-    pub p_crossover: f64,
+    pub crossover_p: f64,
 
     /// Per-gene probability of a swap mutation (exchanges this gene with a random other).
     /// Preserves the permutation invariant.
@@ -70,7 +70,7 @@ impl fmt::Display for GaConfig {
             self.n_generations,
             self.n_elite,
             self.tournament_k,
-            self.p_crossover,
+            self.crossover_p,
             self.swap_p,
             self.flip_p,
             self.point_p,
@@ -170,7 +170,7 @@ pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
 ///
 /// Each generation: elite individuals are carried over unchanged; the remainder is
-/// filled by tournament selection -> OX crossover (with probability `p_crossover`) ->
+/// filled by tournament selection -> OX crossover (with probability `crossover_p`) ->
 /// mutation -> decode. The running best is tracked independently of elitism so that
 /// `n_elite = 0` still returns a valid result.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
@@ -202,7 +202,7 @@ fn run_ga_inner<R: Rng>(
             let p1 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
             let p2 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
 
-            let (mut g1, mut g2) = if rng_01(rng) < config.p_crossover {
+            let (mut g1, mut g2) = if rng_01(rng) < config.crossover_p {
                 ox_crossover(&p1, &p2, rng)
             } else {
                 (p1, p2)
@@ -670,7 +670,7 @@ mod tests {
             n_generations: 10,
             n_elite: 1,
             tournament_k: 2,
-            p_crossover: 0.8,
+            crossover_p: 0.8,
             swap_p: 0.1,
             flip_p: 0.05,
             point_p: 0.05,

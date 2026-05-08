@@ -138,7 +138,7 @@ fn main() {
             n_generations: 200,
             n_elite: 2,
             tournament_k: 3,
-            p_crossover: 0.80,
+            crossover_p: 0.80,
             swap_p: 0.15,
             flip_p: 0.05,
             point_p: 0.10,
