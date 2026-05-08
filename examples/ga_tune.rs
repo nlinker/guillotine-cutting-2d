@@ -79,7 +79,7 @@ fn cfg(
     n_elite: usize,
     tournament_k: usize,
     p_crossover: f64,
-    p_swap: f64,
+    swap_p: f64,
     p_flip: f64,
     point_p: f64,
 ) -> GaConfig {
@@ -89,7 +89,7 @@ fn cfg(
         n_elite,
         tournament_k,
         p_crossover,
-        p_swap,
+        swap_p,
         p_flip,
         point_p,
         point_delta: (1, 3),
@@ -162,11 +162,11 @@ fn main() {
         },
         // == vary mutation rates ===============================
         Variant {
-            name: "pop=200 gen=1000 p_swap=0.25",
+            name: "pop=200 gen=1000 swap_p=0.25",
             cfg: cfg(200, 1000, 2, 3, 0.80, 0.25, 0.05, 0.10),
         },
         Variant {
-            name: "pop=200 gen=1000 p_swap=0.05",
+            name: "pop=200 gen=1000 swap_p=0.05",
             cfg: cfg(200, 1000, 2, 3, 0.80, 0.05, 0.05, 0.10),
         },
         Variant {

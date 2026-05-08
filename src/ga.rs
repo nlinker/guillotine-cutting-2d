@@ -42,7 +42,7 @@ pub struct GaConfig {
     /// Per-gene probability of a swap mutation (exchanges this gene with a random other).
     /// Preserves the permutation invariant.
     /// Typical value: 0.05-0.2.
-    pub p_swap: f64,
+    pub swap_p: f64,
 
     /// Per-gene probability of flipping the `rotate` flag.
     /// Only has effect when the piece allows rotation.
@@ -71,7 +71,7 @@ impl fmt::Display for GaConfig {
             self.n_elite,
             self.tournament_k,
             self.p_crossover,
-            self.p_swap,
+            self.swap_p,
             self.p_flip,
             self.point_p,
             self.point_delta.0,
@@ -211,7 +211,7 @@ fn run_ga_inner<R: Rng>(
             mutate(
                 &mut g1,
                 rng,
-                config.p_swap,
+                config.swap_p,
                 config.p_flip,
                 config.point_p,
                 config.point_delta,
@@ -226,7 +226,7 @@ fn run_ga_inner<R: Rng>(
                 mutate(
                     &mut g2,
                     rng,
-                    config.p_swap,
+                    config.swap_p,
                     config.p_flip,
                     config.point_p,
                     config.point_delta,
@@ -435,13 +435,13 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 }
 
 /// Mutate a genome in-place. For each gene, independently:
-/// - with probability `p_swap`: swap it with a random other gene (preserves permutation)
+/// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
 /// - with probability `p_flip`: flip `rotate`
 /// - with probability `point_p`: nudge `point_selector` by ±`point_delta` wrapping
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     rng: &mut R,
-    p_swap: f64,
+    swap_p: f64,
     p_flip: f64,
     point_p: f64,
     point_delta: (u32, u32),
@@ -452,7 +452,7 @@ pub fn mutate<R: Rng>(
     }
     let span = (point_delta.1.saturating_sub(point_delta.0) + 1).max(1) as u64;
     for i in 0..n {
-        if rng_01(rng) < p_swap {
+        if rng_01(rng) < swap_p {
             let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
             genome.swap(i, j);
         }
@@ -671,7 +671,7 @@ mod tests {
             n_elite: 1,
             tournament_k: 2,
             p_crossover: 0.8,
-            p_swap: 0.1,
+            swap_p: 0.1,
             p_flip: 0.05,
             point_p: 0.05,
             point_delta: (1, 3),

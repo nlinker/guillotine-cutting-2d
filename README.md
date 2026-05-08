@@ -57,7 +57,7 @@ fn main() {
     );
     let cfg = Arc::new(GaConfig {
         pop_size: 200, n_generations: 1000, n_elite: 5, tournament_k: 5,
-        p_crossover: 0.80, p_swap: 0.15, p_flip: 0.05,
+        p_crossover: 0.80, swap_p: 0.15, p_flip: 0.05,
         point_p: 0.10, point_delta: (1, 3),
     });
 
