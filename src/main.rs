@@ -216,8 +216,8 @@ pub(crate) fn run_with_sink(
                 if !throttled {
                     let msg = ProgressMessage::Progress {
                         generation: p.generation,
-                        objective: p.objective,
-                        sheets_used: p.sheets_used,
+                        sheets_used: p.objective.0,
+                        last_sheet_area: p.objective.1,
                         seed: p.seed,
                         solution: None,
                         pieces: None,
@@ -236,8 +236,8 @@ pub(crate) fn run_with_sink(
                         let sol = decode(&*problem, &evt.genome);
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
-                            objective: evt.objective,
-                            sheets_used: evt.sheets_used,
+                            sheets_used: evt.objective.0,
+                            last_sheet_area: evt.objective.1,
                             seed: evt.seed,
                             solution: Some(sol),
                             pieces: Some(problem.pieces.clone()),
@@ -255,8 +255,8 @@ pub(crate) fn run_with_sink(
                     let sol = decode(&*problem, &evt.genome);
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
-                        objective: evt.objective,
-                        sheets_used: evt.sheets_used,
+                        sheets_used: evt.objective.0,
+                        last_sheet_area: evt.objective.1,
                         seed: evt.seed,
                         solution: Some(sol),
                         pieces: Some(problem.pieces.clone()),
@@ -268,8 +268,8 @@ pub(crate) fn run_with_sink(
                 let sol = decode(&*problem, &best.genome);
                 let msg = ProgressMessage::Done {
                     seed: *best_seed,
-                    sheets_used: sol.sheets_used(),
-                    objective: best.objective,
+                    sheets_used: best.objective.0,
+                    last_sheet_area: best.objective.1,
                     solution: sol,
                     pieces: problem.pieces.clone(),
                 };

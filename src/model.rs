@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+/// Lexicographic objective value `(sheets_used, last_sheet_area)`. Lower is better.
+pub type Objective = (usize, i64);
+
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Sheet {
@@ -82,15 +85,13 @@ impl Solution {
     ///   1. minimize `sheets_used`
     ///   2. minimize piece area on the last sheet
     ///
-    /// `objective = sheets_used * (sheet_area + 1) + piece_area_on_last_sheet`
-    ///
-    /// The `+ 1` ensures strict lexicographic priority: any k-sheet solution is better than
-    /// any (k+1)-sheet solution, because `piece_area_on_last <= total_piece_area <= sheet_area`.
-    pub fn objective(&self, problem: &Problem) -> i64 {
+    /// Returns `(sheets_used, last_sheet_area)`. Rust tuple `Ord` provides lexicographic
+    /// comparison for free: any k-sheet solution is strictly better than any (k+1)-sheet
+    /// solution regardless of `last_sheet_area`.
+    pub fn objective(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return 0;
+            return (0, 0);
         }
-        let sheet_area = problem.sheet.width as i64 * problem.sheet.height as i64;
         let last = self.sheets_used() - 1;
         let area_on_last: i64 = self
             .placements
@@ -101,6 +102,6 @@ impl Solution {
                 p.width as i64 * p.height as i64
             })
             .sum();
-        self.sheets_used() as i64 * (sheet_area + 1) + area_on_last
+        (self.sheets_used(), area_on_last)
     }
 }

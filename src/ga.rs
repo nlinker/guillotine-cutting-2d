@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     decoder::{Gene, Genome, decode},
-    model::Problem,
+    model::{Objective, Problem},
 };
 
 /// GA hyperparameters.
@@ -80,25 +80,22 @@ impl fmt::Display for GaConfig {
     }
 }
 
-/// A genome paired with its cached fitness values to avoid re-decoding during selection.
+/// A genome paired with its cached fitness value to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
 pub struct Individual {
     pub genome: Genome,
-    pub objective: i64,
-    pub sheets_used: usize,
+    pub objective: Objective,
 }
 
 /// Progress snapshot emitted every `GaContext::progress_interval` generations.
 /// Contains the current global best across all islands.
-/// `objective` and `sheets_used` are pre-computed from genome to avoid re-decoding.
+/// `objective` is pre-computed from genome to avoid re-decoding.
 #[derive(Debug, Clone)]
 pub struct ProgressEvent {
     pub seed: u64,
-    /// `gen` is a reserved keyword in Rust 2024 edition.
     pub generation: usize,
     pub genome: Genome,
-    pub objective: i64,
-    pub sheets_used: usize,
+    pub objective: Objective,
 }
 
 /// Event delivered from the GA to the caller via `GaHandle`.
@@ -223,7 +220,6 @@ fn run_ga_inner<R: Rng>(
             next_pop.push(Individual {
                 genome: g1,
                 objective: sol1.objective(problem),
-                sheets_used: sol1.sheets_used(),
             });
 
             if next_pop.len() < config.pop_size {
@@ -239,7 +235,6 @@ fn run_ga_inner<R: Rng>(
                 next_pop.push(Individual {
                     genome: g2,
                     objective: sol2.objective(problem),
-                    sheets_used: sol2.sheets_used(),
                 });
             }
         }
@@ -277,7 +272,6 @@ fn run_ga_inner<R: Rng>(
                         seed: ctx.seed,
                         generation: step + 1,
                         objective: g.objective,
-                        sheets_used: g.sheets_used,
                         genome: g.genome.clone(),
                     })
                 })
@@ -511,7 +505,6 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
             Individual {
                 genome,
                 objective: sol.objective(problem),
-                sheets_used: sol.sheets_used(),
             }
         })
         .collect()
@@ -635,15 +628,15 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let pop = vec![ind(0, 30), ind(1, 10), ind(2, 20)];
+        let pop = vec![ind(0, (0, 30)), ind(1, (0, 10)), ind(2, (0, 20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
-        assert_eq!(winner.objective, 10);
+        assert_eq!(winner.objective, (0, 10));
     }
 
     #[test]
     fn tournament_is_deterministic() {
-        let pop = vec![ind(0, 5), ind(1, 3), ind(2, 8), ind(3, 1)];
+        let pop = vec![ind(0, (0, 5)), ind(1, (0, 3)), ind(2, (0, 8)), ind(3, (0, 1))];
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         assert_eq!(w1.objective, w2.objective);
@@ -703,35 +696,37 @@ mod tests {
         assert_eq!(b1.genome, b2.genome);
     }
 
-    fn ind(piece_idx: usize, objective: i64) -> Individual {
+    fn ind(piece_idx: usize, objective: Objective) -> Individual {
         Individual {
             genome: vec![g(piece_idx)],
             objective,
-            sheets_used: 0,
         }
     }
 
     #[test]
     fn elite_returns_best() {
-        let pop = vec![ind(0, 30), ind(1, 10), ind(2, 20)];
+        let pop = vec![ind(0, (0, 30)), ind(1, (0, 10)), ind(2, (0, 20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
-        assert_eq!(elite[0].objective, 10);
+        assert_eq!(elite[0].objective, (0, 10));
     }
 
     #[test]
     fn elite_top_k_sorted() {
-        let pop = vec![ind(0, 50), ind(1, 10), ind(2, 30), ind(3, 20)];
+        let pop = vec![ind(0, (0, 50)), ind(1, (0, 10)), ind(2, (0, 30)), ind(3, (0, 20))];
         let elite = select_elite(&pop, 2);
-        assert_eq!(elite.iter().map(|e| e.objective).collect::<Vec<_>>(), [10, 20]);
+        assert_eq!(
+            elite.iter().map(|e| e.objective).collect::<Vec<_>>(),
+            [(0, 10), (0, 20)]
+        );
     }
 
     #[test]
     fn elite_n_exceeds_pop() {
-        let pop = vec![ind(0, 5), ind(1, 3)];
+        let pop = vec![ind(0, (0, 5)), ind(1, (0, 3))];
         let elite = select_elite(&pop, 10);
         assert_eq!(elite.len(), 2);
-        assert_eq!(elite[0].objective, 3);
+        assert_eq!(elite[0].objective, (0, 3));
     }
 
     #[test]

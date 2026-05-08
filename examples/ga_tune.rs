@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use cutting::{
     ga::{GaConfig, run_ga},
+    model::Objective,
     parse::parse_problem,
 };
 use rand::SeedableRng;
@@ -18,10 +19,10 @@ use rand_xoshiro::Xoshiro256StarStar;
 const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
 const N_SEEDS: usize = 100;
 
-/// Ideal: 1×400×400 on last sheet. obj = 2*(2600*1800+1) + 400*400 = 9_520_002
-const IDEAL_OBJ: i64 = 9_520_002;
-/// 1-piece threshold: any single piece on last sheet (≤ 1×495×495 area = 245_025)
-const ONE_PIECE_OBJ: i64 = 2 * (2600 * 1800 + 1) + 495 * 495; // 9_605_027
+/// Ideal: 2 sheets, 1×400×400 on last sheet.
+const IDEAL_OBJ: Objective = (2, 400 * 400);
+/// 1-piece threshold: 2 sheets, any piece ≤ 495×495 on last sheet.
+const ONE_PIECE_OBJ: Objective = (2, 495 * 495);
 
 struct Variant {
     name: &'static str,
@@ -30,8 +31,9 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj = i64::MAX;
-    let mut sum_obj: i64 = 0;
+    let mut best_obj: Objective = (usize::MAX, i64::MAX);
+    let mut sum_sheets: usize = 0;
+    let mut sum_area: i64 = 0;
     let mut ideal_count = 0usize;
     let mut one_piece_count = 0usize;
 
@@ -39,7 +41,8 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
         let ind = run_ga(problem, &v.cfg, &mut rng);
         let obj = ind.objective;
-        sum_obj += obj;
+        sum_sheets += obj.0;
+        sum_area += obj.1;
         if obj < best_obj {
             best_obj = obj;
         }
@@ -52,17 +55,20 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     }
 
     let elapsed = t0.elapsed();
-    let avg_obj = sum_obj / N_SEEDS as i64;
+    let avg_sheets = sum_sheets / N_SEEDS;
+    let avg_area = sum_area / N_SEEDS as i64;
 
     println!(
-        "{:<40}  ideal={:3}/{}  1-piece={:3}/{}  best={:10}  avg={:10}  t={:.1}s",
+        "{:<40}  ideal={:3}/{}  1-piece={:3}/{}  best=({},{})\tavg=({},{})  t={:.1}s",
         v.name,
         ideal_count,
         N_SEEDS,
         one_piece_count,
         N_SEEDS,
-        best_obj,
-        avg_obj,
+        best_obj.0,
+        best_obj.1,
+        avg_sheets,
+        avg_area,
         elapsed.as_secs_f64(),
     );
 }
@@ -99,7 +105,7 @@ fn main() {
         problem.sheet.width,
         problem.sheet.height
     );
-    println!("Seeds   : 0..{N_SEEDS}   ideal_obj={IDEAL_OBJ}   1-piece_obj≤{ONE_PIECE_OBJ}");
+    println!("Seeds   : 0..{N_SEEDS}   ideal_obj={IDEAL_OBJ:?}   1-piece_obj≤{ONE_PIECE_OBJ:?}");
     println!();
     println!(
         "{:<40}  {:>9}  {:>9}  {:>10}  {:>10}  {:>6}",

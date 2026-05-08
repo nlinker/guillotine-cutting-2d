@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Instant};
 use cutting::{
     decoder::decode,
     ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
-    model::{Piece, Placement, Problem, Solution},
+    model::{Objective, Piece, Placement, Problem, Solution},
     parse::parse_problem,
 };
 
@@ -79,7 +79,7 @@ fn main() {
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
 
     // compute per-result summaries (decode once each)
-    let decoded: Vec<(u64, i64, Solution, usize, String)> = results
+    let decoded: Vec<(u64, Objective, Solution, usize, String)> = results
         .iter()
         .map(|(seed, ind)| {
             let sol = decode(&problem, &ind.genome);
@@ -89,19 +89,19 @@ fn main() {
         .collect();
 
     println!(
-        "{:>6}  {:>6}  {:>8}  {:>10}  last sheet",
-        "seed", "sheets", "last_n", "objective"
+        "{:>6}  {:>6}  {:>8}  {:>12}  last sheet",
+        "seed", "sheets", "last_n", "last_area"
     );
     println!("{}", "-".repeat(65));
-    for (seed, obj, sol, n, summary) in &decoded {
-        println!("{:6}  {:6}  {:8}  {:10}  {}", seed, sol.sheets_used(), n, obj, summary);
+    for (seed, obj, _sol, n, summary) in &decoded {
+        println!("{:6}  {:6}  {:8}  {:12}  {}", seed, obj.0, n, obj.1, summary);
     }
     println!();
 
     let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
     println!(
-        "BEST (seed={best_seed}  obj={best_obj}  sheets={}  last={best_n}: {best_summary})",
-        best_sol.sheets_used()
+        "BEST (seed={best_seed}  sheets={}  last_area={}  last={best_n}: {best_summary})",
+        best_obj.0, best_obj.1
     );
     print_solution(&problem, best_sol);
 }

@@ -201,10 +201,10 @@ function clearInputRowColors() {
 }
 
 // == placements table =========================================================
-function buildPlacementsTable(solution, pieces, elapsed, objective, sheets, seed) {
-  const fmtObj = objective.toLocaleString('ru-RU');
+function buildPlacementsTable(solution, pieces, elapsed, lastSheetArea, sheets, seed) {
+  const fmtArea = lastSheetArea.toLocaleString('ru-RU');
   let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), `
-           + `objective: ${fmtObj}, seed: ${seed}</p>`;
+           + `last sheet area: ${fmtArea}, seed: ${seed}</p>`;
   html += '<table><thead><tr>'
         + '<th>Sheet</th><th>Piece</th><th>W</th><th>H</th>'
         + '<th>X</th><th>Y</th><th>Rot</th>'
@@ -332,7 +332,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
 
   es.addEventListener('progress', (ev) => {
     const d = JSON.parse(ev.data);
-    addPoint(d.generation, d.objective);
+    addPoint(d.generation, d.last_sheet_area);
   });
 
   es.addEventListener('done', (ev) => {
@@ -344,7 +344,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
-      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.objective, d.sheets_used, d.seed);
+      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.last_sheet_area, d.sheets_used, d.seed);
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';

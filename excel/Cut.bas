@@ -614,12 +614,12 @@ Public Sub RunCut()
                 Case "progress"
                     SetProgress ws, "Running...", _
                         CStr(msg("generation")), _
-                        CStr(msg("objective")), _
+                        CStr(msg("last_sheet_area")), _
                         CStr(msg("sheets_used"))
 
                 Case "done"
                     SetProgress ws, "Done " & ChrW(10003), "", _
-                        CStr(msg("objective")), _
+                        CStr(msg("last_sheet_area")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
                     ws.Range(ws.Range(RESULT_CELL), _

@@ -14,7 +14,7 @@
 use cutting::ga::{GaConfig, run_ga};
 use cutting::{
     generator::{GeneratorConfig, generate},
-    model::Sheet,
+    model::{Objective, Sheet},
 };
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
@@ -35,8 +35,8 @@ struct Suite {
 
 struct InstanceResult {
     gen_seed: u64,
-    ref_obj: i64,
-    ga_obj: i64,
+    ref_obj: Objective,
+    ga_obj: Objective,
 }
 
 fn run_suite(s: &Suite) -> Vec<InstanceResult> {
@@ -81,10 +81,13 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
     println!("Worse     : {:4} ({:.1}%)", worse, worse as f64 / n as f64 * 100.0);
 
     if worse > 0 {
+        let sheet_area =
+            s.gen_cfg.sheet.width as i64 * s.gen_cfg.sheet.height as i64;
+        let encode = |obj: (usize, i64)| obj.0 as i64 * (sheet_area + 1) + obj.1;
         let mut gaps: Vec<i64> = results
             .iter()
             .filter(|r| r.ga_obj > r.ref_obj)
-            .map(|r| r.ga_obj - r.ref_obj)
+            .map(|r| encode(r.ga_obj) - encode(r.ref_obj))
             .collect();
         gaps.sort_unstable();
         let sum: i64 = gaps.iter().sum();
@@ -100,16 +103,15 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
             p95,
         );
 
-        let mut by_gap: Vec<&InstanceResult> = results.iter().filter(|r| r.ga_obj > r.ref_obj).collect();
-        by_gap.sort_unstable_by_key(|r| -(r.ga_obj - r.ref_obj));
+        let mut by_gap: Vec<&InstanceResult> =
+            results.iter().filter(|r| r.ga_obj > r.ref_obj).collect();
+        by_gap.sort_unstable_by_key(|r| -(encode(r.ga_obj) - encode(r.ref_obj)));
         println!("  worst instances (gen_seed / ref / ga / gap):");
         for r in by_gap.iter().take(5) {
+            let gap = encode(r.ga_obj) - encode(r.ref_obj);
             println!(
-                "    gen_seed={:6}  ref={:8}  ga={:8}  gap={}",
-                r.gen_seed,
-                r.ref_obj,
-                r.ga_obj,
-                r.ga_obj - r.ref_obj,
+                "    gen_seed={:6}  ref={:?}  ga={:?}  gap={}",
+                r.gen_seed, r.ref_obj, r.ga_obj, gap,
             );
         }
     }

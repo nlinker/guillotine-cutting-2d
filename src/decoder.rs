@@ -267,12 +267,12 @@ mod tests {
         //   objective = 2*(100+1) + 40 = 242
         //
         // A is better: the large piece stays on sheet 0, only the small piece overflows.
-        // objective = sheets_used*(s+1) + area_on_last, s=100
+        // objective = (sheets_used, area_on_last_sheet)
         let problem = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
         let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
-        assert_eq!(sol_a.objective(&problem), 211); // 2*101 + 9
-        assert_eq!(sol_b.objective(&problem), 242); // 2*101 + 40
+        assert_eq!(sol_a.objective(&problem), (2, 9));  // 2 sheets, 3×3=9 on last
+        assert_eq!(sol_b.objective(&problem), (2, 40)); // 2 sheets, 10×4=40 on last
         assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
     }
 }
