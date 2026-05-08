@@ -303,7 +303,7 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         tournament_k: k,
         p_crossover: 0.80,
         swap_p: 0.15,
-        p_flip: 0.05,
+        flip_p: 0.05,
         point_p: 0.10,
         point_delta: (1, 3),
     }

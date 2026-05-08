@@ -23,7 +23,7 @@ fn ga_cfg() -> GaConfig {
         tournament_k: 5,
         p_crossover: 0.80,
         swap_p: 0.15,
-        p_flip: 0.05,
+        flip_p: 0.05,
         point_p: 0.10,
         point_delta: (1, 3),
     }

@@ -47,7 +47,7 @@ pub struct GaConfig {
     /// Per-gene probability of flipping the `rotate` flag.
     /// Only has effect when the piece allows rotation.
     /// Typical value: 0.02-0.1.
-    pub p_flip: f64,
+    pub flip_p: f64,
 
     /// Per-gene probability of nudging `point_selector` by a random amount.
     /// Controls which free rectangle the decoder tries first for this piece.
@@ -72,7 +72,7 @@ impl fmt::Display for GaConfig {
             self.tournament_k,
             self.p_crossover,
             self.swap_p,
-            self.p_flip,
+            self.flip_p,
             self.point_p,
             self.point_delta.0,
             self.point_delta.1,
@@ -212,7 +212,7 @@ fn run_ga_inner<R: Rng>(
                 &mut g1,
                 rng,
                 config.swap_p,
-                config.p_flip,
+                config.flip_p,
                 config.point_p,
                 config.point_delta,
             );
@@ -227,7 +227,7 @@ fn run_ga_inner<R: Rng>(
                     &mut g2,
                     rng,
                     config.swap_p,
-                    config.p_flip,
+                    config.flip_p,
                     config.point_p,
                     config.point_delta,
                 );
@@ -436,13 +436,13 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 
 /// Mutate a genome in-place. For each gene, independently:
 /// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
-/// - with probability `p_flip`: flip `rotate`
+/// - with probability `flip_p`: flip `rotate`
 /// - with probability `point_p`: nudge `point_selector` by ±`point_delta` wrapping
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     rng: &mut R,
     swap_p: f64,
-    p_flip: f64,
+    flip_p: f64,
     point_p: f64,
     point_delta: (u32, u32),
 ) {
@@ -456,7 +456,7 @@ pub fn mutate<R: Rng>(
             let j = (i + 1 + (rng.next_u64() as usize) % (n - 1)) % n;
             genome.swap(i, j);
         }
-        if rng_01(rng) < p_flip {
+        if rng_01(rng) < flip_p {
             genome[i].rotate = !genome[i].rotate;
         }
         if rng_01(rng) < point_p {
@@ -672,7 +672,7 @@ mod tests {
             tournament_k: 2,
             p_crossover: 0.8,
             swap_p: 0.1,
-            p_flip: 0.05,
+            flip_p: 0.05,
             point_p: 0.05,
             point_delta: (1, 3),
         }

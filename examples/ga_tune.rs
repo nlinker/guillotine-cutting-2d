@@ -80,7 +80,7 @@ fn cfg(
     tournament_k: usize,
     p_crossover: f64,
     swap_p: f64,
-    p_flip: f64,
+    flip_p: f64,
     point_p: f64,
 ) -> GaConfig {
     GaConfig {
@@ -90,7 +90,7 @@ fn cfg(
         tournament_k,
         p_crossover,
         swap_p,
-        p_flip,
+        flip_p,
         point_p,
         point_delta: (1, 3),
     }
