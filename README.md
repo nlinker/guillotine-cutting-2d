@@ -84,7 +84,7 @@ fn main() {
 
 ## Distinctive features
 
-- Enforces **guillotine**-cut constraints
+- Enforces **guillotine**-cut constraints.
 - **Kerf** — blade thickness subtracted from each internal cut; sheet boundary edges are exempt.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point-selector mutation. Configured via `GaConfig`.
@@ -96,17 +96,21 @@ fn main() {
 - Problem instance **Generator** — creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `k` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
-- Self-contained console executable - the solver that receives the JSON specifying the problem instance
-  and produces JSON with the solution.
+- Cross-platform self-contained console executable - the solver that receives the JSON
+  specifying the problem instance and produces JSON with the solution.
   - **Problem** — stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
       Each piece has an opaque external label, dimensions, and a rotation flag.
       Pieces are addressed internally by their 0-based index in the list.
   - **Solution** — vector of placements + vector of free rectangles.
-- _Not a black box_: the algorithm exposes a progress feedback channel (`ProgressSink`)
+- _Not a black box_: the algorithm exposes a progress feedback channel `ProgressSink`
   and cancellation via `GaHandle`.
-- Microsoft Excel integration: the executable can be (and is) used as the solver
-  in an Excel spreadsheet (or another third-party system) thanks to the JSON console interface.
-- The `serve` mode provides an easy way for small in-house deployments.
+  - `FifoSink` uses FIFO under Linux (via `mkfifo`).
+  - `WindowsPipeSink` uses named pipes under Windows.
+  - `StdoutSink` is a no-op sink for use without a feedback channel.
+  - Microsoft Excel integration: the executable can be (and is) used as the solver
+    in an Excel spreadsheet (or any other external system) thanks to the JSON console interface.
+    AutoCAD export is also supported.
+  - The `serve` mode provides an easy way for small in-house deployments.
 
 ## Input format for the parser
 
@@ -150,7 +154,7 @@ cargo run --example ga_benchmark --release          # GA quality benchmark
 
 Interactive visualizations (open in browser, no server needed):
 
-(**NOTE**: it is AI-generated from the Rust code and might not be accurate enough!)
+(**NOTE**: it is AI-generated from the Rust code and might not be accurate enough)
 
 | Demo                                                                                                    | What it shows                                         |
 |---------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
