@@ -2,18 +2,6 @@ Attribute VB_Name = "cut"
 ''
 '' Cut.bas  -  VBA module: launches cut.exe and reads progress via named pipe
 ''
-'' Sheet layout ("Sheet1"):
-''   B1        : path to cut.exe
-''   H1        : stock sheet width  (mm)
-''   I1        : stock sheet height (mm)
-''   I2        : blade kerf          (mm)
-''   A4:E*     : pieces — name, width, height, count, can_rotate (until B or C is empty)
-''
-'' Progress output (right side of sheet):
-''   K1 — status     K2 — generation     K3 — objective     K4 — sheets used
-''
-'' Results (from K6): placement table — sheet | name | w×h | x | y | rotated
-''
 '' Requires JsonConverter module (excel/JsonConverter.bas) imported into the workbook.
 ''
 '' Usage:
@@ -26,12 +14,12 @@ Option Explicit
 
 '' == Constants ================================================================
 
-Private Const SHEET_NAME       As String  = "Sheet1"
-Private Const PIPE_NAME        As String  = "\\.\pipe\cut_progress"
-Private Const GENERIC_READ     As Long    = &H80000000
-Private Const OPEN_EXISTING    As Long    = 3
-Private Const FILE_ATTR_NORMAL As Long    = &H80
-Private Const BUFFER_SIZE      As Long    = 8192
+Private Const SHEET_NAME       As String = "Sheet1"
+Private Const PIPE_NAME        As String = "\\.\pipe\cut_progress"
+Private Const GENERIC_READ     As Long   = &H80000000
+Private Const OPEN_EXISTING    As Long   = 3
+Private Const FILE_ATTR_NORMAL As Long   = &H80
+Private Const BUFFER_SIZE      As Long   = 8192
 
 Private Const SHEET_W_CELL     As String = "H1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "I1"  ' sheet height (mm)
@@ -267,7 +255,7 @@ End Function
 ' Color index = input table row order (0-based), expanding by count per row.
 ' Assumes pieces[] in the JSON response are in the same order as the input table rows.
 ' This holds because Rust returns Done { pieces: problem.pieces.clone(), ... } where
-' problem.pieces is built by expanding each PieceSpec in input order — no sorting or shuffling.
+' problem.pieces is built by expanding each PieceSpec in input order - no sorting or shuffling.
 Private Function BuildPieceColorMap(ws As Worksheet, totalPieces As Long) As Variant
     Dim clrMap() As Long
     ReDim clrMap(1 To totalPieces)
@@ -345,8 +333,8 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         bg.Fill.Transparency = 0
         bg.Line.ForeColor.RGB = RGB(60, 60, 60)
         bg.Line.Weight = 1#
-        bg.TextFrame2.TextRange.Text = "Sheet " & si
-        bg.TextFrame2.TextRange.Font.Size = 8
+        bg.TextFrame.Characters.Text = "Sheet " & si
+        bg.TextFrame.Characters.Font.Size = 8
     Next si
 
     ' Draw pieces
@@ -374,15 +362,16 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         s.Fill.ForeColor.RGB = clrMap(idx)
         s.Fill.Transparency = 0
         s.Line.ForeColor.RGB = RGB(80, 80, 80)
-        s.Line.Weight = 0.5#
+        s.Line.Weight = 0.5
 
         If rWidth >= 20# And rHeight >= 12# Then
-            s.TextFrame2.TextRange.Text = pieces(idx)("name")
-            s.TextFrame2.TextRange.Font.Size = 7
-            s.TextFrame2.TextRange.Font.Fill.ForeColor.RGB = RGB(0, 0, 0)
-            s.TextFrame2.WordWrap = msoFalse
+            s.TextFrame.Characters.Text = pieces(idx)("name")
+            s.TextFrame.Characters.Font.Size = 7
+            s.TextFrame.Characters.Font.Color = vbBlack
+            s.TextFrame.HorizontalAlignment = xlHAlignCenter
+            s.TextFrame.VerticalAlignment = xlVAlignCenter
         Else
-            s.TextFrame2.TextRange.Text = ""
+            s.TextFrame.Characters.Text = ""
         End If
     Next pl
 End Sub
@@ -458,7 +447,7 @@ Public Sub RunCut()
     End If
 
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
     Dim exePath As String
     exePath = Trim(ws.Cells(1, 2).Value)  ' B1
@@ -485,8 +474,9 @@ Public Sub RunCut()
     Close #fNum
 
     ' Read GA config from sheet (use defaults if cells empty)
+    ' nThreads = 0 - auto-detect via available_parallelism()
     Dim nSeed    As Long: nSeed    = 42
-    Dim nThreads As Long: nThreads = 0  ' 0 = auto-detect via available_parallelism() in cut.exe
+    Dim nThreads As Long: nThreads = 0
     Dim nGens    As Long: nGens    = 2000
     Dim nPop     As Long: nPop     = 200
     If ws.CheckBoxes(CFG_RANDOM_SEED_CHK).Value = xlOn Then
@@ -635,7 +625,7 @@ End Sub
 Public Sub StopCut()
     g_Running = False
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
     ws.Range(OUT_STATUS_CELL).Value = "Stopped"
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
     ClearLayoutShapes ws
@@ -662,7 +652,7 @@ End Function
 
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
     Dim shW As Long: shW = ws.Range(SHEET_W_CELL).Value
     Dim shH As Long: shH = ws.Range(SHEET_H_CELL).Value
@@ -794,7 +784,7 @@ End Sub
 
 Sub CreateCheckboxes()
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
     Dim shp As Object
     For Each shp In ws.CheckBoxes
