@@ -78,63 +78,63 @@ body{font-family:var(--font-sans);font-size:13px;padding:16px;background:var(--c
 
 <div class="settings">
   <div class="sg">
-    <label>Лист:</label>
+    <label>Sheet:</label>
     <input id="sw" type="number" value="200" min="4" max="400" style="width:52px"/>×
     <input id="sh" type="number" value="160" min="4" max="400" style="width:52px"/>
-    <label>Пропил:</label>
+    <label>Kerf:</label>
     <input id="kerf" type="number" value="1" min="0" max="20" style="width:42px"/>
     <label>min_size:</label>
     <input id="minsize" type="number" value="20" min="1" max="30" style="width:42px"/>
   </div>
   <div class="sg">
-    <label>Листов k:</label>
+    <label>Sheets count k:</label>
     <input id="ksheets" type="number" value="2" min="1" max="8" style="width:42px"/>
-    <label>Стадий:</label>
+    <label>Stages count:</label>
     <input id="stage-count" type="number" value="2" min="1" max="6" style="width:42px"/>
   </div>
   <div class="sg">
-    <label>Листов в ширину:</label>
+    <label>Number of sheets across:</label>
     <input id="spr" type="number" value="2" min="1" max="8" style="width:42px"/>
-    <span class="scale-info" id="scale-info">1 ед = ? px</span>
+    <span class="scale-info" id="scale-info">1 pt = ? px</span>
   </div>
 </div>
 <div class="settings" style="margin-top:-2px">
   <div class="sg">
-    <label>Веса:</label>
+    <label>Weights:</label>
     <div id="wed" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;"></div>
-    <button class="wbtn" onclick="addW()">+ вес</button>
-    <button class="wbtn" onclick="remW()">− вес</button>
+    <button class="wbtn" onclick="addW()">+ weight</button>
+    <button class="wbtn" onclick="remW()">− weight</button>
   </div>
-  <button onclick="generate()">🎲 Генерировать</button>
-  <button class="primary" onclick="runSteps()">▶ Пошагово</button>
+  <button onclick="generate()">🎲 Generate</button>
+  <button class="primary" onclick="runSteps()">▶ Step by step</button>
 </div>
 
 <div id="layout">
   <div id="left">
-    <div class="panel-title">Листы</div>
+    <div class="panel-title">Sheets</div>
     <div class="sheets-wrap" id="sheets-wrap"></div>
-    <div class="explain" id="explain">Нажмите «Генерировать», затем «Пошагово».</div>
+    <div class="explain" id="explain">Press "Generate", then "Step by step".</div>
     <div class="progress" id="progress-row"></div>
     <div class="ctrl">
       <button id="btn-prev" onclick="goPrev()" disabled>◀<span class="kbd">←</span></button>
       <button id="btn-next" onclick="goNext()" disabled>▶<span class="kbd">→</span></button>
-      <button id="btn-auto" onclick="toggleAuto()" disabled>▷ Авто<span class="kbd">Space</span></button>
+      <button id="btn-auto" onclick="toggleAuto()" disabled>▷ Auto<span class="kbd">Space</span></button>
       <span class="sc" id="sc"></span>
     </div>
   </div>
   <div id="right">
-    <div class="panel-title">Очередь (BFS по стадиям)</div>
+    <div class="panel-title">Queue (BFS by stages)</div>
     <div id="stage-boxes"></div>
 
     <div class="legend">
-      <div class="leg"><div class="leg-sw" style="background:#378ADD33;border:2px solid #378ADD"></div>Горизонтальный разрез (H)</div>
-      <div class="leg"><div class="leg-sw" style="background:#7F77DD33;border:2px solid #7F77DD"></div>Вертикальный разрез (V)</div>
-      <div class="leg"><div class="leg-sw" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Активный прямоугольник</div>
-      <div class="leg"><div class="leg-sw" style="background:#c8b89a;border:1px solid #a09070"></div>Пропил (kerf)</div>
+      <div class="leg"><div class="leg-sw" style="background:#378ADD33;border:2px solid #378ADD"></div>Horizontal cut (H)</div>
+      <div class="leg"><div class="leg-sw" style="background:#7F77DD33;border:2px solid #7F77DD"></div>Vertical cut (V)</div>
+      <div class="leg"><div class="leg-sw" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Active rectangle</div>
+      <div class="leg"><div class="leg-sw" style="background:#c8b89a;border:1px solid #a09070"></div>Kerf</div>
     </div>
 
     <div class="stat-box" id="stat-box" style="display:none">
-      <div class="stat-title">Итог</div>
+      <div class="stat-title">Total</div>
       <div id="stat-rows"></div>
     </div>
   </div>
@@ -185,7 +185,7 @@ const clone = x => JSON.parse(JSON.stringify(x));
 const STAGE_H = { col:'#378ADD', bg:'#DDEEFF', text:'#0C447C', cls:'sh' };
 const STAGE_V = { col:'#7F77DD', bg:'#EEEDFE', text:'#3C3489', cls:'sv' };
 function stageStyle(stageIdx){ return stageIdx%2===0 ? STAGE_H : STAGE_V; }
-function stageName(stageIdx){ return stageIdx%2===0 ? 'горизонтальные (H)' : 'вертикальные (V)'; }
+function stageName(stageIdx){ return stageIdx%2===0 ? 'horizontal (H)' : 'vertical (V)'; }
 function stageDir(stageIdx){ return stageIdx%2===0 ? 'H' : 'V'; }
 
 // ─── cutExtent (JS port of Rust) ───────────────────────────────────────────────
@@ -238,7 +238,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
     type:'init', tag:'t-init', sheetIdx:-1, stageIdx:-1,
     activeRect:null, resultRects:[], kerfRects:[], fallback:false,
     finishedLeaves:[], stageQueues: Array.from({length:stageCount},()=>({input:[],doneIdxs:[]})),
-    msg:`<span class="tag t-init">Старт</span>Генерируем: <strong>${kSheets}</strong> листов <strong>${sheetW}×${sheetH}</strong>, пропил=<strong>${kerf}</strong>, min_size=<strong>${minSize}</strong>, стадий=<strong>${stageCount}</strong>. Направления: ${Array.from({length:stageCount},(_,i)=>stageDir(i)).join('→')}.`
+    msg:`<span class="tag t-init">Start</span>Generate: <strong>${kSheets}</strong> sheets <strong>${sheetW}×${sheetH}</strong>, kerf=<strong>${kerf}</strong>, min_size=<strong>${minSize}</strong>, stages=<strong>${stageCount}</strong>. Directions: ${Array.from({length:stageCount},(_,i)=>stageDir(i)).join('→')}.`
   });
 
   for(let si=0; si<kSheets; si++){
@@ -252,7 +252,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
       activeRect:null, resultRects:[], kerfRects:[], fallback:false,
       finishedLeaves:clone(finishedLeaves),
       stageQueues: buildQueueSnapshot(stageInputs, stageCount, -1, []),
-      msg:`<span class="tag t-init">Лист ${si}</span>Начинаем лист <strong>${si}</strong>. Стадия 0 (${stageName(0)}): 1 прямоугольник <strong>${sheetW}×${sheetH}</strong>.`
+      msg:`<span class="tag t-init">Sheet ${si}</span>Begin sheet <strong>${si}</strong>. Stage 0 (${stageName(0)}): 1 rectangle <strong>${sheetW}×${sheetH}</strong>.`
     });
 
     // Run all stages
@@ -270,7 +270,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
           activeRect:null, resultRects:[], kerfRects:[], fallback:false,
           finishedLeaves:clone(finishedLeaves),
           stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage, []),
-          msg:`<span class="tag ${stageDir(stage)==='H'?'t-h':'t-v'}">Стадия ${stage}</span>Лист ${si}: начинаем стадию <strong>${stage}</strong> (${stageName(stage)}). Прямоугольников в очереди: <strong>${inputQueue.length}</strong>.`
+          msg:`<span class="tag ${stageDir(stage)==='H'?'t-h':'t-v'}">Stage ${stage}</span>Sheet ${si}: begin stage <strong>${stage}</strong> (${stageName(stage)}). Rectangles in queue: <strong>${inputQueue.length}</strong>.`
         });
       }
 
@@ -302,8 +302,8 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
         const dir=stageDir(stage);
         const fallbackStr=fallback?` <span class="tag t-fallback">fallback</span>`:'';
         const pieceDesc=nCuts===0
-          ?`→ <strong>1</strong> кусок (нет разреза)`
-          :`→ <strong>${pieces.length}</strong>: ${nCuts}×<strong>${a}</strong> + последний <strong>${b}</strong>`;
+          ?`→ <strong>1</strong> piece (no cut)`
+          :`→ <strong>${pieces.length}</strong>: ${nCuts}×<strong>${a}</strong> + last <strong>${b}</strong>`;
 
         steps.push({
           type:`cut_${dir.toLowerCase()}`, tag:dir==='H'?'t-h':'t-v',
@@ -311,7 +311,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
           activeRect:clone(fr), resultRects:clone(resultRects), kerfRects:clone(kerfRects), fallback,
           finishedLeaves:clone(finishedLeaves),
           stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage, clone(doneIdxs)),
-          msg:`<span class="tag ${dir==='H'?'t-h':'t-v'}">${dir}-разрез</span>Лист ${si}, стадия ${stage}. Rect <strong>${fr.w}×${fr.h}</strong> @ (${fr.x},${fr.y}). ${stageName(stage).split(' ')[0].charAt(0).toUpperCase()+stageName(stage).split(' ')[0].slice(1)} ${vertical?'ширина':'высота'} ${extent}: ${pieceDesc}.${fallbackStr}`
+          msg:`<span class="tag ${dir==='H'?'t-h':'t-v'}">${dir}-cut</span>Sheet ${si}, stage ${stage}. Rect <strong>${fr.w}×${fr.h}</strong> @ (${fr.x},${fr.y}). ${stageName(stage).split(' ')[0].charAt(0).toUpperCase()+stageName(stage).split(' ')[0].slice(1)} ${vertical?'width':'height'} ${extent}: ${pieceDesc}.${fallbackStr}`
         });
       }
 
@@ -330,7 +330,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
           ? [...clone(finishedLeaves), ...clone(outputQueue)]
           : clone(finishedLeaves),
         stageQueues: buildQueueSnapshot(stageInputs, stageCount, stage+1, []),
-        msg:`<span class="tag t-done">Стадия ${stage} готова</span>Лист ${si}, стадия <strong>${stage}</strong> завершена. Получено <strong>${outputQueue.length}</strong> прямоугольников${stage===stageCount-1?' — <strong>финальные детали</strong>':`, переходим к стадии <strong>${stage+1}</strong>`}.`
+        msg:`<span class="tag t-done">Stage ${stage} ready</span>Sheet ${si}, stage <strong>${stage}</strong> finished. Obtained <strong>${outputQueue.length}</strong> rectangles${stage===stageCount-1?' — <strong>final pieces</strong>':`, switch to stage <strong>${stage+1}</strong>`}.`
       });
     }
 
@@ -342,7 +342,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
       activeRect:null, resultRects:[], kerfRects:[], fallback:false,
       finishedLeaves:clone(finishedLeaves),
       stageQueues: buildQueueSnapshot(stageInputs, stageCount, stageCount, []),
-      msg:`<span class="tag t-done">Лист готов</span>Лист <strong>${si}</strong> завершён: <strong>${sheetLeaves.length}</strong> деталей.`
+      msg:`<span class="tag t-done">Sheet is ready</span> Sheet <strong>${si}</strong> ready: <strong>${sheetLeaves.length}</strong> pieces.`
     });
   }
 
@@ -356,7 +356,7 @@ function buildSteps(sheetW, sheetH, kSheets, kerf, minSize, weights, stageCount)
     stat:{pieces:finishedLeaves.length, sheets:kSheets,
           usedPct:(usedArea/totalArea*100).toFixed(1),
           lostPct:((totalArea-usedArea)/totalArea*100).toFixed(1)},
-    msg:`<span class="tag t-done">Готово</span>Задача сгенерирована: <strong>${finishedLeaves.length}</strong> деталей на <strong>${kSheets}</strong> листе(ах). Использовано <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong> площади. Решение гарантированно оптимально.`
+    msg:`<span class="tag t-done">Ready</span>The problem instance has generated: <strong>${finishedLeaves.length}</strong> pieces on <strong>${kSheets}</strong> sheet(s). Used <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong> of total area. The solution is guaranteed to be optimum.`
   });
 
   return steps;
@@ -380,7 +380,7 @@ function computeScale(){
   const leftW=document.getElementById('left').offsetWidth||700;
   const avail=leftW-(spr-1)*10-2;
   const s=Math.max(3,Math.floor(avail/spr/sw));
-  document.getElementById('scale-info').textContent=`1 ед = ${s} px`;
+  document.getElementById('scale-info').textContent=`1 pt = ${s} px`;
   return s;
 }
 
@@ -390,11 +390,11 @@ function buildStageBoxes(n){
   for(let i=0;i<n;i++){
     const st=stageStyle(i);
     const box=document.createElement('div'); box.className='stage-box';
-    box.innerHTML=`<div class="stage-header ${st.cls}" style="background:${st.bg};color:${st.text}">Стадия ${i} — ${stageName(i)}</div><div class="stage-rects" id="rects-s${i}"></div>`;
+    box.innerHTML=`<div class="stage-header ${st.cls}" style="background:${st.bg};color:${st.text}">Stage ${i} — ${stageName(i)}</div><div class="stage-rects" id="rects-s${i}"></div>`;
     container.appendChild(box);
   }
   const donebox=document.createElement('div'); donebox.className='stage-box';
-  donebox.innerHTML=`<div class="stage-header sdone">Готовые детали</div><div class="stage-rects" id="rects-done"></div>`;
+  donebox.innerHTML=`<div class="stage-header sdone">Pieces are done</div><div class="stage-rects" id="rects-done"></div>`;
   container.appendChild(donebox);
 }
 
@@ -437,7 +437,7 @@ function renderStep(idx){
   wrap.innerHTML='';
   for(let si=0;si<kSheets;si++){
     const cont=document.createElement('div'); cont.className='sheet-container';
-    const lbl=document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Лист '+si;
+    const lbl=document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Sheet '+si;
     const cv=document.createElement('canvas'); cv.className='sheet-canvas';
     cv.width=W; cv.height=H; cv.style.width=W+'px'; cv.style.height=H+'px';
     drawSheet(cv.getContext('2d'),si,s,W,H);
@@ -461,10 +461,10 @@ function renderStep(idx){
   if(s.stat){
     statBox.style.display='block';
     document.getElementById('stat-rows').innerHTML=`
-      <div class="stat-row"><span>Деталей</span><span class="stat-val">${s.stat.pieces}</span></div>
-      <div class="stat-row"><span>Листов</span><span class="stat-val">${s.stat.sheets}</span></div>
-      <div class="stat-row"><span>Использовано</span><span class="stat-val">${s.stat.usedPct}%</span></div>
-      <div class="stat-row"><span>Потери (пропил)</span><span class="stat-val">${s.stat.lostPct}%</span></div>`;
+      <div class="stat-row"><span>Pieces</span><span class="stat-val">${s.stat.pieces}</span></div>
+      <div class="stat-row"><span>Sheets</span><span class="stat-val">${s.stat.sheets}</span></div>
+      <div class="stat-row"><span>Used</span><span class="stat-val">${s.stat.usedPct}%</span></div>
+      <div class="stat-row"><span>Spare (kerf)</span><span class="stat-val">${s.stat.lostPct}%</span></div>`;
   } else { statBox.style.display='none'; }
 
   // Progress
@@ -482,7 +482,7 @@ function renderStep(idx){
 
 function renderQueueInto(el, queue, doneIdxs, activeRect, isActive, col){
   if(!queue||!queue.length){
-    el.innerHTML='<div class="rect-item"><span class="empty">пусто</span></div>';
+    el.innerHTML='<div class="rect-item"><span class="empty">empty</span></div>';
     return;
   }
   const doneSet=new Set(doneIdxs||[]);
@@ -499,14 +499,14 @@ function renderQueueInto(el, queue, doneIdxs, activeRect, isActive, col){
 function renderDone(elId, leaves){
   const el=document.getElementById(elId);
   if(!leaves||!leaves.length){
-    el.innerHTML='<div class="rect-item"><span class="empty">пусто</span></div>';
+    el.innerHTML='<div class="rect-item"><span class="empty">empty</span></div>';
     return;
   }
   const bySheet={};
   for(const l of leaves)(bySheet[l.sheetIdx]=bySheet[l.sheetIdx]||[]).push(l);
   let html='';
   for(const si of Object.keys(bySheet).sort()){
-    html+=`<div style="font-size:10px;color:var(--color-text-tertiary);margin:3px 0 1px">Лист ${si}:</div>`;
+    html+=`<div style="font-size:10px;color:var(--color-text-tertiary);margin:3px 0 1px">Sheet ${si}:</div>`;
     for(const l of bySheet[si]){
       const p=pal(l.colorId||0);
       html+=`<div class="rect-item"><div class="sw" style="background:${p.stroke}55;border:1.5px solid ${p.stroke}"></div><span>${l.w}×${l.h} @ (${l.x},${l.y})</span></div>`;
@@ -591,10 +591,10 @@ function rRect(ctx,x,y,w,h,r){
 function goNext(){ if(stepIdx<steps.length-1) renderStep(stepIdx+1); }
 function goPrev(){ if(stepIdx>0) renderStep(stepIdx-1); }
 async function toggleAuto(){
-  if(autoRunning){ autoRunning=false; document.getElementById('btn-auto').textContent='▷ Авто'; return; }
-  autoRunning=true; document.getElementById('btn-auto').textContent='⏸ Пауза';
+  if(autoRunning){ autoRunning=false; document.getElementById('btn-auto').textContent='▷ Auto'; return; }
+  autoRunning=true; document.getElementById('btn-auto').textContent='⏸ Pause';
   while(autoRunning&&stepIdx<steps.length-1){ goNext(); await new Promise(r=>setTimeout(r,600)); }
-  autoRunning=false; document.getElementById('btn-auto').textContent='▷ Авто';
+  autoRunning=false; document.getElementById('btn-auto').textContent='▷ Auto';
 }
 document.addEventListener('keydown',ev=>{
   if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
