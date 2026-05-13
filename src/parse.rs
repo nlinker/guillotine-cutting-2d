@@ -154,6 +154,14 @@ mod tests {
     }
 
     #[test]
+    fn spaces_around_delimiters() {
+        let p = parse_problem("8x100F : 0 : 7x5/4 , 6x4/4 , 4x6/4 , 5x7/4").unwrap();
+        assert_eq!(p.sheet.width, 8);
+        assert_eq!(p.kerf, 0);
+        assert_eq!(p.pieces.len(), 16);
+    }
+
+    #[test]
     fn errors() {
         assert_eq!(
             parse_problem("3000x4000 835x620").unwrap_err(),
