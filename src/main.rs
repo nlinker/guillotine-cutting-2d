@@ -6,7 +6,8 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    ga::{ga_channel, run_ga_mt, GaConfig, GaEvent, ProgressEvent},
+    decoder::decode_spec,
+    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
     gpf::build_gpf,
     model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
@@ -16,7 +17,6 @@ use cutting::{
 };
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
-use cutting::decoder::decode_spec;
 
 mod web;
 
@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let sol_str = std::fs::read_to_string(&solution)?;
             let sol = parse_solution_json(&sol_str)?;
-            print!("{}", render_svg(&spec, &sol));
+            print!("{}", render_svg(&spec, &sol)?);
         }
         Command::Gpf { problem } => {
             let spec = parse_problem(&problem)?;
