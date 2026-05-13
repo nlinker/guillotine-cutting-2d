@@ -142,9 +142,9 @@ pub fn min_fn(f1: &StepFn, f2: &StepFn) -> StepFn {
 /// The complete GPF DP table.
 pub struct GpfTable {
     pub types: Vec<PieceType>,
+    pub kerf: u32,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
-    pub kerf: u32,
 }
 
 impl GpfTable {
@@ -346,9 +346,9 @@ pub fn build_gpf(problem: &Problem) -> GpfTable {
 
     GpfTable {
         types,
+        kerf,
         strides,
         cells,
-        kerf,
     }
 }
 
