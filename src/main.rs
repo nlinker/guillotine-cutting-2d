@@ -156,7 +156,7 @@ fn run_calc_with_sink(
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
-    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
+    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
 
     eprintln!(
         "Pieces  : {}   Sheet: {}×{}",

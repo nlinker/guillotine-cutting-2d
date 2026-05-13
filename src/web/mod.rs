@@ -81,7 +81,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             let problem = Arc::new(problem);
             let cfg = Arc::new(crate::ga_config(params.gens, params.pop, 5, 5));
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
-            let seeds: Vec<u64> = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect();
+            let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
             let mut sink = SseSink {
                 tx,
                 start: Instant::now(),
@@ -101,12 +101,12 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
 }
 
 fn build_problem(params: &SolveParams) -> Result<Problem, String> {
-    let specs: Vec<PieceSpec> =
-        serde_json::from_str(&params.pieces).map_err(|e| format!("invalid pieces JSON: {e}"))?;
+    let specs =
+        serde_json::from_str::<Vec<PieceSpec>>(&params.pieces).map_err(|e| format!("invalid pieces JSON: {e}"))?;
     if specs.is_empty() {
         return Err("no pieces specified".into());
     }
-    let pieces: Vec<Piece> = specs
+    let pieces = specs
         .iter()
         .flat_map(|ps| {
             (0..ps.count).map(|_| Piece {
@@ -116,7 +116,7 @@ fn build_problem(params: &SolveParams) -> Result<Problem, String> {
                 can_rotate: ps.can_rotate,
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
     Ok(Problem {
         sheet: Sheet {
             width: params.sheet_w,

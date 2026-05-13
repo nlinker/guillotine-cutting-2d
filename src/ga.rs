@@ -353,11 +353,11 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
         for gene in &donor[lo..hi] {
             in_segment[gene.piece_idx] = true;
         }
-        let fill_positions: Vec<usize> = (hi..n).chain(0..lo).collect();
-        let fill_genes: Vec<&Gene> = (0..n)
+        let fill_positions = (hi..n).chain(0..lo).collect::<Vec<_>>();
+        let fill_genes = (0..n)
             .map(|i| &filler[(hi + i) % n])
             .filter(|g| !in_segment[g.piece_idx])
-            .collect();
+            .collect::<Vec<_>>();
         let mut child = donor.clone();
         for (pos, gene) in fill_positions.iter().zip(fill_genes.iter()) {
             child[*pos] = **gene;
@@ -474,7 +474,7 @@ pub fn mutate<R: Rng>(
 /// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
 /// Typical value: `n_elite = 1`.
 pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individual> {
-    let mut ranked: Vec<&Individual> = individuals.iter().collect();
+    let mut ranked = individuals.iter().collect::<Vec<_>>();
     ranked.sort_unstable_by_key(|ind| ind.objective);
     ranked.into_iter().take(n_elite).cloned().collect()
 }
@@ -512,7 +512,7 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
 
 fn random_genome<R: Rng>(problem: &Problem, rng: &mut R) -> Genome {
     let n = problem.pieces.len();
-    let mut indices: Vec<usize> = (0..n).collect();
+    let mut indices = (0..n).collect::<Vec<_>>();
     for i in (1..n).rev() {
         let j = (rng.next_u64() as usize) % (i + 1);
         indices.swap(i, j);

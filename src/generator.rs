@@ -420,12 +420,12 @@ mod tests {
                 &mut rng,
             );
             for sheet_idx in 0..2usize {
-                let on: Vec<_> = out
+                let on = out
                     .optimal_solution
                     .placements
                     .iter()
                     .filter(|pl| pl.sheet_idx == sheet_idx)
-                    .collect();
+                    .collect::<Vec<_>>();
                 for i in 0..on.len() {
                     for j in i + 1..on.len() {
                         let (a, b) = (on[i], on[j]);
@@ -451,8 +451,8 @@ mod tests {
         let c = cfg(1, vec![1.0, 1.0, 1.0]);
         let o1 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let o2 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
-        let ids1: Vec<_> = o1.problem.pieces.iter().map(|p| (p.width, p.height)).collect();
-        let ids2: Vec<_> = o2.problem.pieces.iter().map(|p| (p.width, p.height)).collect();
+        let ids1 = o1.problem.pieces.iter().map(|p| (p.width, p.height)).collect::<Vec<_>>();
+        let ids2 = o2.problem.pieces.iter().map(|p| (p.width, p.height)).collect::<Vec<_>>();
         assert_eq!(ids1, ids2);
     }
 
