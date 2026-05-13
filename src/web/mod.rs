@@ -5,11 +5,13 @@ use std::{convert::Infallible, sync::Arc, time::Instant};
 use axum::{
     Router,
     extract::Query,
+    http::header,
     response::{
-        Html,
+        Html, Response,
         sse::{Event, KeepAlive, Sse},
     },
     routing::get,
+    body::Body,
 };
 use cutting::model::{Piece, PieceSpec, Problem, Sheet};
 use futures_util::{Stream, stream};
@@ -53,6 +55,22 @@ fn default_progress() -> usize {
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
+const CHART_JS: &[u8] = include_bytes!("chart.min.js");
+const SVG_JS: &[u8] = include_bytes!("svg.min.js");
+
+async fn serve_chartjs() -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/javascript; charset=utf-8")
+        .body(Body::from(CHART_JS))
+        .unwrap()
+}
+
+async fn serve_svgjs() -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/javascript; charset=utf-8")
+        .body(Body::from(SVG_JS))
+        .unwrap()
+}
 
 pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
     tokio::runtime::Builder::new_multi_thread()
@@ -61,6 +79,8 @@ pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
         .block_on(async move {
             let app = Router::new()
                 .route("/", get(|| async { Html(INDEX_HTML) }))
+                .route("/chart.js", get(serve_chartjs))
+                .route("/svg.js", get(serve_svgjs))
                 .route("/stream", get(stream_handler));
             let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
             println!("Listening on http://localhost:{port}");

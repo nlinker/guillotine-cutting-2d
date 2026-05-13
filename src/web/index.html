@@ -79,10 +79,12 @@
 </div>
 <div id="results"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4/dist/chart.umd.min.js"></script>
+<script src="/chart.js"></script>
+<script src="/svg.js"></script>
 <script>
-const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a',
-                 '#dda0dd','#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
+// note: this is the same as in src/render.rs
+const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a','#dda0dd',
+                 '#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
 
 // == default data ============================================================
 const DEFAULT_PIECES = [
@@ -162,7 +164,7 @@ function initChart() {
         x: { title: { display: true, text: 'generation' } },
         y: {
           title: { display: true, text: 'objective' },
-          ticks: { callback: (v) => v.toLocaleString('ru-RU') }
+          ticks: { callback: (v) => v.toLocaleString() }
         }
       }
     }
@@ -229,8 +231,8 @@ function buildPlacementsTable(solution, pieces, elapsed, lastSheetArea, sheets, 
 // == layout SVG ================================================================
 function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
   const container = document.getElementById('layout');
-  const placements = solution.placements;
   container.innerHTML = '';
+  const placements = solution.placements;
   if (!placements || placements.length === 0) return;
 
   let nSheets = 0;
@@ -245,32 +247,16 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
   const cellH = sdh + LABEL_H + GAP;
   const svgH = nRows * cellH - GAP;
 
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('width', cw);
-  svg.setAttribute('height', svgH);
-  svg.setAttribute('viewBox', `0 0 ${cw} ${svgH}`);
-  svg.style.display = 'block';
-
-  function el(tag, attrs) {
-    const e = document.createElementNS(NS, tag);
-    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-    return e;
-  }
+  const draw = SVG().addTo(container).size(cw, svgH).attr('display', 'block');
 
   for (let i = 0; i < nSheets; i++) {
     const col = i % COLS, row = Math.floor(i / COLS);
     const ox = col * (sdw + GAP), oy = row * cellH;
-    svg.appendChild(el('rect', { x: ox, y: oy, width: sdw, height: sdh,
-      fill: '#f0f0f0', stroke: '#333', 'stroke-width': 1.5 }));
-    const lbl = document.createElementNS(NS, 'text');
-    lbl.setAttribute('x', ox + 4);
-    lbl.setAttribute('y', oy + sdh + 12);
-    lbl.setAttribute('font-size', 11);
-    lbl.setAttribute('font-family', 'monospace');
-    lbl.setAttribute('fill', '#555');
-    lbl.textContent = 'Sheet ' + i;
-    svg.appendChild(lbl);
+    draw.rect(sdw, sdh).move(ox, oy)
+      .fill('#f0f0f0').stroke({ color: '#333', width: 1.5 });
+    draw.plain('Sheet ' + i)
+      .font({ size: 11, family: 'monospace' }).fill('#555')
+      .attr({ x: ox + 4, y: oy + sdh + 12 });
   }
 
   for (const pl of placements) {
@@ -281,21 +267,14 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
     const ox = col * (sdw + GAP), oy = row * cellH;
     const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
     const rw = Math.max(pw * scale, 0.5), rh = Math.max(ph * scale, 0.5);
-    svg.appendChild(el('rect', { x: rx, y: ry, width: rw, height: rh,
-      fill: rowColor[pl.piece_idx], stroke: '#555', 'stroke-width': 0.5 }));
+    draw.rect(rw, rh).move(rx, ry)
+      .fill(rowColor[pl.piece_idx]).stroke({ color: '#555', width: 0.5 });
     if (rw > 30 && rh > 14) {
-      const t = document.createElementNS(NS, 'text');
-      t.setAttribute('x', rx + 2);
-      t.setAttribute('y', ry + 11);
-      t.setAttribute('font-size', 9);
-      t.setAttribute('font-family', 'monospace');
-      t.setAttribute('fill', '#000');
-      t.textContent = pc.name || ('#' + pl.piece_idx);
-      svg.appendChild(t);
+      draw.plain(pc.name || ('#' + pl.piece_idx))
+        .font({ size: 9, family: 'monospace' }).fill('#000')
+        .attr({ x: rx + 2, y: ry + 10 });
     }
   }
-
-  container.appendChild(svg);
 }
 
 // == form submit ===============================================================
