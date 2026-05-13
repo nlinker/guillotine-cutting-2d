@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode,
     ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
+    gpf::build_gpf,
     model::{Placement, Problem, Solution},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -90,6 +91,11 @@ enum Command {
         #[arg(long)]
         solution: String,
     },
+    /// Build the GPF (Guillotine Placement Function) table and print it
+    Gpf {
+        /// Compact problem string, e.g. "10x8F:0:2x3/4,4x3,8x3,5x2/2"
+        problem: String,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -119,6 +125,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             let sol_str = std::fs::read_to_string(&solution)?;
             let sol = parse_solution_json(&sol_str)?;
             print!("{}", render_svg(&problem, &sol));
+        }
+        Command::Gpf { problem } => {
+            let p = parse_problem(&problem)?;
+            let table = build_gpf(&p);
+            println!("{}", table.display_table(p.sheet.width));
+            if let Some(h) = table.eval_full_set(p.sheet.width) {
+                println!("\nMinimum height for width={}: {}", p.sheet.width, h);
+            } else {
+                println!("\nPieces do not fit in width={}", p.sheet.width);
+            }
         }
     }
     Ok(())
