@@ -271,8 +271,8 @@ mod tests {
         let problem = expand_problem(&spec);
         let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
-        assert_eq!(sol_a.objective(&problem), (2, 9)); // 3×3=9 on last sheet
-        assert_eq!(sol_b.objective(&problem), (2, 40)); // 10×4=40 on last sheet
+        assert_eq!(sol_a.objective(&problem), (2, 9)); // staircase: 3×3 at (0,0) -> 9
+        assert_eq!(sol_b.objective(&problem), (2, 40)); // staircase: 10×4 at (0,0) -> 40
         assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
     }
 }
