@@ -45,7 +45,7 @@ pub struct Problem {
 /// Position of a placed piece. `(x, y)` is the top-left corner of the piece on the sheet;
 /// `rotated` means the piece was placed as (height × width) instead of (width × height).
 /// `piece_idx` is the 0-based index into `Problem::pieces` - the unambiguous internal key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placement {
     pub sheet_idx: usize,
     pub piece_idx: usize,
@@ -56,7 +56,7 @@ pub struct Placement {
 
 /// An unused rectangle remaining after all pieces are placed. `(x, y)` is the top-left corner;
 /// `x` increases rightward, `y` increases downward.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FreeRect {
     pub sheet_idx: usize,
     pub x: u32,
@@ -65,7 +65,7 @@ pub struct FreeRect {
     pub h: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub leftovers: Vec<FreeRect>,

@@ -12,6 +12,7 @@ use cutting::{
     model::{Placement, Problem, Solution},
     parse::parse_problem,
     parse_json::parse_problem_json,
+    render::render_svg,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
@@ -77,6 +78,18 @@ enum Command {
         #[arg(long, default_value_t = 8080)]
         port: u16,
     },
+    /// Render a solution as SVG
+    Render {
+        /// Compact problem string. Mutually exclusive with --json.
+        #[arg(long)]
+        compact: Option<String>,
+        /// Path to JSON problem file. Mutually exclusive with --compact.
+        #[arg(long)]
+        json: Option<String>,
+        /// Path to solution JSON file (the `solution` field from a `done` event, or the object itself)
+        #[arg(long)]
+        solution: String,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -101,8 +114,24 @@ fn main() -> Result<(), Box<dyn Error>> {
             run_calc_with_sink(&parsed, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
+        Command::Render { compact, json, solution } => {
+            let problem = load_problem(compact.as_deref(), json.as_deref())?;
+            let sol_str = std::fs::read_to_string(&solution)?;
+            let sol = parse_solution_json(&sol_str)?;
+            print!("{}", render_svg(&problem, &sol));
+        }
     }
     Ok(())
+}
+
+fn parse_solution_json(s: &str) -> Result<Solution, Box<dyn Error>> {
+    let v: serde_json::Value = serde_json::from_str(s)?;
+    let sol_val = if v.get("solution").is_some() {
+        &v["solution"]
+    } else {
+        &v
+    };
+    Ok(serde_json::from_value(sol_val.clone())?)
 }
 
 fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<Problem, Box<dyn Error>> {
@@ -237,7 +266,7 @@ pub(crate) fn run_with_sink(
                     }
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
                     if should_flush && let Some(evt) = best_pending.take() {
-                        let sol = decode(&*problem, &evt.genome);
+                        let sol = decode(&problem, &evt.genome);
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
                             sheets_used: evt.objective.0,
@@ -256,7 +285,7 @@ pub(crate) fn run_with_sink(
             }
             Some(GaEvent::Done(results)) => {
                 if let Some(evt) = best_pending.take() {
-                    let sol = decode(&*problem, &evt.genome);
+                    let sol = decode(&problem, &evt.genome);
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
                         sheets_used: evt.objective.0,
@@ -269,7 +298,7 @@ pub(crate) fn run_with_sink(
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
                 let (best_seed, best) = &results[0];
-                let sol = decode(&*problem, &best.genome);
+                let sol = decode(&problem, &best.genome);
                 let msg = ProgressMessage::Done {
                     seed: *best_seed,
                     sheets_used: best.objective.0,

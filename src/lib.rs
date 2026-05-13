@@ -4,4 +4,5 @@ pub mod generator;
 pub mod model;
 pub mod parse;
 pub mod parse_json;
+pub mod render;
 pub mod transport;
