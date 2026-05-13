@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::ProblemSpec;
+use crate::model::{PlacementSpec, ProblemSpec, SolutionSpec};
 
 /// A piece type: all pieces with same (width, height) grouped together.
 #[derive(Debug, Clone)]
@@ -149,6 +149,9 @@ pub struct GpfTable {
     pub kerf: u32,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
+    /// For each GPF type index, the list of `ProblemSpec.pieces` indices that
+    /// contributed to it (one entry per physical copy, in spec order).
+    type_to_spec: Vec<Vec<usize>>,
 }
 
 impl GpfTable {
@@ -171,6 +174,91 @@ impl GpfTable {
             idx /= modulus;
         }
         counts
+    }
+
+    /// Reconstruct an optimal 1-sheet placement for the full piece set at the given width.
+    ///
+    /// Returns `None` if the pieces don't fit at this width (GPF is infeasible).
+    /// The returned `SolutionSpec` uses `piece_idx` = index into `ProblemSpec::pieces`.
+    pub fn reconstruct(&self, width: u32) -> Option<SolutionSpec> {
+        let height = self.eval_full_set(width)?;
+        let full: Vec<u32> = self.types.iter().map(|t| t.count).collect();
+        let mut placements = Vec::new();
+        let mut used = vec![0usize; self.types.len()];
+        if self.recon(&full, 0, 0, width, height, &mut placements, &mut used) {
+            placements.sort_unstable_by_key(|p| (p.x, p.y));
+            Some(SolutionSpec { placements, leftovers: vec![] })
+        } else {
+            None
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn recon(
+        &self,
+        counts: &[u32],
+        x: u32, y: u32,
+        width: u32, height: u32,
+        placements: &mut Vec<PlacementSpec>,
+        used: &mut Vec<usize>,
+    ) -> bool {
+        let total: u32 = counts.iter().sum();
+        if total == 0 {
+            return true;
+        }
+        if total == 1 {
+            let ti = counts.iter().position(|&k| k == 1).unwrap();
+            let spec_idx = self.type_to_spec[ti][used[ti]];
+            used[ti] += 1;
+            placements.push(PlacementSpec { sheet_idx: 0, piece_idx: spec_idx, x, y, rotated: false });
+            return true;
+        }
+
+        let ranges: Vec<u32> = counts.to_vec();
+        let n_splits: usize = ranges.iter().map(|&k| (k + 1) as usize).product();
+
+        for sf in 0..n_splits {
+            let d1 = decode_split(&ranges, sf);
+            let t1: u32 = d1.iter().sum();
+            if t1 == 0 || t1 == total { continue; }
+
+            let d2: Vec<u32> = counts.iter().zip(&d1).map(|(&k, &a)| k - a).collect();
+            let f1 = &self.cells[flat_index_with(&self.strides, &d1)];
+            let f2 = &self.cells[flat_index_with(&self.strides, &d2)];
+            if f1.is_empty() || f2.is_empty() { continue; }
+
+            // H-cut: d1 on top, d2 on bottom
+            if let (Some(h1), Some(h2)) = (eval_f(f1, width), eval_f(f2, width))
+                && h1 + h2 + self.kerf == height
+            {
+                let snap = (placements.len(), used.clone());
+                if self.recon(&d1, x, y, width, h1, placements, used)
+                    && self.recon(&d2, x, y + h1 + self.kerf, width, h2, placements, used)
+                {
+                    return true;
+                }
+                placements.truncate(snap.0);
+                *used = snap.1;
+            }
+
+            // V-cut: d1 on left, d2 on right.
+            // w1+w2+kerf may be < width (unused space on the right is fine).
+            if let (Some(w1), Some(w2)) = (eval_f_inv(f1, height), eval_f_inv(f2, height))
+                && w1 + w2 + self.kerf <= width
+            {
+                let h1 = eval_f(f1, w1).unwrap_or(height);
+                let h2 = eval_f(f2, w2).unwrap_or(height);
+                let snap = (placements.len(), used.clone());
+                if self.recon(&d1, x, y, w1, h1, placements, used)
+                    && self.recon(&d2, x + w1 + self.kerf, y, w2, h2, placements, used)
+                {
+                    return true;
+                }
+                placements.truncate(snap.0);
+                *used = snap.1;
+            }
+        }
+        false
     }
 
     /// Evaluate f(width; full set).
@@ -349,12 +437,16 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         }
     }
 
-    GpfTable {
-        types,
-        kerf,
-        strides,
-        cells,
+    // Build type_to_spec: for each GPF type, list of spec piece indices (one per copy).
+    let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
+    for (spec_idx, ps) in spec.pieces.iter().enumerate() {
+        let ti = type_map[&(ps.width, ps.height)];
+        for _ in 0..ps.count {
+            type_to_spec[ti].push(spec_idx);
+        }
     }
+
+    GpfTable { types, kerf, strides, cells, type_to_spec }
 }
 
 fn decode_index_with(types: &[GpfType], mut idx: usize) -> Vec<u32> {

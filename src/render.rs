@@ -16,11 +16,17 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
     let n_sheets = solution.sheets_used().max(1);
     let sw = spec.sheet.width as f64;
     let sh = spec.sheet.height as f64;
-    let margin = 40.0_f64;
-    let gap = 50.0_f64;
 
-    let total_w = margin * 2.0 + sw;
-    let total_h = margin * 2.0 + n_sheets as f64 * sh + (n_sheets - 1) as f64 * gap;
+    // Normalise to a fixed display width so both 12×41 and 3000×2000 look reasonable.
+    const DISPLAY_W: f64 = 700.0;
+    let scale = DISPLAY_W / sw;
+    let dw = DISPLAY_W;
+    let dh = sh * scale;
+    let margin = (dw * 0.04).max(8.0);
+    let gap = (dh * 0.12).max(12.0);
+
+    let total_w = margin * 2.0 + dw;
+    let total_h = margin * 2.0 + n_sheets as f64 * dh + (n_sheets - 1) as f64 * gap;
 
     let mut s = String::with_capacity(4096);
     writeln!(
@@ -41,11 +47,11 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
 
     for si in 0..n_sheets {
         let ox = margin;
-        let oy = margin + si as f64 * (sh + gap);
+        let oy = margin + si as f64 * (dh + gap);
 
         writeln!(
             s,
-            "  <rect x=\"{ox:.0}\" y=\"{oy:.0}\" width=\"{sw:.0}\" height=\"{sh:.0}\" \
+            "  <rect x=\"{ox:.0}\" y=\"{oy:.0}\" width=\"{dw:.0}\" height=\"{dh:.0}\" \
              fill=\"#f8f8f8\" stroke=\"#3c3c3c\" stroke-width=\"1\"/>"
         )
         .unwrap();
@@ -54,22 +60,22 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
         writeln!(
             s,
             "  <text x=\"{cx:.0}\" y=\"{ly:.0}\" text-anchor=\"middle\" \
-             dominant-baseline=\"middle\" font-size=\"{lfs:.0}\" fill=\"#666\"\
+             dominant-baseline=\"middle\" font-size=\"{lfs:.1}\" fill=\"#666\"\
              >Sheet {si}  ({sw:.0}×{sh:.0})</text>",
-            cx = ox + sw / 2.0,
-            ly = oy + sh + gap / 2.0,
+            cx = ox + dw / 2.0,
+            ly = oy + dh + gap / 2.0,
         )
         .unwrap();
 
         for fr in solution.leftovers.iter().filter(|f| f.sheet_idx == si) {
             writeln!(
                 s,
-                "  <rect x=\"{x:.0}\" y=\"{y:.0}\" width=\"{w:.0}\" height=\"{h:.0}\" \
+                "  <rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" \
                  fill=\"#e8e8e8\" stroke=\"#bbb\" stroke-width=\"1\" stroke-dasharray=\"8,4\"/>",
-                x = ox + fr.x as f64,
-                y = oy + fr.y as f64,
-                w = fr.w as f64,
-                h = fr.h as f64,
+                x = ox + fr.x as f64 * scale,
+                y = oy + fr.y as f64 * scale,
+                w = fr.w as f64 * scale,
+                h = fr.h as f64 * scale,
             )
             .unwrap();
         }
@@ -77,23 +83,23 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
         for pl in solution.placements.iter().filter(|p| p.sheet_idx == si) {
             let piece = &spec.pieces[pl.piece_idx];
             let (pw, ph) = if pl.rotated {
-                (piece.height as f64, piece.width as f64)
+                (piece.height as f64 * scale, piece.width as f64 * scale)
             } else {
-                (piece.width as f64, piece.height as f64)
+                (piece.width as f64 * scale, piece.height as f64 * scale)
             };
-            let px = ox + pl.x as f64;
-            let py = oy + pl.y as f64;
+            let px = ox + pl.x as f64 * scale;
+            let py = oy + pl.y as f64 * scale;
             let fill = PALETTE[pl.piece_idx % PALETTE.len()];
 
             writeln!(
                 s,
-                "  <rect x=\"{px:.0}\" y=\"{py:.0}\" width=\"{pw:.0}\" height=\"{ph:.0}\" \
+                "  <rect x=\"{px:.1}\" y=\"{py:.1}\" width=\"{pw:.1}\" height=\"{ph:.1}\" \
                  fill=\"{fill}\" stroke=\"#505050\" stroke-width=\"0.5\"/>"
             )
             .unwrap();
 
-            let fs = (pw.min(ph) * 0.18).clamp(14.0, 80.0);
-            let min_dim = sw * 0.04;
+            let fs = (pw.min(ph) * 0.18).clamp(8.0, 80.0);
+            let min_dim = dw * 0.04;
             if pw >= min_dim && ph >= min_dim {
                 let label = if piece.name.is_empty() {
                     format!("#{}", pl.piece_idx)
@@ -110,7 +116,8 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
                 )
                 .unwrap();
                 if ph >= fs * 2.4 {
-                    let dim = format!("{}×{}", pw as u32, ph as u32);
+                    let (ow, oh) = if pl.rotated { (piece.height, piece.width) } else { (piece.width, piece.height) };
+                    let dim = format!("{}×{}", ow, oh);
                     writeln!(
                         s,
                         "  <text x=\"{cx:.0}\" y=\"{y2:.0}\" text-anchor=\"middle\" \
@@ -189,9 +196,15 @@ mod tests {
         assert!(svg.contains("Sheet 1"));
         assert!(svg.contains(">A<"));
         assert!(svg.contains(">B<"));
-        let sw = spec.sheet.width as f64;
-        let sh = spec.sheet.height as f64;
-        assert!(svg.contains(&format!("width=\"{:.0}\"", 40.0 * 2.0 + sw)));
-        assert!(svg.contains(&format!("height=\"{:.0}\"", 40.0 * 2.0 + 2.0 * sh + 50.0)));
+        // With DISPLAY_W=700, sw=100: scale=7, dw=700, dh=80*7=560, margin=max(28,8)=28, gap=max(560*0.12,12)=67.2
+        let dw = 700.0_f64;
+        let scale = dw / spec.sheet.width as f64;
+        let dh = spec.sheet.height as f64 * scale;
+        let margin = (dw * 0.04_f64).max(8.0);
+        let gap = (dh * 0.12_f64).max(12.0);
+        let expected_w = margin * 2.0 + dw;
+        let expected_h = margin * 2.0 + 2.0 * dh + gap;
+        assert!(svg.contains(&format!("width=\"{:.0}\"", expected_w)));
+        assert!(svg.contains(&format!("height=\"{:.0}\"", expected_h)));
     }
 }
