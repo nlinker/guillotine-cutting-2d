@@ -1,6 +1,9 @@
-use smallvec::{smallvec, SmallVec};
-use crate::{expand, model};
-use crate::model::{FreeRect, Piece, Placement, Problem, Solution};
+use smallvec::{SmallVec, smallvec};
+
+use crate::{
+    expand, model,
+    model::{FreeRect, Piece, Placement, Problem, Solution},
+};
 
 type FreeList = SmallVec<[FreeRect; 16]>;
 type FreePair = SmallVec<[FreeRect; 2]>;

@@ -9,13 +9,13 @@
 use std::time::Instant;
 
 use cutting::{
+    expand::expand_problem,
     ga::{GaConfig, run_ga},
     model::Objective,
     parse::parse_problem,
 };
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
-use cutting::expand::expand_problem;
 
 const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
 const N_SEEDS: usize = 100;

@@ -196,7 +196,7 @@ fn run_ga_inner<R: Rng>(
     ctx: Option<&GaContext>,
 ) -> Individual {
     let mut pop = init_population(problem, config.pop_size, rng);
-    let mut best = select_elite(&pop, 1).into_iter().next().unwrap();
+    let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
         let elite = select_elite(&pop, config.n_elite);
@@ -244,7 +244,7 @@ fn run_ga_inner<R: Rng>(
         }
 
         pop = next_pop;
-        let gen_best = select_elite(&pop, 1).into_iter().next().unwrap();
+        let gen_best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
         if gen_best.objective < best.objective {
             best = gen_best;
         }
@@ -256,7 +256,7 @@ fn run_ga_inner<R: Rng>(
                 break;
             }
             let event = {
-                let mut pool = migration_pool.lock().unwrap();
+                let mut pool = migration_pool.lock().expect("migration pool lock poisoned");
                 if pool.as_ref().is_none_or(|g| best.objective < g.objective) {
                     *pool = Some(best.clone());
                 }
@@ -265,7 +265,7 @@ fn run_ga_inner<R: Rng>(
                     .enumerate()
                     .max_by_key(|(_, i)| i.objective)
                     .map(|(i, _)| i)
-                    .unwrap();
+                    .expect("pop is non-empty");
                 if let Some(global) = pool.as_ref()
                     && global.objective < pop[worst_idx].objective
                 {
@@ -313,7 +313,7 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
-                .map(|h| h.join().unwrap())
+                .map(|h| h.join().expect("GA thread panicked"))
                 .collect()
         });
         results.sort_by_key(|(_, ind)| ind.objective);
@@ -536,9 +536,9 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
 mod tests {
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256StarStar;
-    use crate::{expand::expand_problem, parse::parse_problem};
 
     use super::*;
+    use crate::{expand::expand_problem, parse::parse_problem};
 
     fn g(piece_idx: usize) -> Gene {
         Gene {

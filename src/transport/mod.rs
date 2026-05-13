@@ -35,7 +35,7 @@ pub enum ProgressMessage {
 
 impl ProgressMessage {
     pub fn to_line(&self) -> String {
-        serde_json::to_string(self).unwrap() + "\n"
+        serde_json::to_string(self).expect("ProgressMessage serialization failed") + "\n"
     }
 }
 

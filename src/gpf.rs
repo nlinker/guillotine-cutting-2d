@@ -187,7 +187,10 @@ impl GpfTable {
         let mut used = vec![0usize; self.types.len()];
         if self.recon(&full, 0, 0, width, height, &mut placements, &mut used) {
             placements.sort_unstable_by_key(|p| (p.x, p.y));
-            Some(SolutionSpec { placements, leftovers: vec![] })
+            Some(SolutionSpec {
+                placements,
+                leftovers: vec![],
+            })
         } else {
             None
         }
@@ -197,8 +200,10 @@ impl GpfTable {
     fn recon(
         &self,
         counts: &[u32],
-        x: u32, y: u32,
-        width: u32, height: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
         placements: &mut Vec<PlacementSpec>,
         used: &mut Vec<usize>,
     ) -> bool {
@@ -207,10 +212,19 @@ impl GpfTable {
             return true;
         }
         if total == 1 {
-            let ti = counts.iter().position(|&k| k == 1).unwrap();
+            let ti = counts
+                .iter()
+                .position(|&k| k == 1)
+                .expect("total==1 implies a type with count==1");
             let spec_idx = self.type_to_spec[ti][used[ti]];
             used[ti] += 1;
-            placements.push(PlacementSpec { sheet_idx: 0, piece_idx: spec_idx, x, y, rotated: false });
+            placements.push(PlacementSpec {
+                sheet_idx: 0,
+                piece_idx: spec_idx,
+                x,
+                y,
+                rotated: false,
+            });
             return true;
         }
 
@@ -220,12 +234,16 @@ impl GpfTable {
         for sf in 0..n_splits {
             let d1 = decode_split(&ranges, sf);
             let t1: u32 = d1.iter().sum();
-            if t1 == 0 || t1 == total { continue; }
+            if t1 == 0 || t1 == total {
+                continue;
+            }
 
             let d2: Vec<u32> = counts.iter().zip(&d1).map(|(&k, &a)| k - a).collect();
             let f1 = &self.cells[flat_index_with(&self.strides, &d1)];
             let f2 = &self.cells[flat_index_with(&self.strides, &d2)];
-            if f1.is_empty() || f2.is_empty() { continue; }
+            if f1.is_empty() || f2.is_empty() {
+                continue;
+            }
 
             // H-cut: d1 on top, d2 on bottom
             if let (Some(h1), Some(h2)) = (eval_f(f1, width), eval_f(f2, width))
@@ -446,7 +464,13 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         }
     }
 
-    GpfTable { types, kerf, strides, cells, type_to_spec }
+    GpfTable {
+        types,
+        kerf,
+        strides,
+        cells,
+        type_to_spec,
+    }
 }
 
 fn decode_index_with(types: &[GpfType], mut idx: usize) -> Vec<u32> {

@@ -1,3 +1,5 @@
+#![deny(clippy::unwrap_used)]
+
 pub mod decoder;
 pub mod expand;
 pub mod ga;

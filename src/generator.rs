@@ -209,7 +209,7 @@ pub fn cut_extent(extent: u32, min_size: u32, kerf: u32, weights: &[f32], rng: &
     let (n_cuts, (a_min, a_max)) = (0..=desired_cuts)
         .rev()
         .find_map(|k| valid_range(k).map(|r| (k, r)))
-        .unwrap(); // k=0 is always valid by precondition
+        .expect("k=0 is always valid by precondition");
 
     let a = rng.random_range(a_min..=a_max);
     if n_cuts == 0 {
