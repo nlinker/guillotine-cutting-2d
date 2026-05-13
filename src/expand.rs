@@ -1,9 +1,19 @@
-use crate::model::{Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Solution, SolutionSpec};
+use crate::model::{FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec};
 
 // == expand_* : spec (type-indexed) -> flat ===================================
 
 /// Expand a `ProblemSpec` into a flat `Problem` (one `Piece` entry per physical copy).
+///
+/// The sheet is reduced by `margin` on every edge: the algorithm sees
+/// `(width - 2·margin) × (height - 2·margin)`. Panics if the margin leaves no room.
 pub fn expand_problem(spec: &ProblemSpec) -> Problem {
+    let m = spec.margin;
+    assert!(
+        m * 2 < spec.sheet.width && m * 2 < spec.sheet.height,
+        "margin ({m}) must be less than half the sheet dimensions ({}×{})",
+        spec.sheet.width,
+        spec.sheet.height,
+    );
     let pieces = spec
         .pieces
         .iter()
@@ -17,7 +27,10 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
         })
         .collect();
     Problem {
-        sheet: spec.sheet,
+        sheet: Sheet {
+            width: spec.sheet.width - 2 * m,
+            height: spec.sheet.height - 2 * m,
+        },
         kerf: spec.kerf,
         pieces,
     }
@@ -90,6 +103,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
     ProblemSpec {
         sheet: problem.sheet,
         kerf: problem.kerf,
+        margin: 0,
         pieces,
     }
 }
@@ -97,8 +111,10 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
 /// Convert a flat `Solution` into a `SolutionSpec` using the originating `ProblemSpec`.
 ///
 /// Each `Placement.piece_idx` (flat) is mapped back to the type index via the
-/// `flat_to_type` table built from `spec`.
+/// `flat_to_type` table built from `spec`. Coordinates are shifted by `+spec.margin`
+/// to restore physical sheet coordinates.
 pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
+    let m = spec.margin;
     let flat_to_type: Vec<usize> = spec
         .pieces
         .iter()
@@ -111,15 +127,21 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
         .map(|pl| PlacementSpec {
             sheet_idx: pl.sheet_idx,
             piece_idx: flat_to_type[pl.piece_idx],
-            x: pl.x,
-            y: pl.y,
+            x: pl.x + m,
+            y: pl.y + m,
             rotated: pl.rotated,
         })
         .collect();
-    SolutionSpec {
-        placements,
-        leftovers: sol.leftovers.clone(),
-    }
+    let leftovers = sol
+        .leftovers
+        .iter()
+        .map(|fr| FreeRect {
+            x: fr.x + m,
+            y: fr.y + m,
+            ..*fr
+        })
+        .collect();
+    SolutionSpec { placements, leftovers }
 }
 
 // == helpers ===================================================================

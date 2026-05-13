@@ -137,6 +137,7 @@ mod tests {
         ProblemSpec {
             sheet: Sheet { width: 100, height: 80 },
             kerf: 0,
+            margin: 0,
             pieces: vec![
                 PieceSpec {
                     name: "A".into(),

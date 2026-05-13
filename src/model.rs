@@ -26,10 +26,14 @@ pub struct PieceSpec {
 }
 
 /// A cutting problem as supplied by the user: piece types with counts.
+/// `margin`: border subtracted from each edge; algorithm sees `(width - 2·margin) × (height - 2·margin)`;
+/// output coordinates are shifted back by `+margin`. Defaults to 0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProblemSpec {
     pub sheet: Sheet,
     pub kerf: u32,
+    #[serde(default)]
+    pub margin: u32,
     pub pieces: Vec<PieceSpec>,
 }
 

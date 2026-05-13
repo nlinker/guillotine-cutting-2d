@@ -24,6 +24,7 @@ Private Const BUFFER_SIZE      As Long   = 8192
 Private Const SHEET_W_CELL     As String = "H1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "I1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "I2"  ' blade kerf width (mm)
+Private Const MARGIN_CELL      As String = "I3"  ' edge margin (mm)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -201,10 +202,10 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     ' Headers
     ws.Cells(r, rCol).Value     = "Sheet"
     ws.Cells(r, rCol + 1).Value = "Piece"
-    ws.Cells(r, rCol + 2).Value = "Width"
-    ws.Cells(r, rCol + 3).Value = "Height"
-    ws.Cells(r, rCol + 4).Value = "X"
-    ws.Cells(r, rCol + 5).Value = "Y"
+    ws.Cells(r, rCol + 2).Value = "X"
+    ws.Cells(r, rCol + 3).Value = "Y"
+    ws.Cells(r, rCol + 4).Value = "Width"
+    ws.Cells(r, rCol + 5).Value = "Height"
     ws.Cells(r, rCol + 6).Value = "Rotated"
     r = r + 1
 
@@ -227,10 +228,10 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
 
         ws.Cells(r, rCol).Value     = pl("sheet_idx")
         ws.Cells(r, rCol + 1).Value = pieceName
-        ws.Cells(r, rCol + 2).Value = pw
-        ws.Cells(r, rCol + 3).Value = ph
-        ws.Cells(r, rCol + 4).Value = pl("x")
-        ws.Cells(r, rCol + 5).Value = pl("y")
+        ws.Cells(r, rCol + 2).Value = pl("x")
+        ws.Cells(r, rCol + 3).Value = pl("y")
+        ws.Cells(r, rCol + 4).Value = pw
+        ws.Cells(r, rCol + 5).Value = ph
         ws.Cells(r, rCol + 6).Value = IIf(pl("rotated"), "yes", "")
         r = r + 1
     Next pl
@@ -371,6 +372,7 @@ Private Function BuildProblemJson(ws As Worksheet) As String
     Dim sheetWidth  As Long: sheetWidth  = ws.Range(SHEET_W_CELL).Value
     Dim sheetHeight As Long: sheetHeight = ws.Range(SHEET_H_CELL).Value
     Dim kerf        As Long: kerf        = ws.Range(KERF_CELL).Value
+    Dim margin      As Long: margin      = ws.Range(MARGIN_CELL).Value
 
     Dim dc As Long: dc = DataCol(ws)
     Dim sPieces As String
@@ -407,6 +409,7 @@ Private Function BuildProblemJson(ws As Worksheet) As String
     BuildProblemJson = "{""sheet"":{""width"":" & CStr(sheetWidth) & _
                        ",""height"":" & CStr(sheetHeight) & "}" & _
                        ",""kerf"":" & CStr(kerf) & _
+                       ",""margin"":" & CStr(margin) & _
                        ",""pieces"":[" & sPieces & "]}"
 End Function
 
@@ -626,8 +629,9 @@ Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
-    Dim shW As Long: shW = ws.Range(SHEET_W_CELL).Value
-    Dim shH As Long: shH = ws.Range(SHEET_H_CELL).Value
+    Dim shW  As Long: shW  = ws.Range(SHEET_W_CELL).Value
+    Dim shH  As Long: shH  = ws.Range(SHEET_H_CELL).Value
+    Dim kerf As Long: kerf = ws.Range(KERF_CELL).Value
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
     End If
@@ -681,10 +685,10 @@ Public Sub SendToAutoCAD()
 
         Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)       ' sheet index (0-based)
         Dim pName As String: pName = CStr(ws.Cells(r, rCol + 1).Value)  ' piece name
-        Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 2).Value)          ' placed width
-        Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 3).Value)          ' placed height
-        Dim px As Long: px = CLng(ws.Cells(r, rCol + 4).Value)          ' X from sheet left (Y-down coords)
-        Dim py As Long: py = CLng(ws.Cells(r, rCol + 5).Value)          ' Y from sheet top  (Y-down coords)
+        Dim px As Long: px = CLng(ws.Cells(r, rCol + 2).Value)          ' X from sheet left (Y-down coords)
+        Dim py As Long: py = CLng(ws.Cells(r, rCol + 3).Value)          ' Y from sheet top  (Y-down coords)
+        Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 4).Value)          ' placed width
+        Dim ph As Long: ph = CLng(ws.Cells(r, rCol + 5).Value)          ' placed height
         ' Rotated layout: solver-X (width) maps to AutoCAD-Y, solver-Y (height) maps to AutoCAD-X.
         ' Sheet occupies [xOff, xOff+shH] x [0, shW] in drawing space.
         Dim xOff As Long: xOff = shIdx * (shH + SHEET_GAP_ACAD)        ' sheet left edge in drawing
@@ -695,30 +699,33 @@ Public Sub SendToAutoCAD()
         Dim blkDef As Object
         Set blkDef = doc.Blocks.Add(basePt, bName)
 
-        ' Block space: ph wide (AutoCAD X = solver Y direction), pw tall (AutoCAD Y = solver X direction)
+        ' Block space: (ph+kerf) wide (AutoCAD X = solver Y dir), (pw+kerf) tall (AutoCAD Y = solver X dir)
+        ' Expanding by kerf makes adjacent blocks snap flush — no manual kerf offset needed.
+        Dim bw As Long: bw = ph + kerf  ' block width  in AutoCAD X
+        Dim bh As Long: bh = pw + kerf  ' block height in AutoCAD Y
         Dim rPts(0 To 7) As Double
         rPts(0) = 0:  rPts(1) = 0
-        rPts(2) = ph: rPts(3) = 0
-        rPts(4) = ph: rPts(5) = pw
-        rPts(6) = 0:  rPts(7) = pw
+        rPts(2) = bw: rPts(3) = 0
+        rPts(4) = bw: rPts(5) = bh
+        rPts(6) = 0:  rPts(7) = bh
         Dim rectObj As Object
         Set rectObj = blkDef.AddLightWeightPolyline(rPts)
         rectObj.Closed = True
 
-        ' Label at block center
+        ' Label: "width×height [name]" — shows original piece dims, not kerf-expanded
+        Dim dimStr As String: dimStr = CStr(pw) & ChrW(215) & CStr(ph)
         Dim lbl As String
-        If Len(pName) > 0 Then lbl = CStr(pw) & "x" & CStr(ph) & " - " & pName Else lbl = CStr(pw) & "x" & CStr(ph)
-        ' the point in (x, y, z)
+        If Len(pName) > 0 Then lbl = dimStr & " [" & pName & "]" Else lbl = dimStr
         Dim txtPt(0 To 2) As Double
-        txtPt(0) = CDbl(ph) / 2
-        txtPt(1) = CDbl(pw) / 2
+        txtPt(0) = CDbl(bw) / 2
+        txtPt(1) = CDbl(bh) / 2
         txtPt(2) = 0
         Dim txtObj As Object
         Set txtObj = blkDef.AddText(lbl, txtPt, 30)
         txtObj.StyleName = cutStyle
         txtObj.Alignment = 4  ' acAlignmentMiddleCenter
         txtObj.TextAlignmentPoint = txtPt
-        If ph < pw Then txtObj.Rotation = 1.5707963265  ' 90° when block is wider than tall
+        If bw < bh Then txtObj.Rotation = 1.5707963265  ' 90° when block is wider than tall
 
         ' Insert point = bottom-left of block in drawing space
         ' acad_x = xOff + py,  acad_y = shW - px - pw

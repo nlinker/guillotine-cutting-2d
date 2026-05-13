@@ -48,7 +48,7 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     for piece_str in pieces_str.split(',') {
         pieces.push(parse_piece_spec(piece_str.trim(), default_rotate)?);
     }
-    Ok(ProblemSpec { sheet, kerf, pieces })
+    Ok(ProblemSpec { sheet, kerf, margin: 0, pieces })
 }
 
 fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {

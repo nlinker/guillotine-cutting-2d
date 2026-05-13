@@ -132,6 +132,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
             height: params.sheet_h,
         },
         kerf: params.kerf,
+        margin: 0,
         pieces,
     })
 }
