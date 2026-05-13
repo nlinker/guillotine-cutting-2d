@@ -6,7 +6,7 @@ pub mod windows;
 
 use serde::Serialize;
 
-use crate::model::{Piece, Solution};
+use crate::model::{PieceSpec, SolutionSpec};
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -17,16 +17,16 @@ pub enum ProgressMessage {
         last_sheet_area: i64,
         seed: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
-        solution: Option<Solution>,
+        solution: Option<SolutionSpec>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pieces: Option<Vec<Piece>>,
+        pieces: Option<Vec<PieceSpec>>,
     },
     Done {
         seed: u64,
         sheets_used: usize,
         last_sheet_area: i64,
-        solution: Solution,
-        pieces: Vec<Piece>,
+        solution: SolutionSpec,
+        pieces: Vec<PieceSpec>,
     },
     Error {
         message: String,

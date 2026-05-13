@@ -15,6 +15,7 @@ use cutting::{
 };
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
+use cutting::expand::expand_problem;
 
 const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
 const N_SEEDS: usize = 100;
@@ -97,7 +98,8 @@ fn cfg(
 }
 
 fn main() {
-    let problem = parse_problem(PROBLEM).expect("parse error");
+    let spec = parse_problem(PROBLEM).expect("parse error");
+    let problem = expand_problem(&spec);
     println!("Problem : {PROBLEM}");
     println!(
         "Pieces  : {}   Sheet: {}×{}",

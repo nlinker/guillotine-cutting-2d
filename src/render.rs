@@ -1,25 +1,23 @@
 use std::fmt::Write as _;
 
-use crate::model::{Problem, Solution};
+use crate::model::{ProblemSpec, SolutionSpec};
 
 /// Pastel palette matching the Excel workbook (VBA `PieceColor`).
 const PALETTE: &[&str] = &[
-    "#FFB6C1", "#ADD8E6", "#90EE90", "#FFFF99", "#FFC878", "#DDA0DD",
-    "#87CEEB", "#F0B4B4", "#B4FFB4", "#FFE4C4", "#C8C8FF", "#FFF0B4",
+    "#FFB6C1", "#ADD8E6", "#90EE90", "#FFFF99", "#FFC878", "#DDA0DD", "#87CEEB", "#F0B4B4", "#B4FFB4", "#FFE4C4",
+    "#C8C8FF", "#FFF0B4",
 ];
 
-/// Render a solution as an SVG string.
+/// Render a `SolutionSpec` as an SVG string.
 ///
-/// Sheets are stacked vertically with a gap between them (same layout as the Excel
-/// workbook). Pieces are colored by `piece_idx` cycling through [`PALETTE`].
-/// Free rects are shown as light gray dashed outlines.
-/// Sheet label ("Sheet N  W×H") is drawn inside the top-left corner of each sheet.
-pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
+/// Sheets are stacked vertically with a gap. Pieces are colored by `piece_idx`
+/// (type index) cycling through [`PALETTE`]. Free rects shown as dashed outlines.
+pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> String {
     let n_sheets = solution.sheets_used().max(1);
-    let sw = problem.sheet.width as f64;
-    let sh = problem.sheet.height as f64;
+    let sw = spec.sheet.width as f64;
+    let sh = spec.sheet.height as f64;
     let margin = 40.0_f64;
-    let gap = 50.0_f64; // vertical gap between sheets
+    let gap = 50.0_f64;
 
     let total_w = margin * 2.0 + sw;
     let total_h = margin * 2.0 + n_sheets as f64 * sh + (n_sheets - 1) as f64 * gap;
@@ -45,7 +43,6 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
         let ox = margin;
         let oy = margin + si as f64 * (sh + gap);
 
-        // Sheet background
         writeln!(
             s,
             "  <rect x=\"{ox:.0}\" y=\"{oy:.0}\" width=\"{sw:.0}\" height=\"{sh:.0}\" \
@@ -53,7 +50,6 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
         )
         .unwrap();
 
-        // Sheet label centered below the sheet, in the gap area
         let lfs = gap * 0.36;
         writeln!(
             s,
@@ -65,7 +61,6 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
         )
         .unwrap();
 
-        // Free rects
         for fr in solution.leftovers.iter().filter(|f| f.sheet_idx == si) {
             writeln!(
                 s,
@@ -79,9 +74,8 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
             .unwrap();
         }
 
-        // Pieces
         for pl in solution.placements.iter().filter(|p| p.sheet_idx == si) {
-            let piece = &problem.pieces[pl.piece_idx];
+            let piece = &spec.pieces[pl.piece_idx];
             let (pw, ph) = if pl.rotated {
                 (piece.height as f64, piece.width as f64)
             } else {
@@ -98,9 +92,8 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
             )
             .unwrap();
 
-            // Label only if piece is large enough (mirrors VBA threshold)
             let fs = (pw.min(ph) * 0.18).clamp(14.0, 80.0);
-            let min_dim = sw * 0.04; // ~4% of sheet width
+            let min_dim = sw * 0.04;
             if pw >= min_dim && ph >= min_dim {
                 let label = if piece.name.is_empty() {
                     format!("#{}", pl.piece_idx)
@@ -109,7 +102,6 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
                 };
                 let cx = px + pw / 2.0;
                 let cy = py + ph / 2.0;
-
                 writeln!(
                     s,
                     "  <text x=\"{cx:.0}\" y=\"{cy:.0}\" text-anchor=\"middle\" \
@@ -117,7 +109,6 @@ pub fn render_svg(problem: &Problem, solution: &Solution) -> String {
                      fill=\"#1a1a1a\">{label}</text>"
                 )
                 .unwrap();
-
                 if ph >= fs * 2.4 {
                     let dim = format!("{}×{}", pw as u32, ph as u32);
                     writeln!(
@@ -144,39 +135,62 @@ fn xml_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Piece, Placement, Sheet, Solution};
+    use crate::model::{PieceSpec, PlacementSpec, Sheet, SolutionSpec};
 
-    fn make_problem() -> Problem {
-        Problem {
+    fn make_spec() -> ProblemSpec {
+        ProblemSpec {
             sheet: Sheet { width: 100, height: 80 },
             kerf: 0,
             pieces: vec![
-                Piece { name: "A".into(), width: 60, height: 40, can_rotate: false },
-                Piece { name: "B".into(), width: 40, height: 40, can_rotate: false },
+                PieceSpec {
+                    name: "A".into(),
+                    width: 60,
+                    height: 40,
+                    count: 1,
+                    can_rotate: false,
+                },
+                PieceSpec {
+                    name: "B".into(),
+                    width: 40,
+                    height: 40,
+                    count: 1,
+                    can_rotate: false,
+                },
             ],
         }
     }
 
     #[test]
     fn multi_sheet_stacked_vertically() {
-        let problem = make_problem();
-        let solution = Solution {
+        let spec = make_spec();
+        let solution = SolutionSpec {
             placements: vec![
-                Placement { sheet_idx: 0, piece_idx: 0, x: 0, y: 0, rotated: false },
-                Placement { sheet_idx: 1, piece_idx: 1, x: 0, y: 0, rotated: false },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piece_idx: 0,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 1,
+                    piece_idx: 1,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
             ],
             leftovers: vec![],
         };
-        let svg = render_svg(&problem, &solution);
+        let svg = render_svg(&spec, &solution);
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>\n"));
         assert!(svg.contains("Sheet 0"));
         assert!(svg.contains("Sheet 1"));
         assert!(svg.contains(">A<"));
         assert!(svg.contains(">B<"));
-        // SVG total height must accommodate 2 sheets + gap; width = 1 sheet + margins
-        let sw = problem.sheet.width as f64;
-        let sh = problem.sheet.height as f64;
+        let sw = spec.sheet.width as f64;
+        let sh = spec.sheet.height as f64;
         assert!(svg.contains(&format!("width=\"{:.0}\"", 40.0 * 2.0 + sw)));
         assert!(svg.contains(&format!("height=\"{:.0}\"", 40.0 * 2.0 + 2.0 * sh + 50.0)));
     }

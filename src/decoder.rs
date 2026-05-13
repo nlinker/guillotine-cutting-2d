@@ -1,15 +1,15 @@
-use smallvec::{SmallVec, smallvec};
-
+use smallvec::{smallvec, SmallVec};
+use crate::{expand, model};
 use crate::model::{FreeRect, Piece, Placement, Problem, Solution};
 
 type FreeList = SmallVec<[FreeRect; 16]>;
 type FreePair = SmallVec<[FreeRect; 2]>;
 
 /// One element of the solution genome (V-vector encoding).
+/// `piece_idx`: index into the flat `Problem::pieces` list (one entry per physical copy).
 /// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
 /// `point_selector`: selects the starting free rect as `free[point_selector % |free|]`;
-/// without it the decoder always starts from `free[0]`, so this gives the
-/// algorithm extra freedom to steer pieces to different regions.
+/// scanning from a variable offset gives the GA freedom to steer pieces to different regions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gene {
     pub piece_idx: usize,
@@ -18,9 +18,19 @@ pub struct Gene {
 }
 
 /// Ordered genome - one gene per piece, defining placement order, rotation
-/// preference, and free-rect selection. `piece_idx` values must be a permutation
-/// of `0..problem.pieces.len()`.
+/// preference, and free-rect selection. `piece_idx` values form a permutation
+/// of `0..problem.pieces.len()` (one gene per physical piece).
 pub type Genome = Vec<Gene>;
+
+/// Decode a genome into a type-indexed `SolutionSpec`.
+///
+/// Expands `spec` into a flat `Problem`, runs `decoder::decode`, then maps each
+/// `Placement.piece_idx` from flat index back to the type index in `spec`.
+pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::SolutionSpec {
+    let problem = expand::expand_problem(spec);
+    let sol = decode(&problem, genome);
+    expand::shrink_solution(&sol, spec)
+}
 
 /// Decode a genome into placements using strict guillotine splitting (no merge).
 ///
@@ -206,7 +216,7 @@ fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::parse_problem;
+    use crate::{expand::expand_problem, parse::parse_problem};
 
     fn g(piece_id: usize, rotate: bool, point_selector: u32) -> Gene {
         Gene {
@@ -218,7 +228,7 @@ mod tests {
 
     #[test]
     fn decode_two_sheets() {
-        // Sheet 200×150, kerf=5. Five pieces, expected placements:
+        // Sheet 200×150, kerf=5. Five pieces (each count=1), expected placements:
         //
         //  Sheet 0 (200×150)                Sheet 1 (200×150)
         // ┌─────────────┬──────────┬──┐    ┌────────────────────────────┐
@@ -230,7 +240,8 @@ mod tests {
         // │             ├─────────────┤    │ free 100×10│               │
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
-        let problem = parse_problem("200x150F:5:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
+        let spec = parse_problem("200x150F:5:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
+        let problem = expand_problem(&spec);
         let genome = vec![
             g(0, false, 0),
             g(1, false, 0),
@@ -252,27 +263,13 @@ mod tests {
 
     #[test]
     fn objective_prefers_smaller_area_on_last_sheet() {
-        // Sheet 10×10, kerf=0. Pieces: 10×6n (big), 10×4n (medium), 3×3n (small).
-        //
-        // Genome A: [big, medium, small]
-        //   big  10×6 -> sheet 0 at (0,0); leftover bottom=(0,6,10,4)
-        //   med  10×4 -> fits in bottom; sheet 0 full
-        //   small 3×3 -> sheet 1  area_on_last=9
-        //   objective = 2*(100+1) + 9 = 211
-        //
-        // Genome B: [big, small, medium]
-        //   big  10×6 -> sheet 0; leftover bottom=(0,6,10,4)
-        //   small 3×3 -> fits at (0,6); SLAS lw=7>lh=1 -> right=(3,6,7,4), bottom=(0,9,3,1)
-        //   med  10×4 -> does not fit -> sheet 1  area_on_last=40
-        //   objective = 2*(100+1) + 40 = 242
-        //
-        // A is better: the large piece stays on sheet 0, only the small piece overflows.
-        // objective = (sheets_used, area_on_last_sheet)
-        let problem = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
+        // Sheet 10×10, kerf=0. Pieces: 10×6 (big), 10×4 (medium), 3×3 (small).
+        let spec = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
+        let problem = expand_problem(&spec);
         let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
-        assert_eq!(sol_a.objective(&problem), (2, 9)); // 2 sheets, 3×3=9 on last
-        assert_eq!(sol_b.objective(&problem), (2, 40)); // 2 sheets, 10×4=40 on last
+        assert_eq!(sol_a.objective(&problem), (2, 9)); // 3×3=9 on last sheet
+        assert_eq!(sol_b.objective(&problem), (2, 40)); // 10×4=40 on last sheet
         assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
     }
 }

@@ -251,34 +251,6 @@ Private Function PieceColor(ByVal colorIdx As Long) As Long
     PieceColor = p(colorIdx Mod 12)
 End Function
 
-' Builds a 1-based array clrMap(1..totalPieces): piece_idx+1 -> RGB color.
-' Color index = input table row order (0-based), expanding by count per row.
-' Assumes pieces[] in the JSON response are in the same order as the input table rows.
-' This holds because Rust returns Done { pieces: problem.pieces.clone(), ... } where
-' problem.pieces is built by expanding each PieceSpec in input order - no sorting or shuffling.
-Private Function BuildPieceColorMap(ws As Worksheet, totalPieces As Long) As Variant
-    Dim clrMap() As Long
-    ReDim clrMap(1 To totalPieces)
-    Dim dc As Long: dc = DataCol(ws)
-    Dim pi As Long: pi = 1
-    Dim ci As Long: ci = 0
-    Dim r  As Long: r  = DataStartRow(ws)
-    Do While ws.Cells(r, dc + 1).Value <> "" And pi <= totalPieces
-        Dim cnt As Long: cnt = 1
-        If ws.Cells(r, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(r, dc + 3).Value)
-        If cnt < 1 Then cnt = 1
-        Dim clr As Long: clr = PieceColor(ci)
-        Dim j As Long
-        For j = 0 To cnt - 1
-            clrMap(pi) = clr
-            pi = pi + 1
-        Next j
-        ci = ci + 1
-        r = r + 1
-    Loop
-    BuildPieceColorMap = clrMap
-End Function
-
 ' Deletes all shapes whose name starts with "cut_".
 Private Sub ClearLayoutShapes(ws As Worksheet)
     Dim shapeNames() As String
@@ -304,8 +276,6 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     If sheetW <= 0 Or sheetH <= 0 Then Exit Sub
 
     ClearLayoutShapes ws
-
-    Dim clrMap As Variant: clrMap = BuildPieceColorMap(ws, pieces.Count)
 
     Dim cvs         As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
     Dim originLeft  As Double: originLeft  = cvs.Cells(1, 1).Left
@@ -338,6 +308,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     Next si
 
     ' Draw pieces
+    Dim pIdx As Long: pIdx = 0
     For Each pl In sol("placements")
         Dim idx   As Long: idx   = pl("piece_idx") + 1
         Dim shIdx As Long: shIdx = pl("sheet_idx")
@@ -358,8 +329,9 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
 
         Dim s As Shape
         Set s = ws.Shapes.AddShape(msoShapeRectangle, rLeft, rTop, rWidth, rHeight)
-        s.Name = "cut_p_" & shIdx & "_" & (idx - 1)
-        s.Fill.ForeColor.RGB = clrMap(idx)
+        s.Name = "cut_p_" & pIdx
+        pIdx = pIdx + 1
+        s.Fill.ForeColor.RGB = PieceColor(idx - 1)
         s.Fill.Transparency = 0
         s.Line.ForeColor.RGB = RGB(80, 80, 80)
         s.Line.Weight = 0.5

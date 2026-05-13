@@ -179,19 +179,10 @@ function addPoint(generation, objective) {
 }
 
 // == color helpers =============================================================
-// Builds rowColor[piece_idx] = css color string, matching input table row order.
-// specs = array of {count, ...} from serializePieces(); pieces.length = total expanded count.
-function buildRowColors(specs, totalPieces) {
-  const rowColor = new Array(totalPieces);
-  let pi = 0;
-  for (let ci = 0; ci < specs.length; ci++) {
-    const cnt = specs[ci].count || 1;
-    const color = PALETTE[ci % PALETTE.length];
-    for (let j = 0; j < cnt && pi < totalPieces; j++) {
-      rowColor[pi++] = color;
-    }
-  }
-  return rowColor;
+// Builds rowColor[piece_idx] = css color string.
+// specs = array of piece types (piece_idx = index into specs).
+function buildRowColors(specs) {
+  return specs.map((_, ci) => PALETTE[ci % PALETTE.length]);
 }
 
 function colorInputRows(specs) {
@@ -318,7 +309,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   es.addEventListener('done', (ev) => {
     const d = JSON.parse(ev.data);
     if (d.solution) {
-      const rowColor = buildRowColors(lastSpecs || [], d.pieces.length);
+      const rowColor = buildRowColors(d.pieces);
       colorInputRows(lastSpecs || []);
       drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';

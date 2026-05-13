@@ -1,4 +1,4 @@
-use crate::model::{Piece, PieceSpec, Problem, Sheet};
+use crate::model::{PieceSpec, ProblemSpec, Sheet};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ParseError {
@@ -11,12 +11,12 @@ pub enum ParseError {
     #[error("invalid sheet spec '{0}': expected WxHR or WxHF (R = rotatable default, F = fixed default)")]
     InvalidSheet(String),
     #[error("invalid piece spec '{0}': expected WxH, WxH/N, WxHr, WxHf, WxH/Nr, or WxH/Nf")]
-    InvalidPiece(String),
+    InvalidPieceSpec(String),
     #[error("invalid integer in '{0}'")]
     InvalidInteger(String),
 }
 
-/// Parse a compact problem string into a `Problem`.
+/// Parse a compact problem string into a `ProblemSpec`.
 ///
 /// Format: `"<sheet>:<kerf>:<pieces>"` where
 /// - `<sheet>` = `WxHR` or `WxHF`
@@ -34,9 +34,9 @@ pub enum ParseError {
 /// let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
-/// assert_eq!(p.pieces.len(), 9);
+/// assert_eq!(p.pieces.len(), 3); // 3 piece types; total count = 4+4+1 = 9
 /// ```
-pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
+pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     let (sheet_str, rest) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
     let (kerf_str, pieces_str) = rest.split_once(':').ok_or(ParseError::MissingKerf)?;
     let (sheet, default_rotate) = parse_sheet(sheet_str.trim())?;
@@ -46,17 +46,9 @@ pub fn parse_problem(s: &str) -> Result<Problem, ParseError> {
         .map_err(|_| ParseError::InvalidKerf(kerf_str.trim().to_string()))?;
     let mut pieces = Vec::new();
     for piece_str in pieces_str.split(',') {
-        let spec = parse_piece_spec(piece_str.trim(), default_rotate)?;
-        for _ in 0..spec.count {
-            pieces.push(Piece {
-                name: String::new(),
-                width: spec.width,
-                height: spec.height,
-                can_rotate: spec.can_rotate,
-            });
-        }
+        pieces.push(parse_piece_spec(piece_str.trim(), default_rotate)?);
     }
-    Ok(Problem { sheet, kerf, pieces })
+    Ok(ProblemSpec { sheet, kerf, pieces })
 }
 
 fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
@@ -78,7 +70,7 @@ fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
 }
 
 fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseError> {
-    let err = || ParseError::InvalidPiece(s.to_string());
+    let err = || ParseError::InvalidPieceSpec(s.to_string());
     let (base, can_rotate) = if let Some(stripped) = s.strip_suffix('r') {
         (stripped, true)
     } else if let Some(stripped) = s.strip_suffix('f') {
@@ -116,7 +108,6 @@ mod tests {
 
     #[test]
     fn full_example() {
-        // R default: 4 rotatable + 4 fixed(f) + 4 rotatable + 2 rotatable + 1 rotatable = 15
         let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1020x620/4,1490x620/2,1750x900").unwrap();
 
         assert_eq!(
@@ -127,30 +118,44 @@ mod tests {
             }
         );
         assert_eq!(p.kerf, 7);
-        assert_eq!(p.pieces.len(), 15);
+        assert_eq!(p.pieces.len(), 5);
+        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 15);
 
-        for i in 0..4 {
-            assert_eq!(
-                (p.pieces[i].width, p.pieces[i].height, p.pieces[i].can_rotate),
-                (835, 620, true)
-            );
-        }
-        for i in 4..8 {
-            assert_eq!(
-                (p.pieces[i].width, p.pieces[i].height, p.pieces[i].can_rotate),
-                (1020, 620, false)
-            );
-        }
-        for i in 8..12 {
-            assert_eq!(
-                (p.pieces[i].width, p.pieces[i].height, p.pieces[i].can_rotate),
-                (1020, 620, true)
-            );
-        }
-        for i in 12..14 {
-            assert_eq!((p.pieces[i].width, p.pieces[i].height), (1490, 620));
-        }
-        assert_eq!((p.pieces[14].width, p.pieces[14].height), (1750, 900));
+        assert_eq!(
+            (
+                p.pieces[0].width,
+                p.pieces[0].height,
+                p.pieces[0].count,
+                p.pieces[0].can_rotate
+            ),
+            (835, 620, 4, true)
+        );
+        assert_eq!(
+            (
+                p.pieces[1].width,
+                p.pieces[1].height,
+                p.pieces[1].count,
+                p.pieces[1].can_rotate
+            ),
+            (1020, 620, 4, false)
+        );
+        assert_eq!(
+            (
+                p.pieces[2].width,
+                p.pieces[2].height,
+                p.pieces[2].count,
+                p.pieces[2].can_rotate
+            ),
+            (1020, 620, 4, true)
+        );
+        assert_eq!(
+            (p.pieces[3].width, p.pieces[3].height, p.pieces[3].count),
+            (1490, 620, 2)
+        );
+        assert_eq!(
+            (p.pieces[4].width, p.pieces[4].height, p.pieces[4].count),
+            (1750, 900, 1)
+        );
     }
 
     #[test]
@@ -158,7 +163,8 @@ mod tests {
         let p = parse_problem("8x100F : 0 : 7x5/4 , 6x4/4 , 4x6/4 , 5x7/4").unwrap();
         assert_eq!(p.sheet.width, 8);
         assert_eq!(p.kerf, 0);
-        assert_eq!(p.pieces.len(), 16);
+        assert_eq!(p.pieces.len(), 4);
+        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 16);
     }
 
     #[test]
@@ -183,11 +189,11 @@ mod tests {
         );
         assert_eq!(
             parse_problem("1000x500F:0:abc").unwrap_err(),
-            ParseError::InvalidPiece("abc".into())
+            ParseError::InvalidPieceSpec("abc".into())
         );
         assert_eq!(
             parse_problem("1000x500F:0:100x0").unwrap_err(),
-            ParseError::InvalidPiece("100x0".into())
+            ParseError::InvalidPieceSpec("100x0".into())
         );
     }
 }

@@ -4,6 +4,7 @@ use std::{convert::Infallible, sync::Arc, time::Instant};
 
 use axum::{
     Router,
+    body::Body,
     extract::Query,
     http::header,
     response::{
@@ -11,9 +12,8 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
     },
     routing::get,
-    body::Body,
 };
-use cutting::model::{Piece, PieceSpec, Problem, Sheet};
+use cutting::model::{PieceSpec, ProblemSpec, Sheet};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -95,10 +95,10 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
         Err(msg) => {
             let _ = tx.send(Event::default().event("error").data(msg));
         }
-        Ok(problem) => {
-            let sheet_w = problem.sheet.width;
-            let sheet_h = problem.sheet.height;
-            let problem = Arc::new(problem);
+        Ok(spec) => {
+            let sheet_w = spec.sheet.width;
+            let sheet_h = spec.sheet.height;
+            let problem = Arc::new(spec);
             let cfg = Arc::new(crate::ga_config(params.gens, params.pop, 5, 5));
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
@@ -120,24 +120,13 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-fn build_problem(params: &SolveParams) -> Result<Problem, String> {
-    let specs =
+fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
+    let pieces =
         serde_json::from_str::<Vec<PieceSpec>>(&params.pieces).map_err(|e| format!("invalid pieces JSON: {e}"))?;
-    if specs.is_empty() {
+    if pieces.is_empty() {
         return Err("no pieces specified".into());
     }
-    let pieces = specs
-        .iter()
-        .flat_map(|ps| {
-            (0..ps.count).map(|_| Piece {
-                name: ps.name.clone(),
-                width: ps.width,
-                height: ps.height,
-                can_rotate: ps.can_rotate,
-            })
-        })
-        .collect::<Vec<_>>();
-    Ok(Problem {
+    Ok(ProblemSpec {
         sheet: Sheet {
             width: params.sheet_w,
             height: params.sheet_h,

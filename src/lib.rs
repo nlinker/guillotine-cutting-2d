@@ -1,4 +1,5 @@
 pub mod decoder;
+pub mod expand;
 pub mod ga;
 pub mod generator;
 pub mod gpf;

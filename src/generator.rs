@@ -138,7 +138,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
         }
         all_rects.extend(queue);
     }
-    // Shuffle before assigning indices so piece_idx == position in problem.pieces.
+    // Shuffle before assigning indices so piece_idx == position in problem.piece_types.
     all_rects.shuffle(rng);
 
     let mut placements: Vec<Placement> = Vec::new();
@@ -176,7 +176,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
 ///
 /// `weights[i]` is the relative probability of making `i+1` cuts, e.g.
 /// `[5, 3, 2]` -> P(1 cut)=0.5, P(2 cuts)=0.3, P(3 cuts)=0.2.
-/// Pieces sum to `extent - n_cuts * kerf`.
+/// PieceTypes sum to `extent - n_cuts * kerf`.
 pub fn cut_extent(extent: u32, min_size: u32, kerf: u32, weights: &[f32], rng: &mut impl Rng) -> Vec<u32> {
     assert!(!weights.is_empty(), "weights must not be empty");
     assert!(min_size <= extent, "min_size must be <= extent");
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn pieces_do_not_overlap() {
-        // Pieces on the same sheet must not overlap.
+        // PieceTypes on the same sheet must not overlap.
         for kerf in [0u32, 1] {
             let mut rng = Xoshiro256StarStar::seed_from_u64(123);
             let out = generate(
@@ -451,8 +451,18 @@ mod tests {
         let c = cfg(1, vec![1.0, 1.0, 1.0]);
         let o1 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let o2 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
-        let ids1 = o1.problem.pieces.iter().map(|p| (p.width, p.height)).collect::<Vec<_>>();
-        let ids2 = o2.problem.pieces.iter().map(|p| (p.width, p.height)).collect::<Vec<_>>();
+        let ids1 = o1
+            .problem
+            .pieces
+            .iter()
+            .map(|p| (p.width, p.height))
+            .collect::<Vec<_>>();
+        let ids2 = o2
+            .problem
+            .pieces
+            .iter()
+            .map(|p| (p.width, p.height))
+            .collect::<Vec<_>>();
         assert_eq!(ids1, ids2);
     }
 

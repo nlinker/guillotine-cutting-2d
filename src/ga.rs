@@ -12,7 +12,8 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     decoder::{Gene, Genome, decode},
-    model::{Objective, Problem},
+    expand::expand_problem,
+    model::{Objective, Problem, ProblemSpec},
 };
 
 /// GA hyperparameters.
@@ -173,6 +174,9 @@ pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
 /// filled by tournament selection -> OX crossover (with probability `crossover_p`) ->
 /// mutation -> decode. The running best is tracked independently of elitism so that
 /// `n_elite = 0` still returns a valid result.
+///
+/// The returned `Individual.genome` contains flat piece indices (0..total_pieces).
+/// Use `cutting::decode` to convert to a type-indexed `SolutionSpec`.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
     let pool = Mutex::new(None);
     run_ga_inner(problem, config, rng, &pool, None)
@@ -290,11 +294,12 @@ fn run_ga_inner<R: Rng>(
 /// Progress and final results arrive through the `GaHandle` from `ga_channel`.
 /// Sends `GaEvent::Progress` during the run and `GaEvent::Done` when finished.
 /// Dropping `GaHandle` requests early termination via the stop flag.
-pub fn run_ga_mt(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
+pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
     std::thread::spawn(move || {
+        let flat = Arc::new(expand_problem(&spec));
         let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
         let pool_ref = &migration_pool;
-        let p = &*problem;
+        let p = &*flat;
         let c = &*config;
         let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
             seeds
@@ -323,6 +328,8 @@ pub fn run_ga_mt(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, 
 /// (wrapping), preserving relative order and skipping already-present `piece_idx` values.
 /// The full `Gene` (including `rotate` and `point_selector`) travels with its `piece_idx`.
 ///
+/// Both genomes must be permutations of `0..n` (each `piece_idx` appears exactly once).
+///
 /// ```text
 ///          lo    hi
 ///           ↓     ↓
@@ -332,9 +339,6 @@ pub fn run_ga_mt(problem: Arc<Problem>, config: Arc<GaConfig>, seeds: Vec<u64>, 
 ///   C1 segment ← P1;  remaining ← P2 from hi, wrapping, skipping dupes
 ///   C2 segment ← P2;  remaining ← P1 from hi, wrapping, skipping dupes
 /// ```
-///
-/// `p1` and `p2` must be the same length and their `piece_idx` values must be a
-/// permutation of `0..n`.
 pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
     let n = p1.len();
     debug_assert_eq!(n, p2.len());
@@ -364,19 +368,16 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
         }
         child
     }
-    // p1 and p2 are symmetric wrt the crossover operation
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
 
 /// CX (Cycle Crossover) for two genomes. No RNG required - cycle structure is
 /// fully determined by the two parents.
 ///
+/// **Note**: each `piece_idx` value appears exactly once in the genome (bijection).
 /// Traces cycles by following P2 values back to their positions in P1. Even cycles
 /// keep their parent source; odd cycles swap it. O(n): one pass to invert P1,
 /// one pass to trace all cycles.
-///
-/// Key property: within each cycle, {P1[i]} == {P2[i]}, so swapping sources
-/// never breaks the permutation invariant.
 ///
 /// ```text
 /// pos:  0  1  2  3  4
@@ -495,12 +496,12 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
     best
 }
 
-/// Generates `size` random individuals for `problem`, each with a shuffled genome
-/// and a freshly computed objective.
+/// Generates `size` random individuals, each with a shuffled genome and a freshly computed
 pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
+    let n = problem.pieces.len();
     (0..size)
         .map(|_| {
-            let genome = random_genome(problem, rng);
+            let genome = random_genome(n, rng);
             let sol = decode(problem, &genome);
             Individual {
                 genome,
@@ -510,8 +511,7 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
         .collect()
 }
 
-fn random_genome<R: Rng>(problem: &Problem, rng: &mut R) -> Genome {
-    let n = problem.pieces.len();
+fn random_genome<R: Rng>(n: usize, rng: &mut R) -> Genome {
     let mut indices = (0..n).collect::<Vec<_>>();
     for i in (1..n).rev() {
         let j = (rng.next_u64() as usize) % (i + 1);
@@ -536,6 +536,7 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
 mod tests {
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256StarStar;
+    use crate::{expand::expand_problem, parse::parse_problem};
 
     use super::*;
 
@@ -644,11 +645,11 @@ mod tests {
 
     #[test]
     fn init_population_size_and_valid_permutations() {
-        use crate::parse::parse_problem;
-        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
-        let n = problem.pieces.len();
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let flat = expand_problem(&spec);
+        let n = flat.pieces.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&problem, 20, &mut rng);
+        let pop = init_population(&flat, 20, &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
@@ -657,10 +658,10 @@ mod tests {
 
     #[test]
     fn init_population_is_deterministic() {
-        use crate::parse::parse_problem;
-        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
-        let pop1 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
+        let flat = expand_problem(&spec);
+        let pop1 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
@@ -680,16 +681,16 @@ mod tests {
 
     #[test]
     fn run_ga_smoke() {
-        use crate::parse::parse_problem;
-        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let problem = expand_problem(&spec);
         let mut rng = Xoshiro256StarStar::seed_from_u64(42);
         let _best = run_ga(&problem, &default_config(), &mut rng);
     }
 
     #[test]
     fn run_ga_is_deterministic() {
-        use crate::parse::parse_problem;
-        let problem = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let problem = expand_problem(&spec);
         let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         assert_eq!(b1.objective, b2.objective);

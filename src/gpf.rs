@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::model::Problem;
+use crate::model::ProblemSpec;
 
 /// A piece type: all pieces with same (width, height) grouped together.
 #[derive(Debug, Clone)]
-pub struct PieceType {
+pub struct GpfType {
     pub width: u32,
     pub height: u32,
     pub count: u32,
@@ -70,7 +70,11 @@ pub fn h_cut(f1: &StepFn, f2: &StepFn, kerf: u32) -> StepFn {
         return vec![];
     }
     // Merge x-breakpoints
-    let mut xs = f1.iter().map(|&(x, _)| x).chain(f2.iter().map(|&(x, _)| x)).collect::<Vec<_>>();
+    let mut xs = f1
+        .iter()
+        .map(|&(x, _)| x)
+        .chain(f2.iter().map(|&(x, _)| x))
+        .collect::<Vec<_>>();
     xs.sort_unstable();
     xs.dedup();
 
@@ -141,7 +145,7 @@ pub fn min_fn(f1: &StepFn, f2: &StepFn) -> StepFn {
 
 /// The complete GPF DP table.
 pub struct GpfTable {
-    pub types: Vec<PieceType>,
+    pub types: Vec<GpfType>,
     pub kerf: u32,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
@@ -250,22 +254,23 @@ fn format_step_fn(f: &StepFn) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-/// Build the GPF table for a problem (fixed pieces only; can_rotate ignored).
-pub fn build_gpf(problem: &Problem) -> GpfTable {
-    // 1. Group pieces by (width, height) preserving order of first appearance
+/// Build the GPF table for a problem spec (fixed pieces only; can_rotate ignored).
+pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
+    // Group piece specs by (width, height) preserving order of first appearance.
+    // Multiple specs with the same dimensions are merged (summing counts).
     let mut type_map: HashMap<(u32, u32), usize> = HashMap::new();
-    let mut types: Vec<PieceType> = Vec::new();
-    for piece in &problem.pieces {
-        let key = (piece.width, piece.height);
+    let mut types: Vec<GpfType> = Vec::new();
+    for ps in &spec.pieces {
+        let key = (ps.width, ps.height);
         if let Some(&ti) = type_map.get(&key) {
-            types[ti].count += 1;
+            types[ti].count += ps.count;
         } else {
             let ti = types.len();
             type_map.insert(key, ti);
-            types.push(PieceType {
-                width: piece.width,
-                height: piece.height,
-                count: 1,
+            types.push(GpfType {
+                width: ps.width,
+                height: ps.height,
+                count: ps.count,
             });
         }
     }
@@ -293,7 +298,7 @@ pub fn build_gpf(problem: &Problem) -> GpfTable {
     }
     subsets.sort_unstable_by_key(|&(tp, _, _)| tp);
 
-    let kerf = problem.kerf;
+    let kerf = spec.kerf;
 
     // 4. Fill DP table
     for (total_pieces, flat, counts) in subsets {
@@ -352,7 +357,7 @@ pub fn build_gpf(problem: &Problem) -> GpfTable {
     }
 }
 
-fn decode_index_with(types: &[PieceType], mut idx: usize) -> Vec<u32> {
+fn decode_index_with(types: &[GpfType], mut idx: usize) -> Vec<u32> {
     let mut counts = vec![0u32; types.len()];
     for (count, pt) in counts.iter_mut().zip(types) {
         let modulus = (pt.count + 1) as usize;

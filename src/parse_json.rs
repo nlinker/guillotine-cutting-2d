@@ -1,21 +1,6 @@
-use serde::Deserialize;
+use crate::model::ProblemSpec;
 
-use crate::model::{Piece, PieceSpec, Problem, Sheet};
-
-#[derive(Deserialize)]
-pub struct SheetSpec {
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Deserialize)]
-pub struct ProblemSpec {
-    pub sheet: SheetSpec,
-    pub kerf: u32,
-    pub pieces: Vec<PieceSpec>,
-}
-
-/// Parse a JSON problem spec and expand each `PieceSpec.count` into individual `Piece` instances.
+/// Parse a JSON problem spec into a `ProblemSpec`.
 ///
 /// ```json
 /// {
@@ -26,27 +11,8 @@ pub struct ProblemSpec {
 ///   ]
 /// }
 /// ```
-pub fn parse_problem_json(s: &str) -> Result<Problem, serde_json::Error> {
-    let spec: ProblemSpec = serde_json::from_str(s)?;
-    let mut pieces = Vec::new();
-    for ps in spec.pieces {
-        for _ in 0..ps.count {
-            pieces.push(Piece {
-                name: ps.name.clone(),
-                width: ps.width,
-                height: ps.height,
-                can_rotate: ps.can_rotate,
-            });
-        }
-    }
-    Ok(Problem {
-        sheet: Sheet {
-            width: spec.sheet.width,
-            height: spec.sheet.height,
-        },
-        kerf: spec.kerf,
-        pieces,
-    })
+pub fn parse_problem_json(s: &str) -> Result<ProblemSpec, serde_json::Error> {
+    serde_json::from_str(s)
 }
 
 #[cfg(test)]
@@ -54,7 +20,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_problem_json_expands_count() {
+    fn parse_problem_json_preserves_count() {
         let json = r#"{
             "sheet": {"width": 1000, "height": 500},
             "kerf": 3,
@@ -66,10 +32,13 @@ mod tests {
         let p = parse_problem_json(json).unwrap();
         assert_eq!(p.sheet.width, 1000);
         assert_eq!(p.kerf, 3);
-        assert_eq!(p.pieces.len(), 5);
+        assert_eq!(p.pieces.len(), 2);
+        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 5);
         assert_eq!(p.pieces[0].name, "стойка");
+        assert_eq!(p.pieces[0].count, 3);
         assert_eq!(p.pieces[0].can_rotate, false);
-        assert_eq!(p.pieces[3].name, "полка");
-        assert_eq!(p.pieces[3].can_rotate, true);
+        assert_eq!(p.pieces[1].name, "полка");
+        assert_eq!(p.pieces[1].count, 2);
+        assert_eq!(p.pieces[1].can_rotate, true);
     }
 }

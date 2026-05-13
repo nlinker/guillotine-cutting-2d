@@ -6,13 +6,13 @@ use std::collections::BTreeMap;
 use std::{sync::Arc, time::Instant};
 
 use cutting::{
-    decoder::decode,
-    ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
-    model::{Objective, Piece, Placement, Problem, Solution},
+    ga::{ga_channel, run_ga_mt, GaConfig, GaEvent},
+    model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
     parse::parse_problem,
 };
+use cutting::decoder::decode_spec;
 
-const PROBLEM: &str = "200x160F:1:22x26-4,32x20-7,35x20-2,42x21-5,46x26r,67x34-3,75x42-2,76x22-4,83x32-4r,83x82,93x31,106x31,124x26-5,130x22-6,157x31-3,164x21-2,177x31";
+const PROBLEM: &str = "200x160F:1:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34/3,75x42/2,76x22/4,83x32/4r,83x82,93x31,106x31,124x26/5,130x22/6,157x31/3,164x21/2,177x31";
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
@@ -29,13 +29,13 @@ fn ga_cfg() -> GaConfig {
     }
 }
 
-fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize, String) {
+fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, String) {
     let last = sol.sheets_used().saturating_sub(1);
-    let on_last: Vec<&Piece> = sol
+    let on_last: Vec<&PieceSpec> = sol
         .placements
         .iter()
         .filter(|pl| pl.sheet_idx == last)
-        .map(|pl| &problem.pieces[pl.piece_idx])
+        .map(|pl| &spec.pieces[pl.piece_idx])
         .collect();
     let count = on_last.len();
     let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
@@ -52,16 +52,18 @@ fn summarize_last_sheet(problem: &Problem, sol: &Solution) -> (usize, String) {
 }
 
 fn main() {
-    let problem = parse_problem(PROBLEM).expect("parse error");
+    let spec = parse_problem(PROBLEM).expect("parse error");
+    let total: u32 = spec.pieces.iter().map(|p| p.count).sum();
     let cfg = ga_cfg();
     let seeds: Vec<u64> = (0..N_PARALLEL as u64).collect();
 
     println!("Problem  : {PROBLEM}");
     println!(
-        "Pieces   : {}   Sheet: {}×{}",
-        problem.pieces.len(),
-        problem.sheet.width,
-        problem.sheet.height
+        "Pieces   : {} ({} types)   Sheet: {}×{}",
+        total,
+        spec.pieces.len(),
+        spec.sheet.width,
+        spec.sheet.height
     );
     println!("GA cfg   : {cfg}");
     println!("Parallel : {} threads  seeds={:?}", N_PARALLEL, seeds);
@@ -69,7 +71,7 @@ fn main() {
 
     let t0 = Instant::now();
     let (mut handle, ctx) = ga_channel(0);
-    run_ga_mt(Arc::new(problem.clone()), Arc::new(cfg.clone()), seeds.clone(), ctx);
+    run_ga_mt(Arc::new(spec.clone()), Arc::new(cfg.clone()), seeds.clone(), ctx);
     let results = loop {
         match handle.rx.blocking_recv() {
             Some(GaEvent::Done(r)) => break r,
@@ -78,12 +80,11 @@ fn main() {
     };
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
 
-    // compute per-result summaries (decode once each)
-    let decoded: Vec<(u64, Objective, Solution, usize, String)> = results
+    let decoded: Vec<(u64, Objective, SolutionSpec, usize, String)> = results
         .iter()
         .map(|(seed, ind)| {
-            let sol = decode(&problem, &ind.genome);
-            let (n, s) = summarize_last_sheet(&problem, &sol);
+            let sol = decode_spec(&spec, &ind.genome);
+            let (n, s) = summarize_last_sheet(&spec, &sol);
             (*seed, ind.objective, sol, n, s)
         })
         .collect();
@@ -103,22 +104,19 @@ fn main() {
         "BEST (seed={best_seed}  sheets={}  last_area={}  last={best_n}: {best_summary})",
         best_obj.0, best_obj.1
     );
-    print_solution(&problem, best_sol);
+    print_solution(&spec, best_sol);
 }
 
-fn print_solution(problem: &Problem, sol: &Solution) {
-    let mut by_sheet: BTreeMap<usize, Vec<&Placement>> = BTreeMap::new();
+fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
+    let mut by_sheet: BTreeMap<usize, Vec<_>> = BTreeMap::new();
     for pl in &sol.placements {
         by_sheet.entry(pl.sheet_idx).or_default().push(pl);
     }
     for (sheet_idx, mut pls) in by_sheet {
-        println!(
-            "  Sheet {} ({}×{}):",
-            sheet_idx, problem.sheet.width, problem.sheet.height
-        );
+        println!("  Sheet {} ({}×{}):", sheet_idx, spec.sheet.width, spec.sheet.height);
         pls.sort_by_key(|p| (p.y, p.x));
         for pl in pls {
-            let p = &problem.pieces[pl.piece_idx];
+            let p = &spec.pieces[pl.piece_idx];
             let (pw, ph) = if pl.rotated {
                 (p.height, p.width)
             } else {

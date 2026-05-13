@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     error::Error,
     sync::Arc,
     time::{Duration, Instant},
@@ -7,10 +6,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    decoder::decode,
-    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
+    ga::{ga_channel, run_ga_mt, GaConfig, GaEvent, ProgressEvent},
     gpf::build_gpf,
-    model::{Placement, Problem, Solution},
+    model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
@@ -18,6 +16,7 @@ use cutting::{
 };
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
+use cutting::decoder::decode_spec;
 
 mod web;
 
@@ -37,18 +36,16 @@ struct Cli {
 enum Command {
     /// Run the GA on a problem and print ranked results
     Calc {
-        /// Compact problem string, e.g. "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r".
-        /// Mutually exclusive with --json; exactly one must be provided.
+        /// Compact problem string. Mutually exclusive with --json.
         #[arg(long)]
         compact: Option<String>,
-        /// Path to a JSON problem file. Mutually exclusive with --compact; exactly one must be provided.
+        /// Path to a JSON problem file. Mutually exclusive with --compact.
         #[arg(long)]
         json: Option<String>,
-        /// Base random seed; different values produce different layouts
+        /// Base random seed
         #[arg(long, default_value_t = 42)]
         seed: u64,
-        /// Number of parallel threads (independent GA runs).
-        /// 0 = auto-detect: uses std::thread::available_parallelism() (logical CPU count).
+        /// Number of parallel threads (0 = auto-detect)
         #[arg(long, default_value_t = 0)]
         threads: usize,
         /// Generations per run
@@ -57,7 +54,7 @@ enum Command {
         /// Population size
         #[arg(long, default_value_t = 200)]
         pop: usize,
-        /// Elite count (top individuals carried unchanged to next generation)
+        /// Elite count
         #[arg(long, default_value_t = 5)]
         elite: usize,
         /// Tournament size
@@ -66,20 +63,19 @@ enum Command {
         /// Report global best every N generations; 0 = silent
         #[arg(long, default_value_t = 100)]
         progress: usize,
-        /// Progress sink: "pipe" (default, named pipe / FIFO) or "stdout"
+        /// Progress sink: "pipe" (default) or "stdout"
         #[arg(long, default_value = "pipe")]
         sink: String,
-        /// Throttle sink: send at most one progress per N ms, includes solution; 0 = no throttle
+        /// Throttle sink: send at most one progress per N ms; 0 = no throttle
         #[arg(long, default_value_t = 1000)]
         sink_interval: u64,
     },
     /// Start a web server with an interactive UI
     Serve {
-        /// Port to listen on
         #[arg(long, default_value_t = 8080)]
         port: u16,
     },
-    /// Render a solution as SVG
+    /// Render a solution as SVG to stdout
     Render {
         /// Compact problem string. Mutually exclusive with --json.
         #[arg(long)]
@@ -115,32 +111,36 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink_interval,
         } => {
             let cfg = ga_config(gens, pop, elite, k);
-            let parsed = load_problem(compact.as_deref(), json.as_deref())?;
+            let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
-            run_calc_with_sink(&parsed, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
+            run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
         }
         Command::Serve { port } => web::run_serve(port)?,
-        Command::Render { compact, json, solution } => {
-            let problem = load_problem(compact.as_deref(), json.as_deref())?;
+        Command::Render {
+            compact,
+            json,
+            solution,
+        } => {
+            let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let sol_str = std::fs::read_to_string(&solution)?;
             let sol = parse_solution_json(&sol_str)?;
-            print!("{}", render_svg(&problem, &sol));
+            print!("{}", render_svg(&spec, &sol));
         }
         Command::Gpf { problem } => {
-            let p = parse_problem(&problem)?;
-            let table = build_gpf(&p);
-            println!("{}", table.display_table(p.sheet.width));
-            if let Some(h) = table.eval_full_set(p.sheet.width) {
-                println!("\nMinimum height for width={}: {}", p.sheet.width, h);
+            let spec = parse_problem(&problem)?;
+            let table = build_gpf(&spec);
+            println!("{}", table.display_table(spec.sheet.width));
+            if let Some(h) = table.eval_full_set(spec.sheet.width) {
+                println!("\nMinimum height for width={}: {}", spec.sheet.width, h);
             } else {
-                println!("\nPieces do not fit in width={}", p.sheet.width);
+                println!("\nPieces do not fit in width={}", spec.sheet.width);
             }
         }
     }
     Ok(())
 }
 
-fn parse_solution_json(s: &str) -> Result<Solution, Box<dyn Error>> {
+fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
     let v: serde_json::Value = serde_json::from_str(s)?;
     let sol_val = if v.get("solution").is_some() {
         &v["solution"]
@@ -150,7 +150,7 @@ fn parse_solution_json(s: &str) -> Result<Solution, Box<dyn Error>> {
     Ok(serde_json::from_value(sol_val.clone())?)
 }
 
-fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<Problem, Box<dyn Error>> {
+fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<ProblemSpec, Box<dyn Error>> {
     match (compact, json) {
         (Some(_), Some(_)) => Err("--compact and --json are mutually exclusive".into()),
         (None, None) => Err("provide exactly one of --compact <string> or --json <path>".into()),
@@ -163,7 +163,7 @@ fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<Problem, Bo
 }
 
 fn run_calc_with_sink(
-    problem: &Problem,
+    spec: &ProblemSpec,
     cfg: &GaConfig,
     base_seed: u64,
     n_threads: usize,
@@ -174,22 +174,24 @@ fn run_calc_with_sink(
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
 
+    let total: u32 = spec.pieces.iter().map(|p| p.count).sum();
     eprintln!(
-        "Pieces  : {}   Sheet: {}×{}",
-        problem.pieces.len(),
-        problem.sheet.width,
-        problem.sheet.height
+        "Pieces  : {} ({} types)   Sheet: {}×{}",
+        total,
+        spec.pieces.len(),
+        spec.sheet.width,
+        spec.sheet.height
     );
     eprintln!("GA cfg  : {cfg}");
     eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
-    let problem = Arc::new(problem.clone());
+    let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
             run_with_sink(
-                Arc::clone(&problem),
+                Arc::clone(&spec),
                 Arc::clone(&cfg),
                 &seeds,
                 progress_interval,
@@ -203,7 +205,7 @@ fn run_calc_with_sink(
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
                 run_with_sink(
-                    Arc::clone(&problem),
+                    Arc::clone(&spec),
                     Arc::clone(&cfg),
                     &seeds,
                     progress_interval,
@@ -216,7 +218,7 @@ fn run_calc_with_sink(
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
                 run_with_sink(
-                    Arc::clone(&problem),
+                    Arc::clone(&spec),
                     Arc::clone(&cfg),
                     &seeds,
                     progress_interval,
@@ -229,7 +231,7 @@ fn run_calc_with_sink(
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
                 run_with_sink(
-                    Arc::clone(&problem),
+                    Arc::clone(&spec),
                     Arc::clone(&cfg),
                     &seeds,
                     progress_interval,
@@ -242,7 +244,7 @@ fn run_calc_with_sink(
 }
 
 pub(crate) fn run_with_sink(
-    problem: Arc<Problem>,
+    spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: &[u64],
     progress_interval: usize,
@@ -250,7 +252,7 @@ pub(crate) fn run_with_sink(
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     let (mut handle, ctx) = ga_channel(progress_interval);
-    run_ga_mt(Arc::clone(&problem), Arc::clone(&cfg), seeds.to_vec(), ctx);
+    run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), ctx);
 
     let throttled = sink_interval_ms > 0;
     let throttle = Duration::from_millis(sink_interval_ms);
@@ -282,14 +284,14 @@ pub(crate) fn run_with_sink(
                     }
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
                     if should_flush && let Some(evt) = best_pending.take() {
-                        let sol = decode(&problem, &evt.genome);
+                        let sol = decode_spec(&spec, &evt.genome);
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
                             sheets_used: evt.objective.0,
                             last_sheet_area: evt.objective.1,
                             seed: evt.seed,
                             solution: Some(sol),
-                            pieces: Some(problem.pieces.clone()),
+                            pieces: Some(spec.pieces.clone()),
                         };
                         if sink.send(&msg).is_err() {
                             handle.stop();
@@ -301,28 +303,28 @@ pub(crate) fn run_with_sink(
             }
             Some(GaEvent::Done(results)) => {
                 if let Some(evt) = best_pending.take() {
-                    let sol = decode(&problem, &evt.genome);
+                    let sol = decode_spec(&spec, &evt.genome);
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
                         sheets_used: evt.objective.0,
                         last_sheet_area: evt.objective.1,
                         seed: evt.seed,
                         solution: Some(sol),
-                        pieces: Some(problem.pieces.clone()),
+                        pieces: Some(spec.pieces.clone()),
                     })
                     .ok();
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
                 let (best_seed, best) = &results[0];
-                let sol = decode(&problem, &best.genome);
-                let msg = ProgressMessage::Done {
+                let sol = decode_spec(&spec, &best.genome);
+                sink.send(&ProgressMessage::Done {
                     seed: *best_seed,
                     sheets_used: best.objective.0,
                     last_sheet_area: best.objective.1,
                     solution: sol,
-                    pieces: problem.pieces.clone(),
-                };
-                sink.send(&msg).ok();
+                    pieces: spec.pieces.clone(),
+                })
+                .ok();
                 break;
             }
         }
@@ -338,8 +340,6 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-// == Legacy helpers used by web.rs =========================================
-
 pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
     GaConfig {
         pop_size: pop,
@@ -351,44 +351,5 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         flip_p: 0.05,
         point_p: 0.10,
         point_delta: (1, 3),
-    }
-}
-
-#[allow(dead_code)]
-fn print_solution(problem: &Problem, sol: &Solution) {
-    let mut by_sheet: BTreeMap<usize, Vec<&Placement>> = BTreeMap::new();
-    for pl in &sol.placements {
-        by_sheet.entry(pl.sheet_idx).or_default().push(pl);
-    }
-    for (sheet_idx, mut pls) in by_sheet {
-        println!(
-            "  Sheet {sheet_idx} ({}×{}):",
-            problem.sheet.width, problem.sheet.height
-        );
-        pls.sort_by_key(|p| (p.y, p.x));
-        for pl in pls {
-            let p = &problem.pieces[pl.piece_idx];
-            let (pw, ph) = if pl.rotated {
-                (p.height, p.width)
-            } else {
-                (p.width, p.height)
-            };
-            let name = if p.name.is_empty() {
-                String::new()
-            } else {
-                format!("  \"{}\"", p.name)
-            };
-            println!(
-                "    idx={:2}  {pw}×{ph}  at ({:4},{:4}){}{}",
-                pl.piece_idx,
-                pl.x,
-                pl.y,
-                if pl.rotated { "  [rot]" } else { "" },
-                name
-            );
-        }
-    }
-    if let Ok(x) = serde_json::to_string(sol) {
-        println!("json = {x}");
     }
 }
