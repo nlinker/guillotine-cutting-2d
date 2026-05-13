@@ -1,4 +1,4 @@
-Attribute VB_Name = "cut"
+Attribute VB_Name = "Cut"
 ''
 '' Cut.bas  -  VBA module: launches cut.exe and reads progress via named pipe
 ''
@@ -588,7 +588,7 @@ End Function
 Public Sub RestartCut()
     If g_Running Then
         StopCut
-        Application.OnTime Now + TimeValue("00:00:01"), "cut.RunCut"
+        Application.OnTime Now + TimeValue("00:00:01"), "Cut.RunCut"
     Else
         RunCut
     End If
@@ -774,7 +774,7 @@ Sub CreateCheckboxes()
     Set cell = ws.Cells(DataHeaderRow(ws), cbCol)
     Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
     cb.Caption  = "all"
-    cb.OnAction = "cut.MainCheckboxClick"
+    cb.OnAction = "Cut.MainCheckboxClick"
     cb.Name     = "cbMain"
 
     For i = DataStartRow(ws) To DataStartRow(ws) + 99
