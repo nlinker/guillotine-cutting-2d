@@ -23,10 +23,10 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
     let dw = DISPLAY_W;
     let dh = sh * scale;
     let margin = (dw * 0.04).max(8.0);
-    let gap = (dh * 0.12).max(12.0);
+    let sep = 6.0; // gap between sheets when n_sheets > 1
 
     let total_w = margin * 2.0 + dw;
-    let total_h = margin * 2.0 + n_sheets as f64 * (dh + gap);
+    let total_h = margin * 2.0 + n_sheets as f64 * dh + (n_sheets - 1) as f64 * sep;
 
     let mut s = String::with_capacity(4096);
     writeln!(
@@ -45,22 +45,12 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
 
     for si in 0..n_sheets {
         let ox = margin;
-        let oy = margin + si as f64 * (dh + gap);
+        let oy = margin + si as f64 * (dh + sep);
 
         writeln!(
             s,
             "  <rect x=\"{ox:.0}\" y=\"{oy:.0}\" width=\"{dw:.0}\" height=\"{dh:.0}\" \
              fill=\"#f8f8f8\" stroke=\"#3c3c3c\" stroke-width=\"1\"/>"
-        )?;
-
-        let lfs = gap * 0.36;
-        writeln!(
-            s,
-            "  <text x=\"{cx:.0}\" y=\"{ly:.0}\" text-anchor=\"middle\" \
-             dominant-baseline=\"middle\" font-size=\"{lfs:.1}\" fill=\"#666\"\
-             >Sheet {si}  ({sw:.0}×{sh:.0})</text>",
-            cx = ox + dw / 2.0,
-            ly = oy + dh + gap / 2.0,
         )?;
 
         for fr in solution.leftovers.iter().filter(|f| f.sheet_idx == si) {
@@ -191,18 +181,16 @@ mod tests {
         let svg = render_svg(&spec, &solution).unwrap();
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>\n"));
-        assert!(svg.contains("Sheet 0"));
-        assert!(svg.contains("Sheet 1"));
         assert!(svg.contains(">A<"));
         assert!(svg.contains(">B<"));
-        // With DISPLAY_W=700, sw=100: scale=7, dw=700, dh=80*7=560, margin=max(28,8)=28, gap=max(560*0.12,12)=67.2
+        // With DISPLAY_W=700, sw=100: scale=7, dw=700, dh=80*7=560, margin=max(28,8)=28, sep=6
         let dw = 700.0_f64;
         let scale = dw / spec.sheet.width as f64;
         let dh = spec.sheet.height as f64 * scale;
         let margin = (dw * 0.04_f64).max(8.0);
-        let gap = (dh * 0.12_f64).max(12.0);
+        let sep = 6.0_f64;
         let expected_w = margin * 2.0 + dw;
-        let expected_h = margin * 2.0 + 2.0 * (dh + gap);
+        let expected_h = margin * 2.0 + 2.0 * dh + sep;
         assert!(svg.contains(&format!("width=\"{:.0}\"", expected_w)));
         assert!(svg.contains(&format!("height=\"{:.0}\"", expected_h)));
     }

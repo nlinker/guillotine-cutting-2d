@@ -50,6 +50,7 @@ fn main() {
     let html = build_index_html(&entries);
     fs::write(out_dir.join("index.html"), &html).expect("write index.html failed");
     println!("\n{written} SVGs written to {}/", out_dir.display());
+    println!("wrapping index.html written to {}/\n", out_dir.display());
 }
 
 fn build_index_html(entries: &[(u32, u32)]) -> String {
