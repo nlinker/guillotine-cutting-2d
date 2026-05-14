@@ -715,7 +715,7 @@ Public Sub SendToAutoCAD()
         ' Label: "width×height [name]" — shows original piece dims, not kerf-expanded
         Dim dimStr As String: dimStr = CStr(pw) & ChrW(215) & CStr(ph)
         Dim lbl As String
-        If Len(pName) > 0 Then lbl = dimStr & " [" & pName & "]" Else lbl = dimStr
+        If Len(pName) > 0 Then lbl = dimStr & " (" & pName & ")" Else lbl = dimStr
         Dim txtPt(0 To 2) As Double
         txtPt(0) = CDbl(bw) / 2
         txtPt(1) = CDbl(bh) / 2
