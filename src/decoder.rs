@@ -61,7 +61,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
                 y: fr.y,
                 rotated,
             });
-            free.extend(guillotine_split(&fr, pw, ph, problem.kerf));
+            free.extend(guillotine_split(&fr, pw, ph));
         } else {
             debug_assert!(
                 false,
@@ -141,65 +141,64 @@ fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u3
 /// Uses the Shorter Leftover Axis (SLAS) heuristic: if the right leftover is
 /// narrower than the bottom leftover, the right child gets the piece's height
 /// and the bottom child spans the full rect width (and vice versa).
-/// The blade kerf is subtracted from each internal cut; boundary edges are exempt.
-fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, kerf: u32) -> FreePair {
+/// Piece dimensions already include kerf (baked in by `expand_problem`), so splits are flush.
+fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
-    let lw = fr.w - pw; // right leftover before kerf
-    let lh = fr.h - ph; // bottom leftover before kerf
+    let lw = fr.w - pw;
+    let lh = fr.h - ph;
     let mut out = SmallVec::new();
     if lw <= lh {
-        // right child: narrow (piece height); bottom child: full width:
-        // ┌──────────┬─────────────────┐
-        // │  piece   │  right          │
-        // │  pw × ph │  ph × (lw-kerf) │
-        // ├──────────┴─────────────────┤ kerf
-        // │        bottom              │
-        // │  fr.width × (lh - kerf)    │
-        // └────────────────────────────┘
-        if lw > kerf {
+        // right child: narrow (piece height); bottom child: full width
+        // ┌──────────┬──────────┐
+        // │  piece   │  right   │
+        // │  pw × ph │ lw × ph  │
+        // ├──────────┴──────────┤
+        // │       bottom        │
+        // │   fr.width × lh     │
+        // └─────────────────────┘
+        if lw > 0 {
             out.push(FreeRect {
                 sheet_idx: fr.sheet_idx,
-                x: fr.x + pw + kerf,
+                x: fr.x + pw,
                 y: fr.y,
-                w: lw - kerf,
+                w: lw,
                 h: ph,
             });
         }
-        if lh > kerf {
+        if lh > 0 {
             out.push(FreeRect {
                 sheet_idx: fr.sheet_idx,
                 x: fr.x,
-                y: fr.y + ph + kerf,
+                y: fr.y + ph,
                 w: fr.w,
-                h: lh - kerf,
+                h: lh,
             });
         }
     } else {
-        // right child: full height, bottom child: narrow (piece width)
-        // ┌──────────────────┬──────────────┐
-        // │  piece           │              │
-        // │  pw × ph         │    right     │
-        // ├──────────────────┤  (lw - kerf) │
-        // │     bottom       │ × fr.height  │
-        // │ pw × (lh - kerf) │              │
-        // └──────────────────┴──────────────┘
-        //                   kerf
-        if lw > kerf {
+        // right child: full height; bottom child: narrow (piece width)
+        // ┌──────────┬──────────┐
+        // │  piece   │          │
+        // │  pw × ph │  right   │
+        // ├──────────┤ lw×fr.h  │
+        // │  bottom  │          │
+        // │ pw × lh  │          │
+        // └──────────┴──────────┘
+        if lw > 0 {
             out.push(FreeRect {
                 sheet_idx: fr.sheet_idx,
-                x: fr.x + pw + kerf,
+                x: fr.x + pw,
                 y: fr.y,
-                w: lw - kerf,
+                w: lw,
                 h: fr.h,
             });
         }
-        if lh > kerf {
+        if lh > 0 {
             out.push(FreeRect {
                 sheet_idx: fr.sheet_idx,
                 x: fr.x,
-                y: fr.y + ph + kerf,
+                y: fr.y + ph,
                 w: pw,
-                h: lh - kerf,
+                h: lh,
             });
         }
     }

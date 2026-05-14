@@ -64,8 +64,8 @@ fn simplify(pts: &mut StepFn) {
     pts.truncate(write);
 }
 
-/// H-cut: stack D1 on top of D2 (same width, add heights + kerf).
-pub fn h_cut(f1: &StepFn, f2: &StepFn, kerf: u32) -> StepFn {
+/// H-cut: stack D1 on top of D2 (same width, add heights).
+pub fn h_cut(f1: &StepFn, f2: &StepFn) -> StepFn {
     if f1.is_empty() || f2.is_empty() {
         return vec![];
     }
@@ -81,15 +81,15 @@ pub fn h_cut(f1: &StepFn, f2: &StepFn, kerf: u32) -> StepFn {
     let mut result = Vec::with_capacity(xs.len());
     for x in xs {
         if let (Some(h1), Some(h2)) = (eval_f(f1, x), eval_f(f2, x)) {
-            result.push((x, h1 + h2 + kerf));
+            result.push((x, h1 + h2));
         }
     }
     simplify(&mut result);
     result
 }
 
-/// V-cut: place D1 and D2 side by side (same height, add widths + kerf).
-pub fn v_cut(f1: &StepFn, f2: &StepFn, kerf: u32) -> StepFn {
+/// V-cut: place D1 and D2 side by side (same height, add widths).
+pub fn v_cut(f1: &StepFn, f2: &StepFn) -> StepFn {
     if f1.is_empty() || f2.is_empty() {
         return vec![];
     }
@@ -105,7 +105,7 @@ pub fn v_cut(f1: &StepFn, f2: &StepFn, kerf: u32) -> StepFn {
     let mut result = Vec::with_capacity(hs.len());
     for h in hs {
         if let (Some(w1), Some(w2)) = (eval_f_inv(f1, h), eval_f_inv(f2, h)) {
-            result.push((w1 + w2 + kerf, h));
+            result.push((w1 + w2, h));
         }
     }
     // result is in order of decreasing h → need to re-sort by x ascending
@@ -146,7 +146,6 @@ pub fn min_fn(f1: &StepFn, f2: &StepFn) -> StepFn {
 /// The complete GPF DP table.
 pub struct GpfTable {
     pub types: Vec<GpfType>,
-    pub kerf: u32,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
     /// For each GPF type index, the list of `ProblemSpec.pieces` indices that
@@ -247,11 +246,11 @@ impl GpfTable {
 
             // H-cut: d1 on top, d2 on bottom
             if let (Some(h1), Some(h2)) = (eval_f(f1, width), eval_f(f2, width))
-                && h1 + h2 + self.kerf == height
+                && h1 + h2 == height
             {
                 let snap = (placements.len(), used.clone());
                 if self.recon(&d1, x, y, width, h1, placements, used)
-                    && self.recon(&d2, x, y + h1 + self.kerf, width, h2, placements, used)
+                    && self.recon(&d2, x, y + h1, width, h2, placements, used)
                 {
                     return true;
                 }
@@ -260,15 +259,15 @@ impl GpfTable {
             }
 
             // V-cut: d1 on left, d2 on right.
-            // w1+w2+kerf may be < width (unused space on the right is fine).
+            // w1+w2 may be < width (unused space on the right is fine).
             if let (Some(w1), Some(w2)) = (eval_f_inv(f1, height), eval_f_inv(f2, height))
-                && w1 + w2 + self.kerf <= width
+                && w1 + w2 <= width
             {
                 let h1 = eval_f(f1, w1).unwrap_or(height);
                 let h2 = eval_f(f2, w2).unwrap_or(height);
                 let snap = (placements.len(), used.clone());
                 if self.recon(&d1, x, y, w1, h1, placements, used)
-                    && self.recon(&d2, x + w1 + self.kerf, y, w2, h2, placements, used)
+                    && self.recon(&d2, x + w1, y, w2, h2, placements, used)
                 {
                     return true;
                 }
@@ -360,22 +359,27 @@ fn format_step_fn(f: &StepFn) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-/// Build the GPF table for a problem spec (fixed pieces only; can_rotate ignored).
+/// Build the GPF table for a problem spec.
+///
+/// Piece dimensions are expanded by `spec.kerf` (same transformation as `expand_problem`),
+/// so the resulting step functions operate in the same kerf-free coordinate space as the decoder.
+/// Query `eval_full_set` with `spec.sheet.width + spec.kerf` to check feasibility.
 pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
+    let k = spec.kerf;
     // Group piece specs by (width, height) preserving order of first appearance.
     // Multiple specs with the same dimensions are merged (summing counts).
     let mut type_map: HashMap<(u32, u32), usize> = HashMap::new();
     let mut types: Vec<GpfType> = Vec::new();
     for ps in &spec.pieces {
-        let key = (ps.width, ps.height);
+        let key = (ps.width + k, ps.height + k);
         if let Some(&ti) = type_map.get(&key) {
             types[ti].count += ps.count;
         } else {
             let ti = types.len();
             type_map.insert(key, ti);
             types.push(GpfType {
-                width: ps.width,
-                height: ps.height,
+                width: ps.width + k,
+                height: ps.height + k,
                 count: ps.count,
             });
         }
@@ -403,8 +407,6 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         subsets.push((total_pieces, flat, counts));
     }
     subsets.sort_unstable_by_key(|&(tp, _, _)| tp);
-
-    let kerf = spec.kerf;
 
     // 4. Fill DP table
     for (total_pieces, flat, counts) in subsets {
@@ -446,8 +448,8 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
                     continue;
                 }
 
-                let fh = h_cut(f1, f2, kerf);
-                let fv = v_cut(f1, f2, kerf);
+                let fh = h_cut(f1, f2);
+                let fv = v_cut(f1, f2);
                 let candidate = min_fn(&fh, &fv);
                 best = min_fn(&best, &candidate);
             }
@@ -458,7 +460,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
     // Build type_to_spec: for each GPF type, list of spec piece indices (one per copy).
     let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
     for (spec_idx, ps) in spec.pieces.iter().enumerate() {
-        let ti = type_map[&(ps.width, ps.height)];
+        let ti = type_map[&(ps.width + k, ps.height + k)];
         for _ in 0..ps.count {
             type_to_spec[ti].push(spec_idx);
         }
@@ -466,7 +468,6 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
 
     GpfTable {
         types,
-        kerf,
         strides,
         cells,
         type_to_spec,
@@ -535,7 +536,7 @@ mod tests {
         // f({C}) = [(8,3)], f({A}) = [(2,3)]
         let fc: StepFn = vec![(8, 3)];
         let fa: StepFn = vec![(2, 3)];
-        let fh = h_cut(&fc, &fa, 0);
+        let fh = h_cut(&fc, &fa);
         assert_eq!(fh, vec![(8, 6)]);
     }
 
@@ -544,7 +545,7 @@ mod tests {
         // f({C}) = [(8,3)], f({A}) = [(2,3)]
         let fc: StepFn = vec![(8, 3)];
         let fa: StepFn = vec![(2, 3)];
-        let fv = v_cut(&fc, &fa, 0);
+        let fv = v_cut(&fc, &fa);
         assert_eq!(fv, vec![(10, 3)]);
     }
 
@@ -552,8 +553,8 @@ mod tests {
     fn combined_ca() {
         let fc: StepFn = vec![(8, 3)];
         let fa: StepFn = vec![(2, 3)];
-        let fh = h_cut(&fc, &fa, 0);
-        let fv = v_cut(&fc, &fa, 0);
+        let fh = h_cut(&fc, &fa);
+        let fv = v_cut(&fc, &fa);
         let combined = min_fn(&fh, &fv);
         // x ∈ [8,10): H wins -> 6; x >= 10: V wins → 3
         assert_eq!(combined, vec![(8, 6), (10, 3)]);

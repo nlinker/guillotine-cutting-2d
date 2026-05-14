@@ -129,9 +129,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         Command::Gpf { problem } => {
             let spec = parse_problem(&problem)?;
             let table = build_gpf(&spec);
-            println!("{}", table.display_table(spec.sheet.width));
-            if let Some(h) = table.eval_full_set(spec.sheet.width) {
-                println!("\nMinimum height for width={}: {}", spec.sheet.width, h);
+            let query_w = spec.sheet.width + spec.kerf;
+            println!("{}", table.display_table(query_w));
+            if let Some(h) = table.eval_full_set(query_w) {
+                println!("\nMinimum height for width={}: {}", spec.sheet.width, h - spec.kerf);
             } else {
                 println!("\nPieces do not fit in width={}", spec.sheet.width);
             }

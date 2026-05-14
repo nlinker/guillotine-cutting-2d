@@ -4,10 +4,12 @@ use crate::model::{FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem
 
 /// Expand a `ProblemSpec` into a flat `Problem` (one `Piece` entry per physical copy).
 ///
-/// The sheet is reduced by `margin` on every edge: the algorithm sees
-/// `(width - 2·margin) × (height - 2·margin)`. Panics if the margin leaves no room.
+/// Sheet and every piece are enlarged by `kerf` so that the decoder can place pieces
+/// flush (kerf = 0) while preserving correct spatial relationships.
+/// The sheet is also reduced by `margin` on every edge. Panics if the margin leaves no room.
 pub fn expand_problem(spec: &ProblemSpec) -> Problem {
     let m = spec.margin;
+    let k = spec.kerf;
     assert!(
         m * 2 < spec.sheet.width && m * 2 < spec.sheet.height,
         "margin ({m}) must be less than half the sheet dimensions ({}×{})",
@@ -20,18 +22,17 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
         .flat_map(|ps| {
             (0..ps.count).map(|_| Piece {
                 name: ps.name.clone(),
-                width: ps.width,
-                height: ps.height,
+                width: ps.width + k,
+                height: ps.height + k,
                 can_rotate: ps.can_rotate,
             })
         })
         .collect();
     Problem {
         sheet: Sheet {
-            width: spec.sheet.width - 2 * m,
-            height: spec.sheet.height - 2 * m,
+            width: spec.sheet.width - 2 * m + k,
+            height: spec.sheet.height - 2 * m + k,
         },
-        kerf: spec.kerf,
         pieces,
     }
 }
@@ -102,7 +103,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
     }
     ProblemSpec {
         sheet: problem.sheet,
-        kerf: problem.kerf,
+        kerf: 0,
         margin: 0,
         pieces,
     }

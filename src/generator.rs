@@ -16,7 +16,7 @@ pub struct GeneratorConfig {
     pub sheet: Sheet,
 
     /// Number of sheets to cut; this equals the known optimum of the instance.
-    pub k: usize,
+    pub sheets_count: usize,
 
     /// Minimum side length of any generated piece.
     pub min_size: u32,
@@ -90,9 +90,9 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     let kerf = cfg.kerf;
     let stage_count = cfg.stage_count;
 
-    let mut all_rects = Vec::with_capacity(cfg.k * cfg.weights.len().pow(stage_count as u32));
+    let mut all_rects = Vec::with_capacity(cfg.sheets_count * cfg.weights.len().pow(stage_count as u32));
 
-    for sheet_idx in 0..cfg.k {
+    for sheet_idx in 0..cfg.sheets_count {
         let mut queue = VecDeque::with_capacity(cfg.weights.len().pow(stage_count as u32));
         queue.push_back(FreeRect {
             sheet_idx,
@@ -153,15 +153,14 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
         });
         problem_pieces.push(Piece {
             name: String::new(),
-            width: rect.w,
-            height: rect.h,
+            width: rect.w + kerf,
+            height: rect.h + kerf,
             can_rotate: true,
         });
     }
     Output {
         problem: Problem {
-            sheet: cfg.sheet,
-            kerf: cfg.kerf,
+            sheet: Sheet { width: cfg.sheet.width + kerf, height: cfg.sheet.height + kerf },
             pieces: problem_pieces,
         },
         optimal_solution: Solution {
@@ -258,7 +257,7 @@ mod tests {
     fn cfg(kerf: u32, weights: Vec<f32>) -> GeneratorConfig {
         GeneratorConfig {
             sheet: sheet_10x8(),
-            k: 2,
+            sheets_count: 2,
             min_size: 2,
             kerf,
             weights,
@@ -338,18 +337,16 @@ mod tests {
     }
 
     #[test]
-    fn pieces_are_less_than_sheet_area_when_kerf_nonzero() {
-        // With kerf>0 the pieces cover strictly less than the full sheet area.
+    fn pieces_tile_expanded_sheet_when_kerf_nonzero() {
+        // With kerf>0, expanded pieces (w+k)×(h+k) tile the expanded sheet (W+k)×(H+k) exactly.
         let mut rng = Xoshiro256StarStar::seed_from_u64(66);
         let cfg = cfg(1, w_multi());
         let out = generate(&cfg, &mut rng);
+        // Don't bother on the overflow, the integers are small
         let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
-        let sheet_total = 10 * 8 * 2;
-        assert!(
-            total < sheet_total,
-            "kerf>0: piece area ({total}) must be < sheet area ({sheet_total})"
-        );
-        assert_eq!(out.problem.kerf, 1);
+        let expanded_sheet_area =
+            out.problem.sheet.width * out.problem.sheet.height * cfg.sheets_count as u32;
+        assert_eq!(total, expanded_sheet_area);
     }
 
     #[test]
@@ -361,7 +358,7 @@ mod tests {
             let out = generate(
                 &GeneratorConfig {
                     sheet,
-                    k: 2,
+                    sheets_count: 2,
                     min_size: 1,
                     kerf,
                     weights: w_single(),
@@ -372,12 +369,12 @@ mod tests {
             for pl in &out.optimal_solution.placements {
                 let p = &out.problem.pieces[pl.piece_idx];
                 assert!(
-                    pl.x + p.width <= sheet.width,
+                    pl.x + p.width <= out.problem.sheet.width,
                     "kerf={kerf}: piece {} overflows width",
                     pl.piece_idx
                 );
                 assert!(
-                    pl.y + p.height <= sheet.height,
+                    pl.y + p.height <= out.problem.sheet.height,
                     "kerf={kerf}: piece {} overflows height",
                     pl.piece_idx
                 );
@@ -390,7 +387,7 @@ mod tests {
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
         let c = GeneratorConfig {
             sheet: sheet_10x8(),
-            k: 2,
+            sheets_count: 2,
             min_size: 2,
             kerf: 1,
             weights: w_single(),
@@ -411,7 +408,7 @@ mod tests {
             let out = generate(
                 &GeneratorConfig {
                     sheet: sheet_10x8(),
-                    k: 2,
+                    sheets_count: 2,
                     min_size: 1,
                     kerf,
                     weights: w_single(),
@@ -479,7 +476,7 @@ mod tests {
         let out = generate(
             &GeneratorConfig {
                 sheet: sheet_10x8(),
-                k: 3,
+                sheets_count: 3,
                 min_size: 1,
                 kerf: 0,
                 weights: w_single(),
@@ -504,7 +501,7 @@ mod tests {
         let out = generate(
             &GeneratorConfig {
                 sheet: Sheet { width: 4, height: 4 },
-                k: 1,
+                sheets_count: 1,
                 min_size: 2,
                 kerf: 1,
                 weights: vec![0.0, 0.0, 1.0], // always try 3 pieces first
@@ -513,10 +510,10 @@ mod tests {
             &mut rng,
         );
         // Must produce exactly 1 piece covering the whole sheet (nothing fits the multi-piece
-        // counts).
+        // counts). Piece dims are expanded by kerf=1.
         assert_eq!(out.problem.pieces.len(), 1);
         let p = &out.problem.pieces[0];
-        assert_eq!(p.width, 4);
-        assert_eq!(p.height, 4);
+        assert_eq!(p.width, 4 + 1);
+        assert_eq!(p.height, 4 + 1);
     }
 }

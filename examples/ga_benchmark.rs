@@ -68,7 +68,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
     let g = &s.gen_cfg;
     println!(
         "=== {} | {}×{}  k={}  min={}  kerf={}  stages={} ===",
-        s.name, g.sheet.width, g.sheet.height, g.k, g.min_size, g.kerf, g.stage_count,
+        s.name, g.sheet.width, g.sheet.height, g.sheets_count, g.min_size, g.kerf, g.stage_count,
     );
     println!("GA cfg: {}", s.ga_cfg);
     println!("Instances : {n}");
@@ -125,7 +125,7 @@ fn main() {
                 width: 200,
                 height: 160,
             },
-            k: 4,
+            sheets_count: 4,
             min_size: 20,
             kerf: 1,
             weights: vec![1.0, 2.0, 2.0, 2.0],

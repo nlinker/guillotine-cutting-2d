@@ -81,10 +81,10 @@ pub struct Piece {
 
 /// Flat cutting problem: one `Piece` entry per physical copy (no counts).
 /// Produced by `expand::expand_problem`; consumed by the decoder and GA internals.
+/// Dimensions are pre-expanded by `ProblemSpec::kerf` so decoder and GPF treat all cuts as kerf=0.
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
     pub sheet: Sheet,
-    pub kerf: u32,
     pub pieces: Vec<Piece>,
 }
 
@@ -201,16 +201,16 @@ mod tests {
     }
 
     fn problem(pieces: Vec<Piece>) -> Problem {
-        Problem { sheet: Sheet { width: 1000, height: 1000 }, kerf: 0, pieces }
+        Problem { sheet: Sheet { width: 1000, height: 1000 }, pieces }
     }
 
     /// Comprehensive staircase test covering all code paths.
     ///
-    /// Layout (based on c38/c39 with низ split in two):
-    ///   idx 0: низ_right (200,0) 200×50  → corner (400, 50)  — added first
-    ///   idx 1: низ_left  (  0,0) 200×50  → corner (200, 50)  — dominated by низ_right: any-SKIP
-    ///   idx 2: полка     (400,0) 200×100 → corner (600,100)  — retain removes (400,50)
-    ///   idx 3: стойка    (  0,100) 500×100 → corner (500,200) — neither dominates полка
+    /// Layout (based on c38/c39 with btm split in two):
+    ///   idx 0: btm_right (200, 0) 200×50  -> corner (400, 50) - added first
+    ///   idx 1: btm_left  (  0, 0) 200×50  -> corner (200, 50) - dominated by btm_right: any-SKIP
+    ///   idx 2: shelf     (400, 0) 200×100 -> corner (600,100) - retain removes (400,50)
+    ///   idx 3: panel     (0, 100) 500×100 -> corner (500,200) - neither dominates shelf
     ///
     /// Final stairs sorted by y: [(600,100), (500,200)]
     /// Area = 600×100 + 500×100 = 110_000
