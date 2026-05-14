@@ -175,11 +175,11 @@ fn run_calc_with_sink(
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
 
-    let total: u32 = spec.pieces.iter().map(|p| p.count).sum();
+    let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     eprintln!(
         "Pieces  : {} ({} types)   Sheet: {}×{}",
         total,
-        spec.pieces.len(),
+        spec.piespecs.len(),
         spec.sheet.width,
         spec.sheet.height
     );
@@ -291,7 +291,7 @@ pub(crate) fn run_with_sink(
                             last_sheet_area: evt.objective.1,
                             seed: evt.seed,
                             solution: Some(sol),
-                            pieces: Some(spec.pieces.clone()),
+                            pieces: Some(spec.piespecs.clone()),
                         };
                         if sink.send(&msg).is_err() {
                             handle.stop();
@@ -310,7 +310,7 @@ pub(crate) fn run_with_sink(
                         last_sheet_area: evt.objective.1,
                         seed: evt.seed,
                         solution: Some(sol),
-                        pieces: Some(spec.pieces.clone()),
+                        pieces: Some(spec.piespecs.clone()),
                     })
                     .ok();
                 }
@@ -322,7 +322,7 @@ pub(crate) fn run_with_sink(
                     sheets_used: best.objective.0,
                     last_sheet_area: best.objective.1,
                     solution: sol,
-                    pieces: spec.pieces.clone(),
+                    pieces: spec.piespecs.clone(),
                 })
                 .ok();
                 break;

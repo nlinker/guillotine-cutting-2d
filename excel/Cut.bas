@@ -212,7 +212,7 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     Dim pl As Object
     For Each pl In sol("placements")
         Dim idx As Long
-        idx = pl("piece_idx") + 1  ' VBA Collection is 1-based
+        idx = pl("piespec_idx") + 1  ' VBA Collection is 1-based
 
         Dim pieceName As String
         pieceName = pieces(idx)("name")
@@ -311,7 +311,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     ' Draw pieces
     Dim pIdx As Long: pIdx = 0
     For Each pl In sol("placements")
-        Dim idx   As Long: idx   = pl("piece_idx") + 1
+        Dim idx   As Long: idx   = pl("piespec_idx") + 1
         Dim shIdx As Long: shIdx = pl("sheet_idx")
 
         Dim pw As Long, ph As Long
@@ -410,7 +410,7 @@ Private Function BuildProblemJson(ws As Worksheet) As String
                        ",""height"":" & CStr(sheetHeight) & "}" & _
                        ",""kerf"":" & CStr(kerf) & _
                        ",""margin"":" & CStr(margin) & _
-                       ",""pieces"":[" & sPieces & "]}"
+                       ",""piespecs"":[" & sPieces & "]}"
 End Function
 
 '' == Main macro ===============================================================

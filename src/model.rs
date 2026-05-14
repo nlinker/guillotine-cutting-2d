@@ -34,7 +34,7 @@ pub struct ProblemSpec {
     pub kerf: u32,
     #[serde(default)]
     pub margin: u32,
-    pub pieces: Vec<PieceSpec>,
+    pub piespecs: Vec<PieceSpec>,
 }
 
 impl ProblemSpec {
@@ -44,14 +44,14 @@ impl ProblemSpec {
     /// Then merge entries with identical `(width, height, can_rotate)` by summing `count`.
     /// First-appearance order is preserved.
     pub fn normalize(&mut self) {
-        for ps in &mut self.pieces {
+        for ps in &mut self.piespecs {
             if ps.can_rotate && ps.width > ps.height {
                 std::mem::swap(&mut ps.width, &mut ps.height);
             }
         }
         let mut seen: Vec<(u32, u32, bool)> = Vec::new();
         let mut merged: Vec<PieceSpec> = Vec::new();
-        for ps in self.pieces.drain(..) {
+        for ps in self.piespecs.drain(..) {
             let key = (ps.width, ps.height, ps.can_rotate);
             if let Some(pos) = seen.iter().position(|&k| k == key) {
                 merged[pos].count += ps.count;
@@ -60,16 +60,16 @@ impl ProblemSpec {
                 merged.push(ps);
             }
         }
-        self.pieces = merged;
+        self.piespecs = merged;
     }
 }
 
 /// Position of a placed piece in a type-indexed solution.
-/// `piece_idx` is the 0-based index into `ProblemSpec::pieces`.
+/// `piespec_idx` is the 0-based index into `ProblemSpec::piespecs`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlacementSpec {
     pub sheet_idx: usize,
-    pub piece_idx: usize,
+    pub piespec_idx: usize,
     pub x: u32,
     pub y: u32,
     pub rotated: bool,

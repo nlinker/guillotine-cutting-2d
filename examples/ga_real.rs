@@ -35,7 +35,7 @@ fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, Strin
         .placements
         .iter()
         .filter(|pl| pl.sheet_idx == last)
-        .map(|pl| &spec.pieces[pl.piece_idx])
+        .map(|pl| &spec.piespecs[pl.piespec_idx])
         .collect();
     let count = on_last.len();
     let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
@@ -53,7 +53,7 @@ fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, Strin
 
 fn main() {
     let spec = parse_problem(PROBLEM).expect("parse error");
-    let total: u32 = spec.pieces.iter().map(|p| p.count).sum();
+    let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     let cfg = ga_cfg();
     let seeds: Vec<u64> = (0..N_PARALLEL as u64).collect();
 
@@ -61,7 +61,7 @@ fn main() {
     println!(
         "Pieces   : {} ({} types)   Sheet: {}×{}",
         total,
-        spec.pieces.len(),
+        spec.piespecs.len(),
         spec.sheet.width,
         spec.sheet.height
     );
@@ -115,7 +115,7 @@ fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
         println!("  Sheet {} ({}×{}):", sheet_idx, spec.sheet.width, spec.sheet.height);
         pls.sort_by_key(|p| (p.y, p.x));
         for pl in pls {
-            let p = &spec.pieces[pl.piece_idx];
+            let p = &spec.piespecs[pl.piespec_idx];
             let (pw, ph) = if pl.rotated {
                 (p.height, p.width)
             } else {
@@ -123,7 +123,7 @@ fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
             };
             println!(
                 "    idx={:2}  {}×{}  at ({:4},{:4}){}",
-                pl.piece_idx,
+                pl.piespec_idx,
                 pw,
                 ph,
                 pl.x,

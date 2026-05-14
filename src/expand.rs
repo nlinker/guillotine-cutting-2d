@@ -19,7 +19,7 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
         spec.sheet.height,
     );
     let pieces = spec
-        .pieces
+        .piespecs
         .iter()
         .flat_map(|ps| {
             (0..ps.count).map(|_| Piece {
@@ -41,11 +41,11 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
 
 /// Convert a `SolutionSpec` (type-indexed) into a flat `Solution`.
 ///
-/// Each `PlacementSpec.piece_idx` (type) is mapped to a flat piece index using the
+/// Each `PlacementSpec.piespec_idx` (type) is mapped to a flat piece index using the
 /// spec. Copies of the same type are assigned flat indices in spec order.
 pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     let type_to_flat_start: Vec<usize> = spec
-        .pieces
+        .piespecs
         .iter()
         .scan(0usize, |acc, ps| {
             let start = *acc;
@@ -53,12 +53,12 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
             Some(start)
         })
         .collect();
-    let mut type_used: Vec<usize> = vec![0; spec.pieces.len()];
+    let mut type_used: Vec<usize> = vec![0; spec.piespecs.len()];
     let placements = sol
         .placements
         .iter()
         .map(|pl| {
-            let ti = pl.piece_idx;
+            let ti = pl.piespec_idx;
             let flat_idx = type_to_flat_start[ti] + type_used[ti];
             type_used[ti] += 1;
             Placement {
@@ -107,7 +107,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
         sheet: problem.sheet,
         kerf: 0,
         margin: 0,
-        pieces,
+        piespecs: pieces,
     }
 }
 
@@ -119,7 +119,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
 pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
     let m = spec.margin;
     let flat_to_type: Vec<usize> = spec
-        .pieces
+        .piespecs
         .iter()
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))
@@ -129,7 +129,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
         .iter()
         .map(|pl| PlacementSpec {
             sheet_idx: pl.sheet_idx,
-            piece_idx: flat_to_type[pl.piece_idx],
+            piespec_idx: flat_to_type[pl.piece_idx],
             x: pl.x + m,
             y: pl.y + m,
             rotated: pl.rotated,
@@ -151,7 +151,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
 
 /// Build a `flat_to_type` mapping: `flat_to_type[flat_idx] = type_idx`.
 pub fn flat_to_type_map(spec: &ProblemSpec) -> Vec<usize> {
-    spec.pieces
+    spec.piespecs
         .iter()
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))

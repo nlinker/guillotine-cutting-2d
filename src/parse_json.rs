@@ -6,7 +6,7 @@ use crate::model::ProblemSpec;
 /// {
 ///   "sheet": {"width": 3000, "height": 4000},
 ///   "kerf": 7,
-///   "pieces": [
+///   "piespecs": [
 ///     {"name": "стойка", "width": 835, "height": 620, "count": 4, "can_rotate": true}
 ///   ]
 /// }
@@ -24,7 +24,7 @@ mod tests {
         let json = r#"{
             "sheet": {"width": 1000, "height": 500},
             "kerf": 3,
-            "pieces": [
+            "piespecs": [
                 {"name": "стойка", "width": 200, "height": 100, "count": 3, "can_rotate": false},
                 {"name": "полка",  "width": 150, "height": 80,  "count": 2, "can_rotate": true}
             ]
@@ -32,13 +32,13 @@ mod tests {
         let p = parse_problem_json(json).unwrap();
         assert_eq!(p.sheet.width, 1000);
         assert_eq!(p.kerf, 3);
-        assert_eq!(p.pieces.len(), 2);
-        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 5);
-        assert_eq!(p.pieces[0].name, "стойка");
-        assert_eq!(p.pieces[0].count, 3);
-        assert_eq!(p.pieces[0].can_rotate, false);
-        assert_eq!(p.pieces[1].name, "полка");
-        assert_eq!(p.pieces[1].count, 2);
-        assert_eq!(p.pieces[1].can_rotate, true);
+        assert_eq!(p.piespecs.len(), 2);
+        assert_eq!(p.piespecs.iter().map(|p| p.count).sum::<u32>(), 5);
+        assert_eq!(p.piespecs[0].name, "стойка");
+        assert_eq!(p.piespecs[0].count, 3);
+        assert_eq!(p.piespecs[0].can_rotate, false);
+        assert_eq!(p.piespecs[1].name, "полка");
+        assert_eq!(p.piespecs[1].count, 2);
+        assert_eq!(p.piespecs[1].can_rotate, true);
     }
 }

@@ -223,7 +223,7 @@ impl GlfTable {
                 && height == self.types[ti].width;
             placements.push(PlacementSpec {
                 sheet_idx: 0,
-                piece_idx: spec_idx,
+                piespec_idx: spec_idx,
                 x,
                 y,
                 rotated,
@@ -388,7 +388,7 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
     // ProblemSpec is normalized: (width, height, can_rotate) is unique per entry.
     let mut type_map: HashMap<(u32, u32, bool), usize> = HashMap::new();
     let mut types: Vec<GlfType> = Vec::new();
-    for ps in &spec.pieces {
+    for ps in &spec.piespecs {
         let key = (ps.width + k, ps.height + k, ps.can_rotate);
         if let Some(&ti) = type_map.get(&key) {
             types[ti].count += ps.count;
@@ -483,7 +483,7 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
 
     // Build type_to_spec: for each GLF type, list of spec piece indices (one per copy).
     let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
-    for (spec_idx, ps) in spec.pieces.iter().enumerate() {
+    for (spec_idx, ps) in spec.piespecs.iter().enumerate() {
         let ti = type_map[&(ps.width + k, ps.height + k, ps.can_rotate)];
         for _ in 0..ps.count {
             type_to_spec[ti].push(spec_idx);

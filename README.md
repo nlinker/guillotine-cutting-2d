@@ -74,7 +74,7 @@ bat -p task.json
   {
     "sheet": {"width": 2600, "height": 1800},
     "kerf": 3,
-    "pieces": [
+    "piespecs": [
       {"name": "A", "width": 400, "height": 400, "count": 6, "can_rotate": false},
       {"name": "B", "width": 495, "height": 495, "count": 6, "can_rotate": false},
       {"name": "C", "width": 270, "height": 320, "count": 10, "can_rotate": false},

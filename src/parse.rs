@@ -34,7 +34,7 @@ pub enum ParseError {
 /// let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
-/// assert_eq!(p.pieces.len(), 3); // 3 piece types; total count = 4+4+1 = 9
+/// assert_eq!(p.piespecs.len(), 3); // 3 piece types; total count = 4+4+1 = 9
 /// ```
 pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     let (sheet_str, rest) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
@@ -52,7 +52,7 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
         sheet,
         kerf,
         margin: 0,
-        pieces,
+        piespecs: pieces,
     };
     spec.normalize();
     Ok(spec)
@@ -125,14 +125,14 @@ mod tests {
             }
         );
         assert_eq!(p.kerf, 7);
-        assert_eq!(p.pieces.len(), 5);
-        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 15);
+        assert_eq!(p.piespecs.len(), 5);
+        assert_eq!(p.piespecs.iter().map(|p| p.count).sum::<u32>(), 15);
 
-        assert_eq!(tuple(&p.pieces[0]), (620, 835, 4, true));
-        assert_eq!(tuple(&p.pieces[1]), (1020, 620, 4, false));
-        assert_eq!(tuple(&p.pieces[2]), (620, 1020, 4, true));
-        assert_eq!(tuple(&p.pieces[3]), (620, 1490, 2, true));
-        assert_eq!(tuple(&p.pieces[4]), (900, 1750, 1, true));
+        assert_eq!(tuple(&p.piespecs[0]), (620, 835, 4, true));
+        assert_eq!(tuple(&p.piespecs[1]), (1020, 620, 4, false));
+        assert_eq!(tuple(&p.piespecs[2]), (620, 1020, 4, true));
+        assert_eq!(tuple(&p.piespecs[3]), (620, 1490, 2, true));
+        assert_eq!(tuple(&p.piespecs[4]), (900, 1750, 1, true));
     }
 
     #[test]
@@ -140,8 +140,8 @@ mod tests {
         let p = parse_problem("8x100F : 0 : 7x5/4 , 6x4/4 , 4x6/4 , 5x7/4").unwrap();
         assert_eq!(p.sheet.width, 8);
         assert_eq!(p.kerf, 0);
-        assert_eq!(p.pieces.len(), 4);
-        assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 16);
+        assert_eq!(p.piespecs.len(), 4);
+        assert_eq!(p.piespecs.iter().map(|p| p.count).sum::<u32>(), 16);
     }
 
     #[test]
@@ -150,9 +150,9 @@ mod tests {
         // 7x4/4f stays as (7,4,false) - fixed, no swap
         let tuple = |p: &PieceSpec| (p.width, p.height, p.count, p.can_rotate);
         let p = parse_problem("10x10F:0:4x7/3r,7x4/2r,7x4/4f").unwrap();
-        assert_eq!(p.pieces.len(), 2);
-        assert_eq!(tuple(&p.pieces[0]), (4, 7, 5, true));
-        assert_eq!(tuple(&p.pieces[1]), (7, 4, 4, false));
+        assert_eq!(p.piespecs.len(), 2);
+        assert_eq!(tuple(&p.piespecs[0]), (4, 7, 5, true));
+        assert_eq!(tuple(&p.piespecs[1]), (7, 4, 4, false));
     }
 
     #[test]

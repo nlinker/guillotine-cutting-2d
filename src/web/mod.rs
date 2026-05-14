@@ -133,7 +133,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
         },
         kerf: params.kerf,
         margin: 0,
-        pieces,
+        piespecs: pieces,
     };
     spec.normalize();
     Ok(spec)
