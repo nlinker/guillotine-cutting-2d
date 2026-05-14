@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode_spec,
     ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
-    gpf::build_gpf,
+    glf::build_glf,
     model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -87,8 +87,8 @@ enum Command {
         #[arg(long)]
         solution: String,
     },
-    /// Build the GPF (Guillotine Placement Function) table and print it
-    Gpf {
+    /// Build the GLF (Guillotine Layout Function) table and print it
+    Glf {
         /// Compact problem string, e.g. "10x8F:0:2x3/4,4x3,8x3,5x2/2"
         problem: String,
     },
@@ -126,9 +126,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let sol = parse_solution_json(&sol_str)?;
             print!("{}", render_svg(&spec, &sol)?);
         }
-        Command::Gpf { problem } => {
+        Command::Glf { problem } => {
             let spec = parse_problem(&problem)?;
-            let table = build_gpf(&spec);
+            let table = build_glf(&spec);
             let query_w = spec.sheet.width + spec.kerf;
             println!("{}", table.display_table(query_w));
             if let Some(h) = table.eval_full_set(query_w) {

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use crate::model::{PlacementSpec, ProblemSpec, SolutionSpec};
 
-/// A piece type used in the GPF DP table.
+/// A piece type used in the GLF DP table.
 #[derive(Debug, Clone)]
-pub struct GpfType {
+pub struct GlfType {
     pub width: u32,
     pub height: u32,
     pub count: u32,
@@ -144,17 +144,17 @@ pub fn min_fn(f1: &StepFn, f2: &StepFn) -> StepFn {
     result
 }
 
-/// The complete GPF DP table.
-pub struct GpfTable {
-    pub types: Vec<GpfType>,
+/// The complete GLF DP table.
+pub struct GlfTable {
+    pub types: Vec<GlfType>,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
-    /// For each GPF type index, the list of `ProblemSpec.pieces` indices that
+    /// For each GLF type index, the list of `ProblemSpec.pieces` indices that
     /// contributed to it (one entry per physical copy, in spec order).
     type_to_spec: Vec<Vec<usize>>,
 }
 
-impl GpfTable {
+impl GlfTable {
     fn flat_index(&self, counts: &[u32]) -> usize {
         counts.iter().zip(&self.strides).map(|(&k, &s)| k as usize * s).sum()
     }
@@ -178,7 +178,7 @@ impl GpfTable {
 
     /// Reconstruct an optimal 1-sheet placement for the full piece set at the given width.
     ///
-    /// Returns `None` if the pieces don't fit at this width (GPF is infeasible).
+    /// Returns `None` if the pieces don't fit at this width (GLF is infeasible).
     /// The returned `SolutionSpec` uses `piece_idx` = index into `ProblemSpec::pieces`.
     pub fn reconstruct(&self, width: u32) -> Option<SolutionSpec> {
         let height = self.eval_full_set(width)?;
@@ -374,18 +374,18 @@ fn format_step_fn(f: &StepFn) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-/// Build the GPF table for a problem spec.
+/// Build the GLF (Guillotine Layout Function) table for a problem spec.
 ///
 /// Piece dimensions are expanded by `spec.kerf` (same transformation as `expand_problem`),
 /// so the resulting step functions operate in the same kerf-free coordinate space as the decoder.
 /// Query `eval_full_set` with `spec.sheet.width + spec.kerf` to check feasibility.
-pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
+pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
     let k = spec.kerf;
     // Group piece specs by (width, height) preserving order of first appearance.
     // Multiple specs with the same dimensions are merged (summing counts).
     // ProblemSpec is normalized: (width, height, can_rotate) is unique per entry.
     let mut type_map: HashMap<(u32, u32, bool), usize> = HashMap::new();
-    let mut types: Vec<GpfType> = Vec::new();
+    let mut types: Vec<GlfType> = Vec::new();
     for ps in &spec.pieces {
         let key = (ps.width + k, ps.height + k, ps.can_rotate);
         if let Some(&ti) = type_map.get(&key) {
@@ -393,7 +393,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         } else {
             let ti = types.len();
             type_map.insert(key, ti);
-            types.push(GpfType {
+            types.push(GlfType {
                 width: ps.width + k,
                 height: ps.height + k,
                 count: ps.count,
@@ -479,7 +479,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         }
     }
 
-    // Build type_to_spec: for each GPF type, list of spec piece indices (one per copy).
+    // Build type_to_spec: for each GLF type, list of spec piece indices (one per copy).
     let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
     for (spec_idx, ps) in spec.pieces.iter().enumerate() {
         let ti = type_map[&(ps.width + k, ps.height + k, ps.can_rotate)];
@@ -488,7 +488,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
         }
     }
 
-    GpfTable {
+    GlfTable {
         types,
         strides,
         cells,
@@ -496,7 +496,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
     }
 }
 
-fn decode_index_with(types: &[GpfType], mut idx: usize) -> Vec<u32> {
+fn decode_index_with(types: &[GlfType], mut idx: usize) -> Vec<u32> {
     let mut counts = vec![0u32; types.len()];
     for (count, pt) in counts.iter_mut().zip(types) {
         let modulus = (pt.count + 1) as usize;
@@ -586,7 +586,7 @@ mod tests {
     fn tutorial_example() {
         // "10x8F:0:2x3/4,4x3,8x3,5x2/2" — all fixed, kerf=0
         let p = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
-        let table = build_gpf(&p);
+        let table = build_glf(&p);
         // Full set at width=10 must equal 8
         assert_eq!(table.eval_full_set(10), Some(8));
         // Base cases

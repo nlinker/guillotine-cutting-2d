@@ -1,11 +1,11 @@
-/// Sweep all feasible widths for a fixed piece set, compute optimal placement via GPF
+/// Sweep all feasible widths for a fixed piece set, compute optimal placement via GLF
 /// cut-tree reconstruction, and render each solution to tmp/{width}.svg.
 ///
-/// Run with:  cargo run --example gpf_sweep --release
+/// Run with:  cargo run --example glf_sweep --release
 use std::{fs, path::Path};
 
 use cutting::{
-    gpf::build_gpf,
+    glf::build_glf,
     model::{ProblemSpec, Sheet},
     parse::parse_problem,
     render::render_svg,
@@ -15,9 +15,9 @@ const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
 
 fn main() {
     let base_spec = parse_problem(SPEC_STR).expect("parse error");
-    let gpf = build_gpf(&base_spec);
+    let glf = build_glf(&base_spec);
 
-    let (min_w, max_w) = gpf.feasible_width_range().expect("problem is infeasible");
+    let (min_w, max_w) = glf.feasible_width_range().expect("problem is infeasible");
 
     let out_dir = Path::new("tmp");
     fs::create_dir_all(out_dir).expect("failed to create tmp/");
@@ -25,10 +25,10 @@ fn main() {
     let mut written = 0u32;
     let mut entries: Vec<(u32, u32)> = Vec::new(); // (width, height)
     for width in min_w..=max_w {
-        let Some(height) = gpf.eval_full_set(width) else {
+        let Some(height) = glf.eval_full_set(width) else {
             continue;
         };
-        let Some(sol) = gpf.reconstruct(width) else { continue };
+        let Some(sol) = glf.reconstruct(width) else { continue };
 
         let spec = ProblemSpec {
             sheet: Sheet { width, height },
@@ -64,7 +64,7 @@ fn build_index_html(entries: &[(u32, u32)]) -> String {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GPF sweep</title>
+<title>GLF sweep</title>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; }}
   html, body {{ margin: 0; height: 100%; }}

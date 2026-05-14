@@ -4,7 +4,7 @@ pub mod decoder;
 pub mod expand;
 pub mod ga;
 pub mod generator;
-pub mod gpf;
+pub mod glf;
 pub mod model;
 pub mod parse;
 pub mod parse_json;

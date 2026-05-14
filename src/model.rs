@@ -108,7 +108,7 @@ pub struct Piece {
 
 /// Flat cutting problem: one `Piece` entry per physical copy (no counts).
 /// Produced by `expand::expand_problem`; consumed by the decoder and GA internals.
-/// Dimensions are pre-expanded by `ProblemSpec::kerf` so decoder and GPF treat all cuts as kerf=0.
+/// Dimensions are pre-expanded by `ProblemSpec::kerf` so decoder and GLF treat all cuts as kerf=0.
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
     pub sheet: Sheet,
