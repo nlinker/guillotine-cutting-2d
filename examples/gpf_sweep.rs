@@ -11,14 +11,13 @@ use cutting::{
     render::render_svg,
 };
 
-const SPEC_STR: &str = "1x1F:0:7x5/4,6x4/4,4x6/4,5x7/4";
+const SPEC_STR: &str = "1x1F:0: 12x3/2, 7x5/4r, 6x4/4r, 3x12/2";
 
 fn main() {
     let base_spec = parse_problem(SPEC_STR).expect("parse error");
     let gpf = build_gpf(&base_spec);
 
-    let min_w: u32 = base_spec.pieces.iter().map(|p| p.width.min(p.height)).min().unwrap();
-    let max_w: u32 = base_spec.pieces.iter().map(|p| p.width * p.count).sum();
+    let (min_w, max_w) = gpf.feasible_width_range().expect("problem is infeasible");
 
     let out_dir = Path::new("tmp");
     fs::create_dir_all(out_dir).expect("failed to create tmp/");
@@ -91,14 +90,14 @@ fn build_index_html(entries: &[(u32, u32)]) -> String {
   <button id="prev">&#8592; <kbd>&#8592;</kbd></button>
   <button id="pause">Pause <kbd>Space</kbd></button>
   <button id="next">&#8594; <kbd>&#8594;</kbd></button>
-  <label>Interval&nbsp;<input type="range" id="speed" min="100" max="3000" step="100" value="500">
-    <span id="speed-val">500</span>&nbsp;ms</label>
+  <label>Interval&nbsp;<input type="range" id="speed" min="100" max="3000" step="100" value="1000">
+    <span id="speed-val">1000</span>&nbsp;ms</label>
 </div>
 <div id="info">—</div>
 <img id="frame" alt="layout">
 <script>
 const FILES = [{files_js}];
-let idx = 0, interval = 500, timer = null, paused = false;
+let idx = 0, interval = 1000, timer = null, paused = false;
 const img   = document.getElementById('frame');
 const info  = document.getElementById('info');
 const btn   = document.getElementById('pause');

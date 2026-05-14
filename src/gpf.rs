@@ -289,6 +289,17 @@ impl GpfTable {
         eval_f(&self.cells[idx], width)
     }
 
+    /// The `[w_min, w_max]` range over which `eval_full_set` is defined and strictly decreasing.
+    /// Beyond `w_max`, the minimum height is constant — sweeping further yields no new layouts.
+    /// Returns `None` if the full set is infeasible.
+    pub fn feasible_width_range(&self) -> Option<(u32, u32)> {
+        let full = self.types.iter().map(|t| t.count).collect::<Vec<u32>>();
+        let idx = self.flat_index(&full);
+        let f = &self.cells[idx];
+        if f.is_empty() { return None; }
+        Some((f[0].0, f[f.len() - 1].0))
+    }
+
     /// Evaluate f(width; subset specified by per-type counts).
     pub fn eval_subset(&self, counts: &[u32], width: u32) -> Option<u32> {
         let idx = self.flat_index(counts);
