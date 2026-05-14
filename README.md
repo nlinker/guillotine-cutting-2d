@@ -12,18 +12,10 @@ All cuts are guillotine cuts, i.e. straight lines across the full remaining rect
 
 ## Example
 
-The `glf_sweep` example computes the provably optimal 1-sheet layout for every feasible
-width using the GLF algorithm, then renders each layout as an SVG:
-
-```bash
-cargo run --example glf_sweep --release
-# open tmp/index.html in a browser
-```
-
 Each frame below is the optimal placement for that sheet width.
 The problem is NP-hard, so for the large inputs the computation is impossible;
 the GA finds the approximation instead.
-![optimal_solutions.webp](docs/img/optimal_solutions.webp)
+![optimal_solutions.avif](docs/img/optimal_solutions.avif)
 
 ## Distinctive features
 
@@ -63,9 +55,12 @@ the GA finds the approximation instead.
 
 ## Usage
 
-- You can run it in the console to solve a problem and print the best solution found in 5000 iterations of GA (`--gens 5000`)
+- You can run it in the console to solve a problem, print the best solution
+  found in 5000 iterations of GA (`--gens 5000`) and then render it 
 ```
-cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --seed 42 --gens 5000
+cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --gens 5000 > out.json
+cargo run --release -- render --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
+firefox out.svg  # open the svg file
 ```
 
 - Alternatively, you can pass a JSON file
@@ -88,6 +83,14 @@ cargo run --release -- calc --json task.json --sink stdout --seed 42 --gens 5000
 - Or you can start the web UI at http://localhost:8080
 ```
 cargo run --release -- serve --port 8080
+```
+
+- The animation above obtained by `glf_sweep` example, which computes the provably optimal
+  1-sheet layout for every feasible width using the GLF algorithm, then renders each layout
+  as an SVG:
+```bash
+cargo run --release --example glf_sweep
+# open tmp/index.html in a browser
 ```
 
 - Or (under Windows) you can run the [Excel workbook](excel/workbook.xls).
