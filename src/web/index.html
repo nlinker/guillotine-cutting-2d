@@ -79,6 +79,7 @@
 </div>
 <div id="results"></div>
 
+<!-- these js are served from run_serve -->
 <script src="/chart.js"></script>
 <script src="/svg.js"></script>
 <script>
@@ -88,17 +89,17 @@ const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a','#dda0dd',
 
 // == default data ============================================================
 const DEFAULT_PIECES = [
-  {name:'стойка ←',    w:2384, h:600, count:1, rotate:false},
-  {name:'стойка →',    w:2384, h:600, count:1, rotate:false},
-  {name:'стойка →←',  w:2288, h:500, count:1, rotate:false},
-  {name:'низ ↓',       w:1768, h:600, count:1, rotate:false},
-  {name:'цоколь ↓',   w:1768, h:80,  count:2, rotate:false},
-  {name:'крыша ↑',    w:1800, h:710, count:1, rotate:false},
-  {name:'полки ↔',    w:550,  h:490, count:5, rotate:false},
-  {name:'полки ↔',    w:1202, h:490, count:2, rotate:false},
-  {name:'ребро ↕',    w:1202, h:300, count:1, rotate:false},
-  {name:'распорка ↔', w:300,  h:490, count:1, rotate:false},
-  {name:'перегородка', w:150,  h:490, count:2, rotate:true},
+  {name:'Стойка',    w:2384, h:600, count:1, rotate:false},
+  {name:'Стойка',    w:2384, h:600, count:1, rotate:false},
+  {name:'Стойка',    w:2288, h:500, count:1, rotate:false},
+  {name:'Низ',       w:1768, h:600, count:1, rotate:false},
+  {name:'Цоколь',    w:1768, h:80,  count:2, rotate:false},
+  {name:'Крыша',     w:1800, h:710, count:1, rotate:false},
+  {name:'Полки',     w:550,  h:490, count:5, rotate:false},
+  {name:'Полки',     w:1202, h:490, count:2, rotate:false},
+  {name:'Ребро',     w:1202, h:300, count:1, rotate:false},
+  {name:'Распорка',  w:300,  h:490, count:1, rotate:false},
+  {name:'Перегородка', w:150,  h:490, count:2, rotate:true},
 ];
 
 // == pieces table =============================================================
@@ -185,7 +186,7 @@ function buildRowColors(specs) {
   return specs.map((_, ci) => PALETTE[ci % PALETTE.length]);
 }
 
-function colorInputRows(specs) {
+function colorInputRows(_specs) {
   const rows = document.querySelectorAll('#pieces-tbody tr');
   rows.forEach((tr, ci) => { tr.style.background = PALETTE[ci % PALETTE.length]; });
 }
@@ -204,12 +205,12 @@ function buildPlacementsTable(solution, pieces, elapsed, lastSheetArea, sheets, 
         + '<th>X</th><th>Y</th><th>Rot</th>'
         + '</tr></thead><tbody>';
   for (const pl of solution.placements) {
-    const pc = pieces[pl.piece_idx];
+    const pc = pieces[pl.piespec_idx];
     const pw = pl.rotated ? pc.height : pc.width;
     const ph = pl.rotated ? pc.width  : pc.height;
     html += `<tr>`
           + `<td>${pl.sheet_idx}</td>`
-          + `<td style="text-align:left">${pc.name || '#' + pl.piece_idx}</td>`
+          + `<td style="text-align:left">${pc.name || '#' + pl.piespec_idx}</td>`
           + `<td>${pw}</td><td>${ph}</td>`
           + `<td>${pl.x}</td><td>${pl.y}</td>`
           + `<td>${pl.rotated ? 'yes' : ''}</td>`
@@ -251,7 +252,7 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
   }
 
   for (const pl of placements) {
-    const pc = pieces[pl.piece_idx];
+    const pc = pieces[pl.piespec_idx];
     const pw = pl.rotated ? pc.height : pc.width;
     const ph = pl.rotated ? pc.width  : pc.height;
     const col = pl.sheet_idx % COLS, row = Math.floor(pl.sheet_idx / COLS);
@@ -259,9 +260,9 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
     const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
     const rw = Math.max(pw * scale, 0.5), rh = Math.max(ph * scale, 0.5);
     draw.rect(rw, rh).move(rx, ry)
-      .fill(rowColor[pl.piece_idx]).stroke({ color: '#555', width: 0.5 });
+      .fill(rowColor[pl.piespec_idx]).stroke({ color: '#555', width: 0.5 });
     if (rw > 30 && rh > 14) {
-      draw.plain(pc.name || ('#' + pl.piece_idx))
+      draw.plain(pc.name || ('#' + pl.piespec_idx))
         .font({ size: 9, family: 'monospace' }).fill('#000')
         .attr({ x: rx + 2, y: ry + 10 });
     }
