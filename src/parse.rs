@@ -48,7 +48,9 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     for piece_str in pieces_str.split(',') {
         pieces.push(parse_piece_spec(piece_str.trim(), default_rotate)?);
     }
-    Ok(ProblemSpec { sheet, kerf, margin: 0, pieces })
+    let mut spec = ProblemSpec { sheet, kerf, margin: 0, pieces };
+    spec.normalize();
+    Ok(spec)
 }
 
 fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
@@ -108,8 +110,8 @@ mod tests {
 
     #[test]
     fn full_example() {
+        let tuple = |p: &PieceSpec| (p.width, p.height, p.count, p.can_rotate);
         let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1020x620/4,1490x620/2,1750x900").unwrap();
-
         assert_eq!(
             p.sheet,
             Sheet {
@@ -121,41 +123,12 @@ mod tests {
         assert_eq!(p.pieces.len(), 5);
         assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 15);
 
-        assert_eq!(
-            (
-                p.pieces[0].width,
-                p.pieces[0].height,
-                p.pieces[0].count,
-                p.pieces[0].can_rotate
-            ),
-            (835, 620, 4, true)
-        );
-        assert_eq!(
-            (
-                p.pieces[1].width,
-                p.pieces[1].height,
-                p.pieces[1].count,
-                p.pieces[1].can_rotate
-            ),
-            (1020, 620, 4, false)
-        );
-        assert_eq!(
-            (
-                p.pieces[2].width,
-                p.pieces[2].height,
-                p.pieces[2].count,
-                p.pieces[2].can_rotate
-            ),
-            (1020, 620, 4, true)
-        );
-        assert_eq!(
-            (p.pieces[3].width, p.pieces[3].height, p.pieces[3].count),
-            (1490, 620, 2)
-        );
-        assert_eq!(
-            (p.pieces[4].width, p.pieces[4].height, p.pieces[4].count),
-            (1750, 900, 1)
-        );
+        // Rotateable pieces: dimensions normalized to (min, max)
+        assert_eq!(tuple(&p.pieces[0]), (620, 835, 4, true));
+        assert_eq!(tuple(&p.pieces[1]), (1020, 620, 4, false));
+        assert_eq!(tuple(&p.pieces[2]), (620, 1020, 4, true));
+        assert_eq!(tuple(&p.pieces[3]), (620, 1490, 2, true));
+        assert_eq!(tuple(&p.pieces[4]), (900, 1750, 1, true));
     }
 
     #[test]
@@ -165,6 +138,17 @@ mod tests {
         assert_eq!(p.kerf, 0);
         assert_eq!(p.pieces.len(), 4);
         assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 16);
+    }
+
+    #[test]
+    fn normalize_effects() {
+        // 4x7/3r + 7x4/2r -> same canonical type (4x7r, min first), merged count=5
+        // 7x4/4f stays as (7,4,false) - fixed, no swap
+        let tuple = |p: &PieceSpec| (p.width, p.height, p.count, p.can_rotate);
+        let p = parse_problem("10x10F:0:4x7/3r,7x4/2r,7x4/4f").unwrap();
+        assert_eq!(p.pieces.len(), 2);
+        assert_eq!(tuple(&p.pieces[0]), (4, 7, 5, true));
+        assert_eq!(tuple(&p.pieces[1]), (7, 4, 4, false));
     }
 
     #[test]

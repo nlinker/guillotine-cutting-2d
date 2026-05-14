@@ -37,6 +37,33 @@ pub struct ProblemSpec {
     pub pieces: Vec<PieceSpec>,
 }
 
+impl ProblemSpec {
+    /// Canonicalize piece specs so `(width, height, can_rotate)` triples are unique.
+    ///
+    /// For rotateable pieces: normalize dimensions to `(min(w,h), max(w,h))`.
+    /// Then merge entries with identical `(width, height, can_rotate)` by summing `count`.
+    /// First-appearance order is preserved.
+    pub fn normalize(&mut self) {
+        for ps in &mut self.pieces {
+            if ps.can_rotate && ps.width > ps.height {
+                std::mem::swap(&mut ps.width, &mut ps.height);
+            }
+        }
+        let mut seen: Vec<(u32, u32, bool)> = Vec::new();
+        let mut merged: Vec<PieceSpec> = Vec::new();
+        for ps in self.pieces.drain(..) {
+            let key = (ps.width, ps.height, ps.can_rotate);
+            if let Some(pos) = seen.iter().position(|&k| k == key) {
+                merged[pos].count += ps.count;
+            } else {
+                seen.push(key);
+                merged.push(ps);
+            }
+        }
+        self.pieces = merged;
+    }
+}
+
 /// Position of a placed piece in a type-indexed solution.
 /// `piece_idx` is the 0-based index into `ProblemSpec::pieces`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

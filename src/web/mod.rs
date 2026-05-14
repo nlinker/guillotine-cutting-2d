@@ -126,7 +126,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
     if pieces.is_empty() {
         return Err("no pieces specified".into());
     }
-    Ok(ProblemSpec {
+    let mut spec = ProblemSpec {
         sheet: Sheet {
             width: params.sheet_w,
             height: params.sheet_h,
@@ -134,5 +134,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
         kerf: params.kerf,
         margin: 0,
         pieces,
-    })
+    };
+    spec.normalize();
+    Ok(spec)
 }

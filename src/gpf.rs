@@ -2,12 +2,13 @@ use std::collections::HashMap;
 
 use crate::model::{PlacementSpec, ProblemSpec, SolutionSpec};
 
-/// A piece type: all pieces with same (width, height) grouped together.
+/// A piece type used in the GPF DP table.
 #[derive(Debug, Clone)]
 pub struct GpfType {
     pub width: u32,
     pub height: u32,
     pub count: u32,
+    pub can_rotate: bool,
 }
 /// Step function f(x; D): sorted by x ascending, heights strictly descending.
 /// Semantics: f(x) = h_i for x ∈ [x_i, x_{i+1}), ∞ for x < x_1.
@@ -217,12 +218,15 @@ impl GpfTable {
                 .expect("total==1 implies a type with count==1");
             let spec_idx = self.type_to_spec[ti][used[ti]];
             used[ti] += 1;
+            let rotated = self.types[ti].can_rotate
+                && self.types[ti].width != self.types[ti].height
+                && height == self.types[ti].width;
             placements.push(PlacementSpec {
                 sheet_idx: 0,
                 piece_idx: spec_idx,
                 x,
                 y,
-                rotated: false,
+                rotated,
             });
             return true;
         }
@@ -368,10 +372,11 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
     let k = spec.kerf;
     // Group piece specs by (width, height) preserving order of first appearance.
     // Multiple specs with the same dimensions are merged (summing counts).
-    let mut type_map: HashMap<(u32, u32), usize> = HashMap::new();
+    // ProblemSpec is normalized: (width, height, can_rotate) is unique per entry.
+    let mut type_map: HashMap<(u32, u32, bool), usize> = HashMap::new();
     let mut types: Vec<GpfType> = Vec::new();
     for ps in &spec.pieces {
-        let key = (ps.width + k, ps.height + k);
+        let key = (ps.width + k, ps.height + k, ps.can_rotate);
         if let Some(&ti) = type_map.get(&key) {
             types[ti].count += ps.count;
         } else {
@@ -381,6 +386,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
                 width: ps.width + k,
                 height: ps.height + k,
                 count: ps.count,
+                can_rotate: ps.can_rotate,
             });
         }
     }
@@ -414,7 +420,12 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
             // Base case: find which type has exactly 1 piece
             for (i, &k) in counts.iter().enumerate() {
                 if k == 1 {
-                    cells[flat] = vec![(types[i].width, types[i].height)];
+                    let f_normal = vec![(types[i].width, types[i].height)];
+                    cells[flat] = if types[i].can_rotate && types[i].width != types[i].height {
+                        min_fn(&f_normal, &vec![(types[i].height, types[i].width)])
+                    } else {
+                        f_normal
+                    };
                     break;
                 }
             }
@@ -460,7 +471,7 @@ pub fn build_gpf(spec: &ProblemSpec) -> GpfTable {
     // Build type_to_spec: for each GPF type, list of spec piece indices (one per copy).
     let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
     for (spec_idx, ps) in spec.pieces.iter().enumerate() {
-        let ti = type_map[&(ps.width + k, ps.height + k)];
+        let ti = type_map[&(ps.width + k, ps.height + k, ps.can_rotate)];
         for _ in 0..ps.count {
             type_to_spec[ti].push(spec_idx);
         }
