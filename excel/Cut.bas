@@ -767,7 +767,7 @@ Sub CreateCheckboxes()
 
     Dim shp As Object
     For Each shp In ws.CheckBoxes
-        shp.Delete
+        If shp.Name <> CFG_RANDOM_SEED_CHK Then shp.Delete
     Next shp
 
     Dim cbCol     As Long:   cbCol     = DataCol(ws) + 5
