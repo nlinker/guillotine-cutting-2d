@@ -32,6 +32,8 @@ the GA finds the approximation instead.
   Internally baked into piece and sheet dimensions in `expand_problem`.
 - **Margin** — border excluded from all four sheet edges before solving;
   output coordinates are shifted back by `+margin`.
+- Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over
+  all guillotine-cut subsets. Supports piece rotation.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point-selector mutation. Configured via `GaConfig`.
 - Deterministic **Decoder**: given a genome and a problem, produces a `Solution`
@@ -40,11 +42,8 @@ the GA finds the approximation instead.
   rotation preference, and which free rectangle to try first (`point_selector`).
   Suitable as an individual in a genetic algorithm.
 - Problem instance **Generator** — creates random problem instances with a known optimal solution.
-  Applies guillotine-cut passes to `k` blank sheets, producing a set of pieces
+  Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
-- Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over all guillotine-cut subsets.
-  Supports piece rotation. Use `eval_full_set` to query minimum height at a given width,
-  `feasible_width_range` to get the sweep bounds, and `reconstruct` to recover the cut tree.
 - Cross-platform self-contained console executable - the solver that receives the JSON
   specifying the problem instance and produces JSON with the solution.
   - **Problem** — stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
@@ -91,7 +90,7 @@ cargo run --release -- calc --json task.json --sink stdout --seed 42 --gens 5000
 cargo run --release -- serve --port 8080
 ```
 
-- Or (under Windows) you can run the [Excel workbook](excel/workbook.xlsm).
+- Or (under Windows) you can run the [Excel workbook](excel/workbook.xls).
 ![Excel example](docs/img/excel_workbook.png)
 
 - Finally, you can use the library directly:
@@ -186,10 +185,12 @@ Interactive visualizations (open in browser, no server needed):
 
 ## References
 
-- [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/sirazetdinova_t_u.pdf) - The
-  genome and the decoder in this project are heavily influenced by this thesis. An excellent introduction to the topic.
+- [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/sirazetdinova_t_u.pdf) -
+  The genome and the decoder in this project are heavily influenced by this thesis. An excellent introduction to the topic.
 - [Андрианова А.А., Мухтарова Т.М., Фазылов В.Р., "Формирование карты гильотинного раскроя листа по функциям гильотинного размещения"](docs/159_2_phys_mat_3.pdf) -
   The paper describes _Guillotine Layout Functions_ to compute the exact solution for the cutting problem, we use it from this paper.
+- [gdrr-2bp](https://github.com/JeroenGar/gdrr-2bp) - SOTA, a Rust implementation of the goal-driven ruin and
+  recreate heuristic for the 2D variable-sized bin packing problem with guillotine constraints.
 - [bin-packing](https://github.com/doublesharp/bin-packing) - Rust code with WASM bindings, many heuristics (MaxRects, Skyline, Guillotine beam search), no GA, feature-rich, solid implementation (kerf, trim).
 - [cut-optimizer-2d](https://github.com/jasonrhansen/cut-optimizer-2d) - Rust code, GA + GuillotineBin decoder, solid implementation, supports patterns/grain direction tracking. Doesn't support multi-sheet packing for now. 
 - [2d-cutting-stock-problem-master](https://github.com/fabiofdsantos/2d-cutting-stock-problem) - Genetic algorithm in Java for 2D packing, no guillotine, no kerf.
