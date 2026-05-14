@@ -12,9 +12,10 @@ All cuts are guillotine cuts, i.e. straight lines across the full remaining rect
 
 ## Example
 
-Each frame below is the optimal placement for that sheet width.
-The problem is NP-hard, so for the large inputs the computation is impossible;
-the GA finds the approximation instead.
+Each frame shows the exact optimal placement of the same piece set
+for a given sheet width, minimizing height.
+The problem is NP-hard, so for large inputs exact computation is infeasible;
+the GA finds good approximations instead.
 ![optimal_solutions.avif](docs/img/optimal_solutions.avif)
 
 ## Distinctive features
