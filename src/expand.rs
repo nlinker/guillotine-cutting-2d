@@ -1,4 +1,6 @@
-use crate::model::{FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec};
+use crate::model::{
+    FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec,
+};
 
 // == expand_* : spec (type-indexed) -> flat ===================================
 

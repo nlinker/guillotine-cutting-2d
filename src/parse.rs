@@ -48,7 +48,12 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     for piece_str in pieces_str.split(',') {
         pieces.push(parse_piece_spec(piece_str.trim(), default_rotate)?);
     }
-    let mut spec = ProblemSpec { sheet, kerf, margin: 0, pieces };
+    let mut spec = ProblemSpec {
+        sheet,
+        kerf,
+        margin: 0,
+        pieces,
+    };
     spec.normalize();
     Ok(spec)
 }

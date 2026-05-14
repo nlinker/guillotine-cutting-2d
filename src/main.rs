@@ -7,7 +7,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     decoder::decode_spec,
-    ga::{GaConfig, GaEvent, ProgressEvent, ga_channel, run_ga_mt},
+    ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
     glf::build_glf,
     model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
@@ -252,8 +252,7 @@ pub(crate) fn run_with_sink(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let (mut handle, ctx) = ga_channel(progress_interval);
-    run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), ctx);
+    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), progress_interval);
 
     let throttled = sink_interval_ms > 0;
     let throttle = Duration::from_millis(sink_interval_ms);

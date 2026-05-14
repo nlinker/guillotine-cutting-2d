@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Instant};
 
 use cutting::{
     decoder::decode_spec,
-    ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
+    ga::{GaConfig, GaEvent, run_ga_mt},
     model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
     parse::parse_problem,
 };
@@ -70,8 +70,7 @@ fn main() {
     println!();
 
     let t0 = Instant::now();
-    let (mut handle, ctx) = ga_channel(0);
-    run_ga_mt(Arc::new(spec.clone()), Arc::new(cfg.clone()), seeds.clone(), ctx);
+    let mut handle = run_ga_mt(Arc::new(spec.clone()), Arc::new(cfg.clone()), seeds.clone(), 0);
     let results = loop {
         match handle.rx.blocking_recv() {
             Some(GaEvent::Done(r)) => break r,

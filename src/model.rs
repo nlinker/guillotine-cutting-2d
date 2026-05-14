@@ -220,15 +220,32 @@ mod tests {
     use super::*;
 
     fn piece(w: u32, h: u32) -> Piece {
-        Piece { name: String::new(), width: w, height: h, can_rotate: false }
+        Piece {
+            name: String::new(),
+            width: w,
+            height: h,
+            can_rotate: false,
+        }
     }
 
     fn pl(piece_idx: usize, x: u32, y: u32) -> Placement {
-        Placement { sheet_idx: 0, piece_idx, x, y, rotated: false }
+        Placement {
+            sheet_idx: 0,
+            piece_idx,
+            x,
+            y,
+            rotated: false,
+        }
     }
 
     fn problem(pieces: Vec<Piece>) -> Problem {
-        Problem { sheet: Sheet { width: 1000, height: 1000 }, pieces }
+        Problem {
+            sheet: Sheet {
+                width: 1000,
+                height: 1000,
+            },
+            pieces,
+        }
     }
 
     /// Comprehensive staircase test covering all code paths.
@@ -251,10 +268,10 @@ mod tests {
         ]);
         let sol = Solution {
             placements: vec![
-                pl(0, 200, 0),  // низ_right: corner (400,  50) — added
-                pl(1,   0, 0),  // низ_left:  corner (200,  50) — any-skip (400≥200 && 50≥50)
-                pl(2, 400, 0),  // полка:     corner (600, 100) — retain removes (400,50)
-                pl(3,   0, 100),// стойка:    corner (500, 200)
+                pl(0, 200, 0), // низ_right: corner (400,  50) — added
+                pl(1, 0, 0),   // низ_left:  corner (200,  50) — any-skip (400≥200 && 50≥50)
+                pl(2, 400, 0), // полка:     corner (600, 100) — retain removes (400,50)
+                pl(3, 0, 100), // стойка:    corner (500, 200)
             ],
             leftovers: vec![],
         };

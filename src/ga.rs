@@ -88,7 +88,7 @@ pub struct Individual {
     pub objective: Objective,
 }
 
-/// Progress snapshot emitted every `GaContext::progress_interval` generations.
+/// Progress snapshot emitted every `progress_interval` generations (passed to `run_ga_mt`).
 /// Contains the current global best across all islands.
 /// `objective` is pre-computed from genome to avoid re-decoding.
 #[derive(Debug, Clone)]
@@ -128,7 +128,7 @@ impl Drop for GaHandle {
     }
 }
 
-/// Internal per-thread GA context. Obtain via `ga_channel`.
+/// Internal per-thread GA context.
 pub struct GaContext {
     tx: UnboundedSender<GaEvent>,
     stop: Arc<AtomicBool>,
@@ -147,25 +147,20 @@ impl Clone for GaContext {
     }
 }
 
-/// Creates a linked `(GaHandle, GaContext)` pair.
-///
-/// Pass `ctx` to `run_ga_mt`; use `handle` to read events and
-/// call `handle.stop()` for early termination.
-pub fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
+fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
     let (tx, rx) = mpsc::unbounded_channel();
     let stop = Arc::new(AtomicBool::new(false));
-    (
-        GaHandle {
-            rx,
-            stop: Arc::clone(&stop),
-        },
-        GaContext {
-            tx,
-            stop,
-            progress_interval,
-            seed: 0,
-        },
-    )
+    let handle = GaHandle {
+        rx,
+        stop: Arc::clone(&stop),
+    };
+    let context = GaContext {
+        tx,
+        stop,
+        progress_interval,
+        seed: 0,
+    };
+    (handle, context)
 }
 
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
@@ -289,12 +284,15 @@ fn run_ga_inner<R: Rng>(
     best
 }
 
-/// Spawns the GA in a background thread and returns immediately.
+/// Spawns the GA in a background thread and returns a `GaHandle` immediately.
 ///
-/// Progress and final results arrive through the `GaHandle` from `ga_channel`.
-/// Sends `GaEvent::Progress` during the run and `GaEvent::Done` when finished.
-/// Dropping `GaHandle` requests early termination via the stop flag.
-pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>, ctx: GaContext) {
+/// Events arrive through `handle.rx`: `GaEvent::Progress` every `progress_interval`
+/// generations and `GaEvent::Done` when all islands finish.
+/// Dropping the handle (or calling `handle.stop()`) requests early termination.
+///
+/// Pass `progress_interval = 0` to suppress progress events.
+pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>, progress_interval: usize) -> GaHandle {
+    let (handle, ctx) = ga_channel(progress_interval);
     std::thread::spawn(move || {
         let flat = Arc::new(expand_problem(&spec));
         let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
@@ -319,6 +317,7 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
         results.sort_by_key(|(_, ind)| ind.objective);
         ctx.tx.send(GaEvent::Done(results)).ok();
     });
+    handle
 }
 
 /// OX (Ordered Crossover) for two genomes.

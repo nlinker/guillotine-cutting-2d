@@ -98,7 +98,7 @@ cargo run --release -- serve --port 8080
 use std::sync::Arc;
 use cutting::{
     decoder::decode_spec,
-    ga::{GaConfig, GaEvent, ga_channel, run_ga_mt},
+    ga::{GaConfig, GaEvent, run_ga_mt},
     parse::parse_problem,
 };
 
@@ -112,10 +112,9 @@ fn main() {
         point_p: 0.10, point_delta: (1, 3),
     });
 
-    // Run 8 independent GA islands (one per seed) in parallel
+    // Run 8 independent GA islands (one per seed) in parallel; 0 = no progress events
     let seeds: Vec<u64> = (0..8).collect();
-    let (mut handle, ctx) = ga_channel(0); // 0 = no progress events
-    run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, ctx);
+    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0);
 
     // Block until all islands finish; results are sorted best-first
     let results = loop {

@@ -160,7 +160,10 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     }
     Output {
         problem: Problem {
-            sheet: Sheet { width: cfg.sheet.width + kerf, height: cfg.sheet.height + kerf },
+            sheet: Sheet {
+                width: cfg.sheet.width + kerf,
+                height: cfg.sheet.height + kerf,
+            },
             pieces: problem_pieces,
         },
         optimal_solution: Solution {
@@ -344,8 +347,7 @@ mod tests {
         let out = generate(&cfg, &mut rng);
         // Don't bother on the overflow, the integers are small
         let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
-        let expanded_sheet_area =
-            out.problem.sheet.width * out.problem.sheet.height * cfg.sheets_count as u32;
+        let expanded_sheet_area = out.problem.sheet.width * out.problem.sheet.height * cfg.sheets_count as u32;
         assert_eq!(total, expanded_sheet_area);
     }
 

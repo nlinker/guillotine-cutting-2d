@@ -296,7 +296,9 @@ impl GlfTable {
         let full = self.types.iter().map(|t| t.count).collect::<Vec<u32>>();
         let idx = self.flat_index(&full);
         let f = &self.cells[idx];
-        if f.is_empty() { return None; }
+        if f.is_empty() {
+            return None;
+        }
         Some((f[0].0, f[f.len() - 1].0))
     }
 
