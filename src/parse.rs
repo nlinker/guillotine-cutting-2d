@@ -123,7 +123,6 @@ mod tests {
         assert_eq!(p.pieces.len(), 5);
         assert_eq!(p.pieces.iter().map(|p| p.count).sum::<u32>(), 15);
 
-        // Rotateable pieces: dimensions normalized to (min, max)
         assert_eq!(tuple(&p.pieces[0]), (620, 835, 4, true));
         assert_eq!(tuple(&p.pieces[1]), (1020, 620, 4, false));
         assert_eq!(tuple(&p.pieces[2]), (620, 1020, 4, true));
