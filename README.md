@@ -188,9 +188,9 @@ Interactive visualizations (open in browser, no server needed):
 
 ## References
 
-- [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/sirazetdinova_t_u.pdf) -
+- [Сиразетдинова Татьяна Юрьевна, "Конструирование прямоугольного раскроя в системах автоматизированного проектирования с учетом дефектных областей материала"](docs/pdf/sirazetdinova_t_u.pdf) -
   The genome and the decoder in this project are heavily influenced by this thesis. An excellent introduction to the topic.
-- [Андрианова А.А., Мухтарова Т.М., Фазылов В.Р., "Формирование карты гильотинного раскроя листа по функциям гильотинного размещения"](docs/159_2_phys_mat_3.pdf) -
+- [Андрианова А.А., Мухтарова Т.М., Фазылов В.Р., "Формирование карты гильотинного раскроя листа по функциям гильотинного размещения"](docs/pdf/159_2_phys_mat_3.pdf) -
   The paper describes _Guillotine Layout Functions_ to compute the exact solution for the cutting problem, we use it from this paper.
 - [gdrr-2bp](https://github.com/JeroenGar/gdrr-2bp) - SOTA, a Rust implementation of the goal-driven ruin and
   recreate heuristic for the 2D variable-sized bin packing problem with guillotine constraints.
