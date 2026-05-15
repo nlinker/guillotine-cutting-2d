@@ -629,9 +629,10 @@ Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
-    Dim shW  As Long: shW  = ws.Range(SHEET_W_CELL).Value
-    Dim shH  As Long: shH  = ws.Range(SHEET_H_CELL).Value
-    Dim kerf As Long: kerf = ws.Range(KERF_CELL).Value
+    Dim shW    As Long: shW    = ws.Range(SHEET_W_CELL).Value
+    Dim shH    As Long: shH    = ws.Range(SHEET_H_CELL).Value
+    Dim kerf   As Long: kerf   = ws.Range(KERF_CELL).Value
+    Dim margin As Long: margin = ws.Range(MARGIN_CELL).Value
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
     End If
@@ -753,6 +754,32 @@ Public Sub SendToAutoCAD()
         Dim shRect As Object
         Set shRect = ms.AddLightWeightPolyline(sPts)
         shRect.Closed = True
+
+        If margin > 0 Then
+            ' Inner rectangle — working area after margin
+            Dim iPts(0 To 7) As Double
+            iPts(0) = sxOff + margin:                iPts(1) = margin
+            iPts(2) = sxOff + shH + kerf - margin:   iPts(3) = margin
+            iPts(4) = sxOff + shH + kerf - margin:   iPts(5) = shW + kerf - margin
+            iPts(6) = sxOff + margin:                iPts(7) = shW + kerf - margin
+            Dim innerRect As Object
+            Set innerRect = ms.AddLightWeightPolyline(iPts)
+            innerRect.Closed = True
+
+            ' Hatch the margin band between outer and inner rectangles
+            Dim ht As Object
+            Set ht = ms.AddHatch(0, "ANSI31", False)
+            Dim outerLoop(0) As Object: Set outerLoop(0) = shRect
+            Dim innerLoop(0) As Object: Set innerLoop(0) = innerRect
+            ht.AppendOuterLoop outerLoop
+            ht.AppendInnerLoop innerLoop
+            ht.PatternScale = CDbl(margin) / 2
+            ht.Color = 8  ' gray
+            ht.Evaluate
+            Set ht = Nothing
+            Set innerRect = Nothing
+        End If
+
         Set shRect = Nothing
     Next si
 
