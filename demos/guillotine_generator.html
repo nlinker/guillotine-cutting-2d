@@ -10,7 +10,7 @@
 body{font-family:var(--font-sans);font-size:13px;padding:16px;background:var(--color-background-primary);color:var(--color-text-primary);}
 
 #layout{display:flex;gap:12px;align-items:flex-start;}
-#left{flex:1;min-width:0;}
+#left{flex:1;min-width:0;overflow-x:auto;}
 #right{width:230px;flex-shrink:0;}
 
 .sheets-wrap{display:grid;gap:10px;}
@@ -377,10 +377,12 @@ let SCALE=16, sheetW, sheetH, kSheets, kerf, minSize, stageCount;
 function computeScale(){
   const spr=Math.max(1,parseInt(document.getElementById('spr').value)||2);
   const sw=sheetW||parseInt(document.getElementById('sw').value)||30;
-  const leftW=document.getElementById('left').offsetWidth||700;
-  const avail=leftW-(spr-1)*10-2;
-  const s=Math.max(3,Math.floor(avail/spr/sw));
-  document.getElementById('scale-info').textContent=`1 pt = ${s} px`;
+  const rightW=(document.getElementById('right').offsetWidth||230)+12;
+  const leftW=window.innerWidth-32-rightW;
+  const cellW=Math.floor((leftW-(spr-1)*10)/spr);
+  const s=Math.max(1,cellW/sw); // fractional — canvas sized to exact cell width
+  const sDisp=Math.floor(s);
+  document.getElementById('scale-info').textContent=`1 pt = ${sDisp} px`;
   return s;
 }
 
@@ -429,7 +431,7 @@ function renderStep(idx){
   const s=steps[idx]; stepIdx=idx;
   SCALE=computeScale();
   const spr=Math.max(1,parseInt(document.getElementById('spr').value)||2);
-  const W=sheetW*SCALE, H=sheetH*SCALE;
+  const W=Math.round(sheetW*SCALE), H=Math.round(sheetH*SCALE);
 
   // Sheets
   const wrap=document.getElementById('sheets-wrap');
