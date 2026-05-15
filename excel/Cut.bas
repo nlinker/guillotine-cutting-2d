@@ -746,10 +746,10 @@ Public Sub SendToAutoCAD()
     For si = 0 To nSheets - 1
         Dim sxOff As Long: sxOff = si * (shH + SHEET_GAP_ACAD)
         Dim sPts(0 To 7) As Double
-        sPts(0) = sxOff:        sPts(1) = 0
-        sPts(2) = sxOff + shH:  sPts(3) = 0
-        sPts(4) = sxOff + shH:  sPts(5) = shW
-        sPts(6) = sxOff:        sPts(7) = shW
+        sPts(0) = sxOff:                  sPts(1) = 0
+        sPts(2) = sxOff + shH + kerf:     sPts(3) = 0
+        sPts(4) = sxOff + shH + kerf:     sPts(5) = shW + kerf
+        sPts(6) = sxOff:                  sPts(7) = shW + kerf
         Dim shRect As Object
         Set shRect = ms.AddLightWeightPolyline(sPts)
         shRect.Closed = True
