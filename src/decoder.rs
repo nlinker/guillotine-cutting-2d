@@ -70,11 +70,12 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
-    placements.sort_unstable_by_key(|p| (p.sheet_idx, p.x, p.y));
-    Solution {
+    let mut sol = Solution {
         placements,
         leftovers: free.into_vec(),
-    }
+    };
+    sol.sort_placements(problem);
+    sol
 }
 
 fn open_new_sheet(
@@ -255,12 +256,13 @@ mod tests {
         assert_eq!(sol.sheets_used(), 2);
         let p = &sol.placements;
         assert_eq!(p.len(), 5);
-        // sorted by (sheet_idx, x, y)
-        assert_eq!((p[0].sheet_idx, p[0].x, p[0].y, p[0].rotated), (0, 0, 0, false)); // P0
-        assert_eq!((p[1].sheet_idx, p[1].x, p[1].y, p[1].rotated), (0, 125, 0, false)); // P1
-        assert_eq!((p[2].sheet_idx, p[2].x, p[2].y, p[2].rotated), (0, 125, 85, true)); // P4r
-        assert_eq!((p[3].sheet_idx, p[3].x, p[3].y, p[3].rotated), (1, 0, 0, false)); // P2
-        assert_eq!((p[4].sheet_idx, p[4].x, p[4].y, p[4].rotated), (1, 0, 65, true)); // P3r
+        let tuple = |pl: &Placement| (pl.sheet_idx, pl.x, pl.y, pl.rotated);
+        // sorted by (sheet_idx, pw, ph)
+        assert_eq!(tuple(&p[0]), (0, 125, 0, false)); // P1  pw=65 ph=85
+        assert_eq!(tuple(&p[1]), (0, 125, 85, true)); // P4r pw=75 ph=65
+        assert_eq!(tuple(&p[2]), (0, 0, 0, false));   // P0  pw=125 ph=85
+        assert_eq!(tuple(&p[3]), (1, 0, 65, true));   // P3r pw=105 ph=75
+        assert_eq!(tuple(&p[4]), (1, 0, 0, false));   // P2  pw=205 ph=65
     }
 
     #[test]
@@ -270,8 +272,10 @@ mod tests {
         let problem = expand_problem(&spec);
         let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
-        assert_eq!(sol_a.objective(&problem), (2, 9)); // staircase: 3×3 at (0,0) -> 9
-        assert_eq!(sol_b.objective(&problem), (2, 40)); // staircase: 10×4 at (0,0) -> 40
-        assert!(sol_a.objective(&problem) < sol_b.objective(&problem));
+        let obj_a = sol_a.objective(&problem);
+        let obj_b = sol_b.objective(&problem);
+        assert_eq!((obj_a.0, obj_a.1), (2, 9)); // staircase: 3×3 at (0,0) -> 9
+        assert_eq!((obj_b.0, obj_b.1), (2, 40)); // staircase: 10×4 at (0,0) -> 40
+        assert!(obj_a < obj_b);
     }
 }
