@@ -612,6 +612,18 @@ End Sub
 
 '' == AutoCAD export ==========================================================
 
+' Returns a running AutoCAD instance, or Nothing if AutoCAD is not open.
+' Tries the generic ProgID first (AutoCAD 2002), then the versioned one for 2015.
+Private Function GetAcadInstance() As Object
+    Dim acad As Object
+    On Error Resume Next
+    Set acad = GetObject(, "AutoCAD.Application")     ' AutoCAD 2002
+    If acad Is Nothing Then _
+        Set acad = GetObject(, "AutoCAD.Application.20")  ' AutoCAD 2015
+    On Error GoTo 0
+    Set GetAcadInstance = acad
+End Function
+
 ' Returns the name of a text style using Tahoma TTF (creates it if absent).
 ' Tahoma is a TrueType font with full Unicode/Cyrillic glyph support.
 ' CharSet 204 = RUSSIAN_CHARSET - tells GDI to use the Cyrillic code page for hinting.
@@ -720,9 +732,7 @@ Public Sub SendToAutoCAD()
     End If
 
     Dim acad As Object, doc As Object
-    On Error Resume Next
-    Set acad = GetObject(, "AutoCAD.Application")
-    On Error GoTo 0
+    Set acad = GetAcadInstance()
     If acad Is Nothing Then
         MsgBox "AutoCAD not running. Open a drawing first.", vbCritical: Exit Sub
     End If
@@ -761,7 +771,6 @@ Public Sub SendToAutoCAD()
         If ws.Cells(r, rCol).Value = "" And ws.Cells(r, rCol + 1).Value = "" Then Exit For
 
         Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)       ' sheet index (0-based)
-        Dim labelName As String: labelName = CStr(ws.Cells(r, rCol + 1).Value)  ' piece name
         Dim px As Long: px = CLng(ws.Cells(r, rCol + 2).Value)          ' X from sheet left (Y-down coords)
         Dim py As Long: py = CLng(ws.Cells(r, rCol + 3).Value)          ' Y from sheet top  (Y-down coords)
         Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 4).Value)          ' placed width
@@ -789,7 +798,10 @@ Public Sub SendToAutoCAD()
         Set rectObj = blkDef.AddLightWeightPolyline(rPts)
         rectObj.Closed = True
 
-        Dim labelDim As String: labelDim = CStr(pw) & "x" & CStr(ph)
+        ' AutoCAD 2002 (version 15.x) cannot render the Unicode × (cross) sign - use plain "x".
+        Dim dimSep    As String: dimSep    = IIf(Val(acad.Version) < 16, "x", ChrW(215))
+        Dim labelDim  As String: labelDim  = CStr(pw) & dimSep & CStr(ph)
+        Dim labelName As String: labelName = CStr(ws.Cells(r, rCol + 1).Value)
         AddPieceLabel blkDef, bw, bh, labelDim, labelName, cutStyle, labelPct
 
         ' Insert point = bottom-left of block in drawing space
