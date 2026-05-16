@@ -25,6 +25,9 @@ Private Const SHEET_W_CELL     As String = "H1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "I1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "I2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "I3"  ' edge margin (mm)
+Private Const LABEL_PCT_CELL   As String = "I4"  ' label size as % of minor block dimension (default 8)
+Private Const LABEL_TXT_MIN    As Long   = 80    ' label text height lower bound at labelPct=100 (scales with labelPct)
+Private Const LABEL_TXT_MAX    As Long   = 100   ' label text height upper bound at labelPct=100 (scales with labelPct)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -625,14 +628,87 @@ Private Function EnsureCutTextStyle(doc As Object) As String
     EnsureCutTextStyle = STYLE_NAME
 End Function
 
+' Adds one or two centered AddText objects to blkDef labelling the piece.
+' Two lines (labelDim on top/right, labelName on bottom/left) when minSide >= 100;
+' single line ("labelDim labelName") otherwise.
+Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
+                          labelDim As String, labelName As String, _
+                          cutStyle As String, labelPct As Double)
+    Dim minSide   As Long:    minSide   = IIf(bw < bh, bw, bh)
+    Dim maxSide   As Long:    maxSide   = IIf(bw < bh, bh, bw)
+    Dim rotated90 As Boolean: rotated90 = (bw < bh)
+
+    Dim useTwoLines As Boolean: useTwoLines = (Len(labelName) > 0) And (minSide >= 100)
+
+    Dim lbl1 As String, lbl2 As String, nChars As Long
+    If useTwoLines Then
+        lbl1 = labelDim
+        lbl2 = "(" & labelName & ")"
+        nChars = IIf(Len(lbl1) > Len(lbl2), Len(lbl1), Len(lbl2))
+    ElseIf Len(labelName) > 0 Then
+        lbl1 = labelDim & " (" & labelName & ")"
+        nChars = Len(lbl1)
+    Else
+        lbl1 = labelDim
+        nChars = Len(lbl1)
+    End If
+
+    ' Text height: minSide * labelPct/2, so I4=100 gives minSide*50%.
+    ' Text is allowed to overflow the block boundary — readability beats containment.
+    Dim txtH As Double
+    txtH = CDbl(minSide) * labelPct / 2
+
+    ' Clamp bounds scale with labelPct: at I4=100 -> [80,100]; at I4=50 -> [40,50]; at I4=200 -> [160,200].
+    Dim txtMin As Double: txtMin = LABEL_TXT_MIN * labelPct
+    Dim txtMax As Double: txtMax = LABEL_TXT_MAX * labelPct
+    If txtH < txtMin Then txtH = txtMin
+    If txtH > txtMax Then txtH = txtMax
+
+    Dim cx As Double: cx = CDbl(bw) / 2
+    Dim cy As Double: cy = CDbl(bh) / 2
+    Dim off As Double: off = txtH * 0.65
+
+    Dim pt1(0 To 2) As Double
+    Dim pt2(0 To 2) As Double
+    pt1(2) = 0: pt2(2) = 0
+    If useTwoLines Then
+        If rotated90 Then
+            pt1(0) = cx - off: pt1(1) = cy
+            pt2(0) = cx + off: pt2(1) = cy
+        Else
+            pt1(0) = cx: pt1(1) = cy + off
+            pt2(0) = cx: pt2(1) = cy - off
+        End If
+    Else
+        pt1(0) = cx: pt1(1) = cy
+    End If
+
+    Dim t As Object
+    Set t = blkDef.AddText(lbl1, pt1, txtH)
+    t.StyleName = cutStyle: t.Alignment = 4: t.TextAlignmentPoint = pt1
+    If rotated90 Then t.Rotation = 1.5707963265
+    Set t = Nothing
+
+    If useTwoLines Then
+        Set t = blkDef.AddText(lbl2, pt2, txtH)
+        t.StyleName = cutStyle: t.Alignment = 4: t.TextAlignmentPoint = pt2
+        If rotated90 Then t.Rotation = 1.5707963265
+        Set t = Nothing
+    End If
+End Sub
+
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
 
-    Dim shW    As Long: shW    = ws.Range(SHEET_W_CELL).Value
-    Dim shH    As Long: shH    = ws.Range(SHEET_H_CELL).Value
-    Dim kerf   As Long: kerf   = ws.Range(KERF_CELL).Value
-    Dim margin As Long: margin = ws.Range(MARGIN_CELL).Value
+    Dim shW      As Long:   shW      = ws.Range(SHEET_W_CELL).Value
+    Dim shH      As Long:   shH      = ws.Range(SHEET_H_CELL).Value
+    Dim kerf     As Long:   kerf     = ws.Range(KERF_CELL).Value
+    Dim margin   As Long:   margin   = ws.Range(MARGIN_CELL).Value
+    Dim labelPct As Double: labelPct = 0.08
+    If ws.Range(LABEL_PCT_CELL).Value <> "" Then
+        labelPct = CDbl(ws.Range(LABEL_PCT_CELL).Value) / 100#
+    End If
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
     End If
@@ -685,7 +761,7 @@ Public Sub SendToAutoCAD()
         If ws.Cells(r, rCol).Value = "" And ws.Cells(r, rCol + 1).Value = "" Then Exit For
 
         Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)       ' sheet index (0-based)
-        Dim pName As String: pName = CStr(ws.Cells(r, rCol + 1).Value)  ' piece name
+        Dim labelName As String: labelName = CStr(ws.Cells(r, rCol + 1).Value)  ' piece name
         Dim px As Long: px = CLng(ws.Cells(r, rCol + 2).Value)          ' X from sheet left (Y-down coords)
         Dim py As Long: py = CLng(ws.Cells(r, rCol + 3).Value)          ' Y from sheet top  (Y-down coords)
         Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 4).Value)          ' placed width
@@ -713,20 +789,8 @@ Public Sub SendToAutoCAD()
         Set rectObj = blkDef.AddLightWeightPolyline(rPts)
         rectObj.Closed = True
 
-        ' Label: "width×height [name]" — shows original piece dims, not kerf-expanded
-        Dim dimStr As String: dimStr = CStr(pw) & ChrW(215) & CStr(ph)
-        Dim lbl As String
-        If Len(pName) > 0 Then lbl = dimStr & " (" & pName & ")" Else lbl = dimStr
-        Dim txtPt(0 To 2) As Double
-        txtPt(0) = CDbl(bw) / 2
-        txtPt(1) = CDbl(bh) / 2
-        txtPt(2) = 0
-        Dim txtObj As Object
-        Set txtObj = blkDef.AddText(lbl, txtPt, 30)
-        txtObj.StyleName = cutStyle
-        txtObj.Alignment = 4  ' acAlignmentMiddleCenter
-        txtObj.TextAlignmentPoint = txtPt
-        If bw < bh Then txtObj.Rotation = 1.5707963265  ' 90° when block is wider than tall
+        Dim labelDim As String: labelDim = CStr(pw) & "x" & CStr(ph)
+        AddPieceLabel blkDef, bw, bh, labelDim, labelName, cutStyle, labelPct
 
         ' Insert point = bottom-left of block in drawing space
         ' acad_x = xOff + py,  acad_y = shW - px - pw
@@ -736,7 +800,7 @@ Public Sub SendToAutoCAD()
         insPt(2) = 0
         ms.InsertBlock insPt, bName, 1, 1, 1, 0
 
-        Set rectObj = Nothing: Set txtObj = Nothing: Set blkDef = Nothing
+        Set rectObj = Nothing: Set blkDef = Nothing
         pIdx = pIdx + 1
     Next r
 
