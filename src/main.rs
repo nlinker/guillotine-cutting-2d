@@ -69,6 +69,9 @@ enum Command {
         /// Throttle sink: send at most one progress per N ms; 0 = no throttle
         #[arg(long, default_value_t = 1000)]
         sink_interval: u64,
+        /// Render the best solution as SVG to stdout instead of JSON
+        #[arg(long, default_value_t = false)]
+        render: bool,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -109,11 +112,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             progress,
             sink,
             sink_interval,
+            render,
         } => {
             let cfg = ga_config(gens, pop, elite, k);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
-            run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
+            if render {
+                run_calc_render(&spec, &cfg, seed, n_threads, progress)?;
+            } else {
+                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
+            }
         }
         Command::Serve { port } => web::run_serve(port)?,
         Command::Render {
@@ -325,6 +333,35 @@ pub(crate) fn run_with_sink(
                     pieces: spec.piespecs.clone(),
                 })
                 .ok();
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_calc_render(
+    spec: &ProblemSpec,
+    cfg: &GaConfig,
+    base_seed: u64,
+    n_threads: usize,
+    progress_interval: usize,
+) -> Result<(), Box<dyn Error>> {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
+    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
+    let spec = Arc::new(spec.clone());
+    let cfg = Arc::new(cfg.clone());
+    let t0 = Instant::now();
+    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval);
+    loop {
+        match handle.rx.blocking_recv() {
+            None => break,
+            Some(GaEvent::Progress(_)) => {}
+            Some(GaEvent::Done(results)) => {
+                eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
+                let (_, best) = &results[0];
+                let sol = decode_spec(&spec, &best.genome);
+                print!("{}", render_svg(&spec, &sol)?);
                 break;
             }
         }

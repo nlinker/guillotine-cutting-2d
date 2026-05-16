@@ -60,12 +60,17 @@ the GA finds good approximations instead.
 
 ## Usage
 
-- You can run it in the console to solve a problem, print the best solution
-  found in 5000 iterations of GA (`--gens 5000`) and then render it 
+- Solve and render in one step with `--render` (SVG written to stdout, progress to stderr):
+```
+cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 --render > out.svg
+firefox out.svg
+```
+
+- If you need the intermediate JSON (e.g. to inspect or re-render), use two commands:
 ```
 cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --gens 5000 > out.json
 cargo run --release -- render --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
-firefox out.svg  # open the svg file
+firefox out.svg
 ```
 
 - Alternatively, you can pass a JSON file
