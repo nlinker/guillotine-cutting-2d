@@ -141,6 +141,7 @@ fn main() {
             flip_p: 0.05,
             point_p: 0.10,
             point_delta: (1, 3),
+            inverse_p: 0.05,
         },
     }];
 

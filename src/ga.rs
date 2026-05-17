@@ -60,13 +60,19 @@ pub struct GaConfig {
     /// A value is drawn uniformly from `lo..=hi` and added or subtracted (wrapping).
     /// Default: `(1, 3)`.
     pub point_delta: (u32, u32),
+
+    /// Per-gene probability of flipping the `inverse` flag.
+    /// When flipped, the SLAS split direction is reversed for that piece, letting the GA
+    /// represent cut trees that the default `lw <= lh` heuristic cannot.
+    /// Typical value: 0.02-0.05.
+    pub inverse_p: f64,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -77,6 +83,7 @@ impl fmt::Display for GaConfig {
             self.point_p,
             self.point_delta.0,
             self.point_delta.1,
+            self.inverse_p,
         )
     }
 }
@@ -214,6 +221,7 @@ fn run_ga_inner<R: Rng>(
                 config.flip_p,
                 config.point_p,
                 config.point_delta,
+                config.inverse_p,
             );
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
@@ -229,6 +237,7 @@ fn run_ga_inner<R: Rng>(
                     config.flip_p,
                     config.point_p,
                     config.point_delta,
+                    config.inverse_p,
                 );
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
@@ -438,6 +447,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 /// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
 /// - with probability `flip_p`: flip `rotate`
 /// - with probability `point_p`: nudge `point_selector` by ±`point_delta` wrapping
+/// - with probability `inverse_p`: flip `inverse` (reverses SLAS split direction)
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     rng: &mut R,
@@ -445,6 +455,7 @@ pub fn mutate<R: Rng>(
     flip_p: f64,
     point_p: f64,
     point_delta: (u32, u32),
+    inverse_p: f64,
 ) {
     let n = genome.len();
     if n < 2 {
@@ -466,6 +477,9 @@ pub fn mutate<R: Rng>(
             } else {
                 genome[i].point_selector.wrapping_sub(delta)
             };
+        }
+        if rng_01(rng) < inverse_p {
+            genome[i].inverse = !genome[i].inverse;
         }
     }
 }
@@ -522,6 +536,7 @@ fn random_genome<R: Rng>(n: usize, rng: &mut R) -> Genome {
             piece_idx,
             rotate: rng.next_u64() & 1 != 0,
             point_selector: rng.next_u64() as u32,
+            inverse: false,
         })
         .collect()
 }
@@ -544,6 +559,7 @@ mod tests {
             piece_idx,
             rotate: false,
             point_selector: 0,
+            inverse: false,
         }
     }
 
@@ -568,6 +584,7 @@ mod tests {
             1.0,
             1.0,
             (1, 3),
+            1.0,
         );
         assert_eq!(sorted_ids(&genome), (0..n).collect::<Vec<_>>());
     }
@@ -583,6 +600,7 @@ mod tests {
             0.0,
             0.0,
             (1, 3),
+            0.0,
         );
         assert_eq!(genome, orig);
     }
@@ -598,8 +616,25 @@ mod tests {
             1.0,
             0.0,
             (1, 3),
+            0.0,
         );
         assert!(genome.iter().all(|g| g.rotate));
+    }
+
+    #[test]
+    fn mutate_flips_all_inverse() {
+        let n = 4;
+        let mut genome: Genome = (0..n).map(g).collect();
+        mutate(
+            &mut genome,
+            &mut Xoshiro256StarStar::seed_from_u64(3),
+            0.0,
+            0.0,
+            0.0,
+            (1, 3),
+            1.0,
+        );
+        assert!(genome.iter().all(|g| g.inverse));
     }
 
     #[test]
@@ -614,6 +649,7 @@ mod tests {
             0.2,
             0.2,
             (1, 3),
+            0.1,
         );
         mutate(
             &mut g2,
@@ -622,6 +658,7 @@ mod tests {
             0.2,
             0.2,
             (1, 3),
+            0.1,
         );
         assert_eq!(g1, g2);
     }
@@ -675,6 +712,7 @@ mod tests {
             flip_p: 0.05,
             point_p: 0.05,
             point_delta: (1, 3),
+            inverse_p: 0.05,
         }
     }
 

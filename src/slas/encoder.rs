@@ -23,31 +23,51 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
 
     let mut free: FreeList = smallvec![sheet_rect(problem, 0)];
     let mut sheets_open = 1usize;
+    let mut genome = Vec::with_capacity(order.len());
 
-    order
-        .iter()
-        .map(|&pl_idx| {
-            let pl = &solution.placements[pl_idx];
-            let piece = &problem.pieces[pl.piece_idx];
+    for (i, &pl_idx) in order.iter().enumerate() {
+        let pl = &solution.placements[pl_idx];
+        let piece = &problem.pieces[pl.piece_idx];
 
-            let point_selector =
-                preferred_free_rect(&free, pl.sheet_idx, pl.x, pl.y, piece, pl.rotated) as u32;
+        let point_selector =
+            preferred_free_rect(&free, pl.sheet_idx, pl.x, pl.y, piece, pl.rotated) as u32;
 
-            let found = find_placement(&free, piece, pl.rotated, point_selector)
-                .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, pl.rotated));
+        let found = find_placement(&free, piece, pl.rotated, point_selector)
+            .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, pl.rotated));
 
-            if let Some((idx, pw, ph, _)) = found {
-                let fr = free.remove(idx);
-                free.extend(guillotine_split(&fr, pw, ph));
-            }
+        if let Some((idx, pw, ph, _)) = found {
+            let fr = free.remove(idx);
 
-            Gene {
-                piece_idx: pl.piece_idx,
-                rotate: pl.rotated,
-                point_selector,
-            }
-        })
-        .collect()
+            let inverse = if let Some(&next_pl_idx) = order.get(i + 1) {
+                let next_pl = &solution.placements[next_pl_idx];
+                let next_piece = &problem.pieces[next_pl.piece_idx];
+                let lw = fr.w - pw;
+                let lh = fr.h - ph;
+                if lw > 0 && lh > 0 {
+                    let split_a = guillotine_split(&fr, pw, ph, false);
+                    let split_b = guillotine_split(&fr, pw, ph, true);
+                    let origin_in = |split: &SmallVec<[FreeRect; 2]>| {
+                        free.iter().chain(split.iter()).any(|r| {
+                            r.sheet_idx == next_pl.sheet_idx
+                                && r.x == next_pl.x
+                                && r.y == next_pl.y
+                                && fits_in(r, next_piece, next_pl.rotated).is_some()
+                        })
+                    };
+                    !origin_in(&split_a) && origin_in(&split_b)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            free.extend(guillotine_split(&fr, pw, ph, inverse));
+            genome.push(Gene { piece_idx: pl.piece_idx, rotate: pl.rotated, point_selector, inverse });
+        }
+    }
+
+    genome
 }
 
 /// Encode a [`SolutionSpec`] as a [`Genome`] — spec-level counterpart of [`encode`].
@@ -93,7 +113,7 @@ mod tests {
     use crate::slas::decoder::decode;
 
     fn g(piece_idx: usize, rotate: bool, ps: u32) -> Gene {
-        Gene { piece_idx, rotate, point_selector: ps }
+        Gene { piece_idx, rotate, point_selector: ps, inverse: false }
     }
 
     #[test]

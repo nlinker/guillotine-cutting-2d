@@ -13,11 +13,14 @@ type FreePair = SmallVec<[FreeRect; 2]>;
 /// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
 /// `point_selector`: selects the starting free rect as `free[point_selector % |free|]`;
 /// scanning from a variable offset gives the GA freedom to steer pieces to different regions.
+/// `inverse`: when true, flips the SLAS split direction — `lw <= lh` picks vertical instead
+/// of horizontal. Lets the GA represent cut trees that SLAS cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gene {
     pub piece_idx: usize,
     pub rotate: bool,
     pub point_selector: u32,
+    pub inverse: bool,
 }
 
 /// Ordered genome - one gene per piece, defining placement order, rotation
@@ -61,7 +64,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
                 y: fr.y,
                 rotated,
             });
-            free.extend(guillotine_split(&fr, pw, ph));
+            free.extend(guillotine_split(&fr, pw, ph, gene.inverse));
         } else {
             debug_assert!(
                 false,
@@ -142,13 +145,15 @@ pub(crate) fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Opti
 /// Uses the Shorter Leftover Axis (SLAS) heuristic: if the right leftover is
 /// narrower than the bottom leftover, the right child gets the piece's height
 /// and the bottom child spans the full rect width (and vice versa).
+/// When `inverse` is true the direction is flipped: `lw <= lh` picks vertical instead.
 /// Piece dimensions already include kerf (baked in by `expand_problem`), so splits are flush.
-pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32) -> FreePair {
+pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, inverse: bool) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
     let lw = fr.w - pw;
     let lh = fr.h - ph;
     let mut out = SmallVec::new();
-    if lw <= lh {
+    // equivalent to (!inverse && lw <= lh) || (inverse && lw > lh)
+    if (lw <= lh) != inverse {
         // right child: narrow (piece height); bottom child: full width
         // ┌──────────┬──────────┐
         // │  piece   │  right   │
@@ -226,6 +231,7 @@ mod tests {
             piece_idx: piece_id,
             rotate,
             point_selector,
+            inverse: false,
         }
     }
 

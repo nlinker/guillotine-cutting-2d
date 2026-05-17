@@ -17,7 +17,7 @@ use cutting::{
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
-const PROBLEM: &str = "2600x1800F:3:400x400-6,495x495-6,270x320-10,150x450-17r";
+const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
 /// Ideal: 2 sheets, 1×400×400 on last sheet.
@@ -94,6 +94,7 @@ fn cfg(
         flip_p,
         point_p,
         point_delta: (1, 3),
+        inverse_p: 0.05,
     }
 }
 

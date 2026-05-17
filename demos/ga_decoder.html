@@ -155,6 +155,9 @@
       <div class="leg"><div class="swatch" style="background:#1D9E7555;border:1.5px solid #1D9E75"></div>Placed piece</div>
       <div class="leg"><div class="swatch" style="background:#E24B4A33;border:1.5px dashed #E24B4A"></div>Does not fit</div>
     </div>
+    <div class="legend" style="margin-top:8px;font-size:10px;color:#888780">
+      Gene card: ↻ rotate &nbsp; <span style="color:#D85A30">⊻</span> inverse split
+    </div>
   </div>
 </div>
 
@@ -209,6 +212,7 @@ function randomProblem() {
     piece_idx: i,
     rotate: Math.random() > 0.5,
     point_selector: Math.floor(Math.random() * 4),
+    inverse: false,
   }));
   renderGenome();
   initDecoder();
@@ -243,22 +247,22 @@ function problemGlf15() {
     ],
   };
   genome = [
-    {piece_idx:2,  rotate:false, point_selector:0},
-    {piece_idx:0,  rotate:false, point_selector:0},
-    {piece_idx:1,  rotate:false, point_selector:1},
-    {piece_idx:5,  rotate:true,  point_selector:1},
-    {piece_idx:6,  rotate:true,  point_selector:2},
-    {piece_idx:7,  rotate:false,  point_selector:1},
-    {piece_idx:8,  rotate:false, point_selector:0},
-    {piece_idx:9,  rotate:false, point_selector:0},
-    {piece_idx:10, rotate:false, point_selector:0},
-    {piece_idx:4,  rotate:false, point_selector:1},
-    {piece_idx:3,  rotate:false, point_selector:0},
-    {piece_idx:11, rotate:true,  point_selector:2},
-    {piece_idx:12, rotate:true,  point_selector:7},
-    {piece_idx:13, rotate:true,  point_selector:7},
-    {piece_idx:14, rotate:true,  point_selector:10},
-    {piece_idx:15, rotate:true,  point_selector:10},
+    {piece_idx:2,  rotate:false, point_selector:0,  inverse:true},
+    {piece_idx:0,  rotate:false, point_selector:0,  inverse:false},
+    {piece_idx:1,  rotate:false, point_selector:1,  inverse:false},
+    {piece_idx:5,  rotate:false, point_selector:1,  inverse:false},
+    {piece_idx:6,  rotate:true,  point_selector:1,  inverse:false},
+    {piece_idx:7,  rotate:true,  point_selector:2,  inverse:false},
+    {piece_idx:8,  rotate:false, point_selector:0,  inverse:false},
+    {piece_idx:9,  rotate:false, point_selector:0,  inverse:false},
+    {piece_idx:10, rotate:false, point_selector:0,  inverse:false},
+    {piece_idx:4,  rotate:false, point_selector:1,  inverse:false},
+    {piece_idx:3,  rotate:false, point_selector:0,  inverse:false},
+    {piece_idx:11, rotate:true,  point_selector:2,  inverse:false},
+    {piece_idx:12, rotate:true,  point_selector:7,  inverse:false},
+    {piece_idx:13, rotate:true,  point_selector:7,  inverse:false},
+    {piece_idx:14, rotate:true,  point_selector:10, inverse:false},
+    {piece_idx:15, rotate:true,  point_selector:10, inverse:false},
   ];
   renderGenome();
   initDecoder();
@@ -323,18 +327,23 @@ function buildSteps(problem, genome) {
     const placement = {sheet_idx:fr.sheet_idx, piece_id:piece.id, x:fr.x, y:fr.y,
       pw:found.pw, ph:found.ph, rotated:found.rotated, piece_idx:gene.piece_idx};
     free.splice(found.idx, 1);
-    const splits = guillotineSplit(fr, found.pw, found.ph, kerf);
+    const inv = !!gene.inverse;
+    const splits = guillotineSplit(fr, found.pw, found.ph, kerf, inv);
     free.push(...splits);
     placements.push(placement);
 
     const lw = fr.width - found.pw, lh = fr.height - found.ph;
+    const slasH = lw <= lh;
+    const actualH = slasH !== inv;
+    const splitText = inv
+      ? `<span class="tag t-split">Guillotine</span>Piece placed. SLAS would pick <strong>${slasH?'horizontal':'vertical'}</strong>, <strong>inverse=true</strong> &rarr; <strong>${actualH?'horizontal':'vertical'}</strong> cut. <strong>${splits.length}</strong> new free rect(s).`
+      : `<span class="tag t-split">Guillotine</span>Piece placed. SLAS: ${
+          slasH
+            ? `right leftover (${lw}) &le; bottom (${lh}) &rarr; horizontal cut`
+            : `bottom leftover (${lh}) &lt; right (${lw}) &rarr; vertical cut`
+        }. <strong>${splits.length}</strong> new free rect(s).`;
     steps.push({type:'split', free:clone(free), placements:clone(placements),
-      geneIdx:gi, lastPlacement:placement, newSplits:splits,
-      text:`<span class="tag t-split">Guillotine</span>Piece placed. SLAS: ${
-        lw <= lh
-          ? `right leftover (${lw}) &le; bottom (${lh}) &rarr; horizontal cut`
-          : `bottom leftover (${lh}) &lt; right (${lw}) &rarr; vertical cut`
-      }. <strong>${splits.length}</strong> new free rect(s).`});
+      geneIdx:gi, lastPlacement:placement, newSplits:splits, text:splitText});
   }
 
   const totalArea = problem.sheet.width * problem.sheet.height * sheets_open;
@@ -356,9 +365,9 @@ function fitsIn(fr, piece, prefer_rotate) {
   return null;
 }
 
-function guillotineSplit(fr, pw, ph, kerf) {
+function guillotineSplit(fr, pw, ph, kerf, inverse) {
   const lw=fr.width-pw, lh=fr.height-ph, out=[];
-  if (lw<=lh) {
+  if ((lw<=lh) !== !!inverse) {
     if (lw>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x+pw+kerf,y:fr.y,        width:lw-kerf,   height:ph});
     if (lh>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x,        y:fr.y+ph+kerf, width:fr.width, height:lh-kerf});
   } else {
@@ -472,7 +481,7 @@ function renderGenome() {
   genome.forEach((gene,gi)=>{
     const piece=problem.pieces[gene.piece_idx], p=pal(gene.piece_idx);
     const card=document.createElement('div'); card.className='gene-card'; card.style.borderColor=p.stroke; card.id='gc-'+gi;
-    card.innerHTML=`<div class="gid" style="color:${p.text}">${piece.width}\u00d7${piece.height}</div><div class="ginfo">${gene.rotate?'\u21bb ':' '}ps=${gene.point_selector}</div>`;
+    card.innerHTML=`<div class="gid" style="color:${p.text}">${piece.width}\u00d7${piece.height}</div><div class="ginfo">${gene.rotate?'\u21bb ':' '}ps=${gene.point_selector}${gene.inverse?' <span style="color:#D85A30">\u22bb</span>':''}</div>`;
     row.appendChild(card);
   });
 }
@@ -510,7 +519,7 @@ document.getElementById('sheets-per-row').addEventListener('input', ()=>{
 
 // Init — generate once, then decode
 setTimeout(()=>{
-  randomProblem();
+  problemGlf15();
   initDecoder();
 }, 50);
 </script>
