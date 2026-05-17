@@ -11,7 +11,7 @@ use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
-    decoder::{Gene, Genome, decode},
+    slas::decoder::{Gene, Genome, decode},
     expand::expand_problem,
     model::{Objective, Problem, ProblemSpec},
 };

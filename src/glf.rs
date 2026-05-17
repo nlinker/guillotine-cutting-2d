@@ -17,8 +17,8 @@ pub struct GlfType {
 /// For example, for `[(1,4),(2,2),(4,1)]` the f graph is
 /// ```none
 ///   h
-/// ∞ ↑
-///   │
+///   ↑
+///   │ ∞
 /// 4 │    ●────○
 /// 3 │    │
 /// 2 │    │    ●─────────○
@@ -109,7 +109,7 @@ pub fn v_cut(f1: &StepFn, f2: &StepFn) -> StepFn {
             result.push((w1 + w2, h));
         }
     }
-    // result is in order of decreasing h → need to re-sort by x ascending
+    // result is in order of decreasing h -> need to re-sort by x ascending
     // (w values may not be monotone before simplification)
     result.sort_unstable_by_key(|&(x, _)| x);
     simplify(&mut result);
@@ -580,7 +580,7 @@ mod tests {
         let fh = h_cut(&fc, &fa);
         let fv = v_cut(&fc, &fa);
         let combined = min_fn(&fh, &fv);
-        // x ∈ [8,10): H wins -> 6; x >= 10: V wins → 3
+        // x ∈ [8,10): H wins -> 6; x >= 10: V wins -> 3
         assert_eq!(combined, vec![(8, 6), (10, 3)]);
     }
 

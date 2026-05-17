@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 
-pub mod decoder;
 pub mod expand;
+pub mod slas;
 pub mod ga;
 pub mod generator;
 pub mod glf;

@@ -125,7 +125,7 @@
     <span class="scale-info" id="scale-info">1 unit = 32 px</span>
   </div>
   <button onclick="randomProblem()">&#x1F3B2; Random</button>
-  <button class="primary" onclick="initDecoder()">&#x25B6; Decode</button>
+  <button onclick="problemGlf15()">GLF 15</button>
 </div>
 
 <div id="genome-area">
@@ -211,6 +211,57 @@ function randomProblem() {
     point_selector: Math.floor(Math.random() * 4),
   }));
   renderGenome();
+  initDecoder();
+}
+
+// GLF exact solution for width=15, height=35, kerf=0 (from glf_sweep SPEC_STR)
+// genome produced by encode_spec for that solution
+function problemGlf15() {
+  document.getElementById('sw').value    = 15;
+  document.getElementById('sh').value    = 35;
+  document.getElementById('kerf').value  = 0;
+  problem = {
+    sheet: {width: 15, height: 35},
+    kerf: 0,
+    pieces: [
+      {id:0,  width:12, height:3,  can_rotate:false},
+      {id:1,  width:12, height:3,  can_rotate:false},
+      {id:2,  width:3,  height:12, can_rotate:false},
+      {id:3,  width:3,  height:12, can_rotate:false},
+      {id:4,  width:4,  height:8,  can_rotate:true},
+      {id:5,  width:4,  height:8,  can_rotate:true},
+      {id:6,  width:4,  height:8,  can_rotate:true},
+      {id:7,  width:4,  height:8,  can_rotate:true},
+      {id:8,  width:5,  height:7,  can_rotate:true},
+      {id:9,  width:5,  height:7,  can_rotate:true},
+      {id:10, width:5,  height:7,  can_rotate:true},
+      {id:11, width:5,  height:7,  can_rotate:true},
+      {id:12, width:4,  height:6,  can_rotate:true},
+      {id:13, width:4,  height:6,  can_rotate:true},
+      {id:14, width:4,  height:6,  can_rotate:true},
+      {id:15, width:4,  height:6,  can_rotate:true},
+    ],
+  };
+  genome = [
+    {piece_idx:2,  rotate:false, point_selector:0},
+    {piece_idx:0,  rotate:false, point_selector:0},
+    {piece_idx:1,  rotate:false, point_selector:1},
+    {piece_idx:5,  rotate:true,  point_selector:1},
+    {piece_idx:6,  rotate:true,  point_selector:2},
+    {piece_idx:7,  rotate:false,  point_selector:1},
+    {piece_idx:8,  rotate:false, point_selector:0},
+    {piece_idx:9,  rotate:false, point_selector:0},
+    {piece_idx:10, rotate:false, point_selector:0},
+    {piece_idx:4,  rotate:false, point_selector:1},
+    {piece_idx:3,  rotate:false, point_selector:0},
+    {piece_idx:11, rotate:true,  point_selector:2},
+    {piece_idx:12, rotate:true,  point_selector:7},
+    {piece_idx:13, rotate:true,  point_selector:7},
+    {piece_idx:14, rotate:true,  point_selector:10},
+    {piece_idx:15, rotate:true,  point_selector:10},
+  ];
+  renderGenome();
+  initDecoder();
 }
 
 // initDecoder: always replays the current problem/genome without re-rolling

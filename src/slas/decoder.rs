@@ -78,7 +78,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
     sol
 }
 
-fn open_new_sheet(
+pub(crate) fn open_new_sheet(
     free: &mut FreeList,
     sheets_open: &mut usize,
     problem: &Problem,
@@ -96,7 +96,7 @@ fn open_new_sheet(
 
 /// Scan `free` starting at `point_selector % |free|`, wrapping around.
 /// Returns `(index, placed_w, placed_h, rotated)` for the first fitting rect, or `None`.
-fn find_placement(
+pub(crate) fn find_placement(
     free: &[FreeRect],
     piece: &Piece,
     prefer_rotate: bool,
@@ -118,7 +118,7 @@ fn find_placement(
 
 /// Check whether `piece` fits in `fr`, trying preferred orientation first.
 /// Returns `(placed_width, placed_height, rotated)` or `None`.
-fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u32, bool)> {
+pub(crate) fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u32, bool)> {
     let try_rotated = prefer_rotate && piece.can_rotate;
     let (pw_a, ph_a) = if try_rotated {
         (piece.height, piece.width)
@@ -143,7 +143,7 @@ fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u3
 /// narrower than the bottom leftover, the right child gets the piece's height
 /// and the bottom child spans the full rect width (and vice versa).
 /// Piece dimensions already include kerf (baked in by `expand_problem`), so splits are flush.
-fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32) -> FreePair {
+pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
     let lw = fr.w - pw;
     let lh = fr.h - ph;
@@ -206,7 +206,7 @@ fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32) -> FreePair {
     out
 }
 
-fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
+pub(crate) fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
     FreeRect {
         sheet_idx,
         x: 0,
@@ -278,4 +278,5 @@ mod tests {
         assert_eq!((obj_b.0, obj_b.1), (2, 40)); // staircase: 10×4 at (0,0) -> 40
         assert!(obj_a < obj_b);
     }
+
 }

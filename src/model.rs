@@ -276,7 +276,7 @@ impl Solution {
             return 0;
         }
 
-        // Sort by y ascending → x descending (staircase top-to-bottom, widest first).
+        // Sort by y ascending -> x descending (staircase top-to-bottom, widest first).
         stairs.sort_unstable_by_key(|&(_, y)| y);
 
         let mut area = 0u64;

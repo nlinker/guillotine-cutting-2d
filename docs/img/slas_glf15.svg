@@ -1,0 +1,52 @@
+<svg width="756" height="1689" viewBox="0 0 756 1689" xmlns="http://www.w3.org/2000/svg" style="font-family:sans-serif">
+  <rect width="756" height="1689" fill="#f4f4f4"/>
+  <rect x="28" y="28" width="700" height="1633" fill="#f8f8f8" stroke="#3c3c3c" stroke-width="1"/>
+  <rect x="28.0" y="28.0" width="140.0" height="560.0" fill="#ADD8E6" stroke="#505050" stroke-width="0.5"/>
+  <text x="98" y="297" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#333">#1</text>
+  <text x="98" y="319" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">3×12</text>
+  <rect x="28.0" y="681.3" width="233.3" height="326.7" fill="#FFFF99" stroke="#505050" stroke-width="0.5"/>
+  <text x="145" y="827" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#333">#3</text>
+  <text x="145" y="863" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#555">5×7</text>
+  <rect x="28.0" y="1008.0" width="233.3" height="326.7" fill="#FFFF99" stroke="#505050" stroke-width="0.5"/>
+  <text x="145" y="1153" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#333">#3</text>
+  <text x="145" y="1189" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#555">5×7</text>
+  <rect x="28.0" y="1334.7" width="233.3" height="326.7" fill="#FFFF99" stroke="#505050" stroke-width="0.5"/>
+  <text x="145" y="1480" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#333">#3</text>
+  <text x="145" y="1516" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#555">5×7</text>
+  <rect x="168.0" y="28.0" width="560.0" height="140.0" fill="#FFB6C1" stroke="#505050" stroke-width="0.5"/>
+  <text x="448" y="87" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#333">#0</text>
+  <text x="448" y="109" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">12×3</text>
+  <rect x="168.0" y="168.0" width="560.0" height="140.0" fill="#FFB6C1" stroke="#505050" stroke-width="0.5"/>
+  <text x="448" y="227" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#333">#0</text>
+  <text x="448" y="249" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">12×3</text>
+  <rect x="168.0" y="308.0" width="186.7" height="373.3" fill="#90EE90" stroke="#505050" stroke-width="0.5"/>
+  <text x="261" y="480" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#2</text>
+  <text x="261" y="509" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">4×8</text>
+  <rect x="261.3" y="681.3" width="186.7" height="373.3" fill="#90EE90" stroke="#505050" stroke-width="0.5"/>
+  <text x="355" y="854" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#2</text>
+  <text x="355" y="882" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">4×8</text>
+  <rect x="261.3" y="1054.7" width="140.0" height="560.0" fill="#ADD8E6" stroke="#505050" stroke-width="0.5"/>
+  <text x="331" y="1324" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#333">#1</text>
+  <text x="331" y="1345" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">3×12</text>
+  <rect x="354.7" y="308.0" width="373.3" height="186.7" fill="#90EE90" stroke="#505050" stroke-width="0.5"/>
+  <text x="541" y="387" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#2</text>
+  <text x="541" y="416" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">8×4</text>
+  <rect x="354.7" y="494.7" width="373.3" height="186.7" fill="#90EE90" stroke="#505050" stroke-width="0.5"/>
+  <text x="541" y="574" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#2</text>
+  <text x="541" y="602" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">8×4</text>
+  <rect x="401.3" y="1054.7" width="326.7" height="233.3" fill="#FFFF99" stroke="#505050" stroke-width="0.5"/>
+  <text x="565" y="1153" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#333">#3</text>
+  <text x="565" y="1189" text-anchor="middle" dominant-baseline="middle" font-size="33" fill="#555">7×5</text>
+  <rect x="401.3" y="1288.0" width="280.0" height="186.7" fill="#FFC878" stroke="#505050" stroke-width="0.5"/>
+  <text x="541" y="1367" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#4</text>
+  <text x="541" y="1396" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">6×4</text>
+  <rect x="401.3" y="1474.7" width="280.0" height="186.7" fill="#FFC878" stroke="#505050" stroke-width="0.5"/>
+  <text x="541" y="1554" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#4</text>
+  <text x="541" y="1582" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">6×4</text>
+  <rect x="448.0" y="681.3" width="280.0" height="186.7" fill="#FFC878" stroke="#505050" stroke-width="0.5"/>
+  <text x="588" y="760" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#4</text>
+  <text x="588" y="789" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">6×4</text>
+  <rect x="448.0" y="868.0" width="280.0" height="186.7" fill="#FFC878" stroke="#505050" stroke-width="0.5"/>
+  <text x="588" y="947" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#333">#4</text>
+  <text x="588" y="976" text-anchor="middle" dominant-baseline="middle" font-size="26" fill="#555">6×4</text>
+</svg>

@@ -1,5 +1,7 @@
 /// Sweep all feasible widths for a fixed piece set, compute optimal placement via GLF
-/// cut-tree reconstruction, and render each solution to tmp/{width}.svg.
+/// cut-tree reconstruction, and render each solution to tmp/{width}_opt.svg.
+/// Also passes each GLF solution through the encoder -> decoder and renders the result
+/// to tmp/{width}_enc.svg.  index.html shows both side by side.
 ///
 /// Run with:  cargo run --example glf_sweep --release
 use std::{fs, path::Path};
@@ -9,6 +11,7 @@ use cutting::{
     model::{ProblemSpec, Sheet},
     parse::parse_problem,
     render::render_svg,
+    slas::{decoder::decode_spec, encoder::encode_spec},
 };
 
 const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
@@ -34,13 +37,22 @@ fn main() {
             sheet: Sheet { width, height },
             ..base_spec.clone()
         };
+
+        // GLF direct solution
         let svg = render_svg(&spec, &sol).expect("render failed");
-        let path = out_dir.join(format!("{width}.svg"));
-        fs::write(&path, &svg).expect("write failed");
+        fs::write(out_dir.join(format!("{width}_opt.svg")), &svg).expect("write failed");
+
+        // Encoder -> decoder round trip
+        let genome = encode_spec(&spec, &sol);
+        let sol_enc = decode_spec(&spec, &genome);
+        let svg_enc = render_svg(&spec, &sol_enc).expect("render_enc failed");
+        fs::write(out_dir.join(format!("{width}_enc.svg")), &svg_enc).expect("write enc failed");
+
         println!(
-            "width={width:3}  height={height:3}  area={:5}  pieces={}",
+            "width={width:3}  height={height:3}  area={:5}  glf_sheets={}  enc_sheets={}",
             width * height,
-            sol.placements.len()
+            sol.sheets_used(),
+            sol_enc.sheets_used(),
         );
         entries.push((width, height));
         written += 1;
@@ -48,8 +60,8 @@ fn main() {
 
     let html = build_index_html(&entries);
     fs::write(out_dir.join("index.html"), &html).expect("write index.html failed");
-    println!("\n{written} SVGs written to {}/", out_dir.display());
-    println!("wrapping index.html written to {}/\n", out_dir.display());
+    println!("\n{written} pairs written to {}/", out_dir.display());
+    println!("index.html written to {}/\n", out_dir.display());
 }
 
 fn build_index_html(entries: &[(u32, u32)]) -> String {
@@ -74,7 +86,12 @@ fn build_index_html(entries: &[(u32, u32)]) -> String {
   #controls {{ display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
                justify-content: center; flex-shrink: 0; }}
   #info {{ font-size: 1.05em; letter-spacing: .04em; flex-shrink: 0; }}
-  #frame {{ flex: 1 1 0; min-height: 0; max-width: 100%;
+  #frames {{ display: flex; gap: 16px; flex: 1 1 0; min-height: 0;
+             max-width: 100%; width: 100%; }}
+  .col {{ flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+          align-items: center; gap: 4px; }}
+  .col-label {{ font-size: .85em; color: #aaa; flex-shrink: 0; }}
+  .frame {{ flex: 1 1 0; min-height: 0; max-width: 100%;
             object-fit: contain; background: #fff; border-radius: 6px; }}
   button {{ padding: 4px 14px; border-radius: 4px; border: none; background: #444;
             color: #eee; cursor: pointer; font-size: .95em; }}
@@ -94,19 +111,30 @@ fn build_index_html(entries: &[(u32, u32)]) -> String {
     <span id="speed-val">1000</span>&nbsp;ms</label>
 </div>
 <div id="info">—</div>
-<img id="frame" alt="layout">
+<div id="frames">
+  <div class="col">
+    <span class="col-label">GLF (exact)</span>
+    <img id="frame-glf" class="frame" alt="GLF">
+  </div>
+  <div class="col">
+    <span class="col-label">Encode &#8594; Decode</span>
+    <img id="frame-enc" class="frame" alt="Enc&#8594;Dec">
+  </div>
+</div>
 <script>
 const FILES = [{files_js}];
-let idx = 0, interval = 1000, timer = null, paused = false;
-const img   = document.getElementById('frame');
-const info  = document.getElementById('info');
-const btn   = document.getElementById('pause');
-const spIn  = document.getElementById('speed');
-const spVal = document.getElementById('speed-val');
+let idx = 0, interval = 1000, timer = null, paused = true;
+const imgGlf = document.getElementById('frame-glf');
+const imgEnc = document.getElementById('frame-enc');
+const info   = document.getElementById('info');
+const btn    = document.getElementById('pause');
+const spIn   = document.getElementById('speed');
+const spVal  = document.getElementById('speed-val');
 
 function show(i) {{
   const [w, h] = FILES[i];
-  img.src = w + '.svg';
+  imgGlf.src = w + '_opt.svg';
+  imgEnc.src = w + '_enc.svg';
   info.textContent = `width=${{w}}  height=${{h}}  area=${{w*h}}  (${{i+1}}/${{FILES.length}})`;
 }}
 function stepPrev() {{ idx = (idx - 1 + FILES.length) % FILES.length; show(idx); }}
@@ -135,8 +163,9 @@ document.addEventListener('keydown', e => {{
   if (e.key === ' ')          {{ togglePause(); e.preventDefault(); }}
 }});
 
+btn.textContent = 'Resume ';
+const k0 = document.createElement('kbd'); k0.textContent = 'Space'; btn.appendChild(k0);
 show(0);
-startTimer();
 </script>
 </body>
 </html>

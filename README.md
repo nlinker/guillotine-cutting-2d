@@ -34,7 +34,7 @@ the GA finds good approximations instead.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point-selector mutation. Configured via `GaConfig`.
 - Deterministic **Decoder**: given a genome and a problem, produces a `Solution`
-  via the Shorter Leftover Axis (SLAS) guillotine heuristic.
+  via the Shorter Leftover Axis (SLAS) guillotine heuristic (see [docs/slas.md](docs/slas.md)).
 - Explicit **Genome** data structure — ordered list of `Gene` values, one per piece. Defines placement order,
   rotation preference, and which free rectangle to try first (`point_selector`).
   Suitable as an individual in a genetic algorithm.

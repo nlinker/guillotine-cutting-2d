@@ -6,7 +6,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    decoder::decode_spec,
+    slas::decoder::decode_spec,
     ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
     glf::build_glf,
     model::{ProblemSpec, SolutionSpec},
