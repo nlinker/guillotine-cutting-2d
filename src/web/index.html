@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <title>Cutting optimizer</title>
 <style>
-  body { font-family: monospace; max-width: 1000px; margin: 2em auto; padding: 0 1em; }
+  body { font-family: monospace; max-width: 1000px; margin: 2em auto; padding: 0 1em; background: #fff; color: #111; }
   label { display: inline-flex; align-items: center; gap: .3em; }
   input[type=text], input[type=number] { font-family: monospace; }
   input[type=number] { width: 5.5em; }
@@ -35,6 +36,20 @@
   #chart-wrap { margin: .4em 0; display: none; }
   #layout-wrap { margin: .8em 0; display: none; }
   #layout { width: 100%; }
+
+  @media (prefers-color-scheme: dark) {
+    body { background: #141414; color: #ddd; }
+    input[type=text], input[type=number] { background: #1e1e1e; color: #ddd; border: 1px solid #444; }
+    button { background: #242424; color: #ddd; border: 1px solid #555; }
+    button:hover { background: #2e2e2e; }
+    .rm-btn { background: none; border: none; color: #f07070; }
+    #status { color: #999; }
+    #pieces-table th, #results th { background: #222; }
+    #pieces-table th, #pieces-table td { border-color: #404040; }
+    #results th, #results td { border-color: #404040; }
+    pre { background: #1a1a1a; color: #ddd; }
+    h2, h3 { color: #eee; }
+  }
 </style>
 </head>
 <body>
@@ -86,6 +101,11 @@
 // note: this is the same as in src/render.rs
 const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a','#dda0dd',
                  '#87ceeb','#f08080','#b4ffb4','#ffd8a8','#c8c8ff','#fff0b4'];
+
+const DARK = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const T = DARK
+  ? { sheetFill:'#222', sheetStroke:'#666', label:'#888', pieceStroke:'#777', pieceText:'#ddd', chartGrid:'#333', chartText:'#999' }
+  : { sheetFill:'#f0f0f0', sheetStroke:'#333', label:'#555', pieceStroke:'#555', pieceText:'#000', chartGrid:'#e0e0e0', chartText:'#666' };
 
 // == default data ============================================================
 const DEFAULT_PIECES = [
@@ -162,10 +182,15 @@ function initChart() {
       responsive: true,
       plugins: { legend: { display: false } },
       scales: {
-        x: { title: { display: true, text: 'generation' } },
+        x: {
+          title: { display: true, text: 'generation', color: T.chartText },
+          ticks: { color: T.chartText },
+          grid: { color: T.chartGrid },
+        },
         y: {
-          title: { display: true, text: 'objective' },
-          ticks: { callback: (v) => v.toLocaleString() }
+          title: { display: true, text: 'objective', color: T.chartText },
+          ticks: { color: T.chartText, callback: (v) => v.toLocaleString() },
+          grid: { color: T.chartGrid },
         }
       }
     }
@@ -245,9 +270,9 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
     const col = i % COLS, row = Math.floor(i / COLS);
     const ox = col * (sdw + GAP), oy = row * cellH;
     draw.rect(sdw, sdh).move(ox, oy)
-      .fill('#f0f0f0').stroke({ color: '#333', width: 1.5 });
+      .fill(T.sheetFill).stroke({ color: T.sheetStroke, width: 1.5 });
     draw.plain('Sheet ' + i)
-      .font({ size: 11, family: 'monospace' }).fill('#555')
+      .font({ size: 11, family: 'monospace' }).fill(T.label)
       .attr({ x: ox + 4, y: oy + sdh + 12 });
   }
 
@@ -260,10 +285,10 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
     const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
     const rw = Math.max(pw * scale, 0.5), rh = Math.max(ph * scale, 0.5);
     draw.rect(rw, rh).move(rx, ry)
-      .fill(rowColor[pl.piespec_idx]).stroke({ color: '#555', width: 0.5 });
+      .fill(rowColor[pl.piespec_idx]).stroke({ color: T.pieceStroke, width: 0.5 });
     if (rw > 30 && rh > 14) {
       draw.plain(pc.name || ('#' + pl.piespec_idx))
-        .font({ size: 9, family: 'monospace' }).fill('#000')
+        .font({ size: 9, family: 'monospace' }).fill(T.pieceText)
         .attr({ x: rx + 2, y: ry + 10 });
     }
   }
