@@ -75,3 +75,31 @@ tall pieces spill onto a second sheet. `lw=12 ≤ lh=23` forces this branch unco
 direction. `decode(encode(glf_solution))` therefore uses more sheets than the GLF optimum
 whenever the cut trees diverge — the encoder is a warm-start hint for the GA, not an
 exact inverse of an arbitrary cut tree.
+
+## The `inverse` flag
+
+To let the GA reach solutions that SLAS cannot represent, each `Gene` carries an
+`inverse: bool` field. When `inverse = true` the split condition is flipped:
+
+```
+normal (inverse = false):  pick horizontal  iff  lw ≤ lh
+inverse (inverse = true):  pick horizontal  iff  lw > lh
+```
+
+Equivalently: `pick_horizontal = (lw ≤ lh) XOR inverse`.
+
+For the `3×12` example above, setting `inverse = true` on the first gene produces
+the vertical cut that GLF needs:
+
+```
+lw = 12,  lh = 23
+(lw ≤ lh) = true,  inverse = true  →  pick_horizontal = false  →  vertical cut
+Right strip: 12×35   Bottom strip: 3×23
+```
+
+### How the GA evolves `inverse`
+
+`GaConfig.inverse_p` (default `0.05`) — per-gene flip probability. The flag
+travels with the gene through OX/CX crossover like `rotate`. Initial population
+has `inverse = false` everywhere (pure SLAS); beneficial flips propagate via
+selection.
