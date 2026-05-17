@@ -84,6 +84,20 @@ fn cfg(
     flip_p: f64,
     point_p: f64,
 ) -> GaConfig {
+    cfgi(pop_size, n_generations, n_elite, tournament_k, crossover_p, swap_p, flip_p, point_p, 0.05)
+}
+
+fn cfgi(
+    pop_size: usize,
+    n_generations: usize,
+    n_elite: usize,
+    tournament_k: usize,
+    crossover_p: f64,
+    swap_p: f64,
+    flip_p: f64,
+    point_p: f64,
+    inverse_p: f64,
+) -> GaConfig {
     GaConfig {
         pop_size,
         n_generations,
@@ -94,7 +108,7 @@ fn cfg(
         flip_p,
         point_p,
         point_delta: (1, 3),
-        inverse_p: 0.05,
+        inverse_p,
     }
 }
 
@@ -117,6 +131,23 @@ fn main() {
     println!("{}", "-".repeat(100));
 
     let variants = vec![
+        // == inverse flag effect ===============================
+        Variant {
+            name: "inverse_p=0.00  pop=200 gen=1000",
+            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.00),
+        },
+        Variant {
+            name: "inverse_p=0.02  pop=200 gen=1000",
+            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.02),
+        },
+        Variant {
+            name: "inverse_p=0.05  pop=200 gen=1000",
+            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.05),
+        },
+        Variant {
+            name: "inverse_p=0.10  pop=200 gen=1000",
+            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.10),
+        },
         // == baseline ==========================================
         Variant {
             name: "baseline  pop=100 gen=500",
