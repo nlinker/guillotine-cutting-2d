@@ -1,13 +1,48 @@
+use std::fmt;
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
 /// Four-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. primary grouping criterion   — `bbox_grouping_penalty` or `sheet_spread_penalty` (see `GaConfig::spread_first`)
-///   2. secondary grouping criterion — the other one
+///   1. primary grouping criterion   (order determined by `CriteriaOrder`)
+///   2. secondary grouping criterion (the other one)
 ///   3. `staircase_area_last_sheet`
 pub type Objective = (usize, u64, u64, u64);
+
+/// Order of the two grouping criteria inside `Objective`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CriteriaOrder {
+    /// `(sheets, bbox_grouping_penalty, sheet_spread_penalty, staircase)` — default.
+    /// Minimises within-sheet scatter first, then cross-sheet spread.
+    #[default]
+    BboxFirst,
+    /// `(sheets, sheet_spread_penalty, bbox_grouping_penalty, staircase)`.
+    /// Keeps same-type pieces on one sheet first, then compacts within each sheet.
+    SpreadFirst,
+}
+
+impl fmt::Display for CriteriaOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BboxFirst => f.write_str("bbox-first"),
+            Self::SpreadFirst => f.write_str("spread-first"),
+        }
+    }
+}
+
+impl FromStr for CriteriaOrder {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bbox-first" => Ok(Self::BboxFirst),
+            "spread-first" => Ok(Self::SpreadFirst),
+            _ => Err(format!("unknown criteria order '{s}'; expected bbox-first or spread-first")),
+        }
+    }
+}
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,15 +195,9 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Evaluates the objective with a configurable ordering of the two grouping criteria.
-    ///
-    /// `spread_first = false` (default): `(sheets, bbox, spread, staircase)` —
-    ///   minimise within-sheet scatter first, then cross-sheet spread.
-    /// `spread_first = true`:            `(sheets, spread, bbox, staircase)` —
-    ///   keep same-type pieces on one sheet first, then compact within each sheet.
-    ///
+    /// Evaluates the objective under the given `CriteriaOrder`.
     /// Rust tuple `Ord` provides lexicographic comparison for free.
-    pub fn eval(&self, problem: &Problem, spread_first: bool) -> Objective {
+    pub fn eval(&self, problem: &Problem, order: CriteriaOrder) -> Objective {
         if self.placements.is_empty() {
             return (0, 0, 0, 0);
         }
@@ -176,16 +205,15 @@ impl Solution {
         let bbox = self.bbox_grouping_penalty(problem);
         let spread = self.sheet_spread_penalty(problem);
         let staircase = self.staircase_area_last_sheet(problem);
-        if spread_first {
-            (sheets, spread, bbox, staircase)
-        } else {
-            (sheets, bbox, spread, staircase)
+        match order {
+            CriteriaOrder::BboxFirst => (sheets, bbox, spread, staircase),
+            CriteriaOrder::SpreadFirst => (sheets, spread, bbox, staircase),
         }
     }
 
-    /// Canonical objective with `spread_first = false`. Kept for tests and benchmarks.
+    /// Canonical objective with `CriteriaOrder::BboxFirst`. Kept for tests and benchmarks.
     pub fn objective(&self, problem: &Problem) -> Objective {
-        self.eval(problem, false)
+        self.eval(problem, CriteriaOrder::BboxFirst)
     }
 
     /// Inter-sheet spread penalty: sum over each canonical piece size of

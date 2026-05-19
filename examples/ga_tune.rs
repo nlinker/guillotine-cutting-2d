@@ -119,7 +119,7 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
-        spread_first: false,
+        criteria_order: cutting::model::CriteriaOrder::default(),
     }
 }
 

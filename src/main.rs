@@ -7,6 +7,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
+    model::CriteriaOrder,
     glf::build_glf,
     model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
@@ -72,9 +73,9 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
-        /// Put sheet_spread_penalty before bbox_grouping_penalty in the objective
-        #[arg(long, default_value_t = false)]
-        spread_first: bool,
+        /// Order of the two grouping criteria: bbox-first (default) or spread-first
+        #[arg(long, default_value_t = CriteriaOrder::BboxFirst)]
+        criteria_order: CriteriaOrder,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -116,9 +117,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink,
             sink_interval,
             render,
-            spread_first,
+            criteria_order,
         } => {
-            let cfg = ga_config(gens, pop, elite, k, spread_first);
+            let cfg = ga_config(gens, pop, elite, k, criteria_order);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
             if render {
@@ -381,7 +382,7 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spread_first: bool) -> GaConfig {
+pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, criteria_order: CriteriaOrder) -> GaConfig {
     GaConfig {
         pop_size: pop,
         n_generations: gens,
@@ -393,6 +394,6 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spread_
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        spread_first,
+        criteria_order,
     }
 }

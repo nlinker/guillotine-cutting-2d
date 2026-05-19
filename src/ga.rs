@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     expand::expand_problem,
-    model::{Objective, Problem, ProblemSpec},
+    model::{CriteriaOrder, Objective, Problem, ProblemSpec},
     slas::decoder::{Gene, Genome, decode},
 };
 
@@ -67,10 +67,9 @@ pub struct GaConfig {
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
 
-    /// When `true`, the objective puts `sheet_spread_penalty` before `bbox_grouping_penalty`
-    /// so the GA first tries to confine same-type pieces to one sheet, then compacts within
-    /// each sheet.  Default: `false` (bbox compactness is the primary grouping criterion).
-    pub spread_first: bool,
+    /// Order of the two grouping criteria in the objective.
+    /// See [`CriteriaOrder`] for the available variants.
+    pub criteria_order: CriteriaOrder,
 }
 
 impl fmt::Display for GaConfig {
@@ -89,7 +88,11 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
-            if self.spread_first { " spread_first" } else { "" },
+            if self.criteria_order != CriteriaOrder::BboxFirst {
+                format!(" order={}", self.criteria_order)
+            } else {
+                String::new()
+            },
         )
     }
 }
@@ -107,7 +110,7 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            spread_first: false,
+            criteria_order: CriteriaOrder::default(),
         }
     }
 }
@@ -221,7 +224,7 @@ fn run_ga_inner<R: Rng>(
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
 ) -> Individual {
-    let mut pop = init_population(problem, config.pop_size, config.spread_first, rng);
+    let mut pop = init_population(problem, config.pop_size, config.criteria_order, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
@@ -250,7 +253,7 @@ fn run_ga_inner<R: Rng>(
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
-                objective: sol1.eval(problem, config.spread_first),
+                objective: sol1.eval(problem, config.criteria_order),
             });
 
             if next_pop.len() < config.pop_size {
@@ -266,7 +269,7 @@ fn run_ga_inner<R: Rng>(
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
-                    objective: sol2.eval(problem, config.spread_first),
+                    objective: sol2.eval(problem, config.criteria_order),
                 });
             }
         }
@@ -539,7 +542,7 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
 pub fn init_population<R: Rng>(
     problem: &Problem,
     size: usize,
-    spread_first: bool,
+    order: CriteriaOrder,
     rng: &mut R,
 ) -> Vec<Individual> {
     let n = problem.pieces.len();
@@ -549,7 +552,7 @@ pub fn init_population<R: Rng>(
             let sol = decode(problem, &genome);
             Individual {
                 genome,
-                objective: sol.eval(problem, spread_first),
+                objective: sol.eval(problem, order),
             }
         })
         .collect()
@@ -721,7 +724,7 @@ mod tests {
         let flat = expand_problem(&spec);
         let n = flat.pieces.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&flat, 20, false, &mut rng);
+        let pop = init_population(&flat, 20, CriteriaOrder::default(), &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
@@ -732,8 +735,8 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
-        let pop1 = init_population(&flat, 5, false, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&flat, 5, false, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop1 = init_population(&flat, 5, CriteriaOrder::default(), &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&flat, 5, CriteriaOrder::default(), &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
@@ -749,7 +752,7 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            spread_first: false,
+            criteria_order: CriteriaOrder::default(),
         }
     }
 

@@ -38,7 +38,7 @@ fn main() {
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        spread_first: false,
+        criteria_order: cutting::model::CriteriaOrder::default(),
     });
 
     let mut written = 0u32;
