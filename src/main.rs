@@ -276,7 +276,7 @@ pub(crate) fn run_with_sink(
                     let msg = ProgressMessage::Progress {
                         generation: p.generation,
                         sheets_used: p.objective.0,
-                        last_sheet_area: p.objective.1,
+                        bbox_penalty: p.objective.1,
                         seed: p.seed,
                         solution: None,
                         pieces: None,
@@ -296,7 +296,7 @@ pub(crate) fn run_with_sink(
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
                             sheets_used: evt.objective.0,
-                            last_sheet_area: evt.objective.1,
+                            bbox_penalty: evt.objective.1,
                             seed: evt.seed,
                             solution: Some(sol),
                             pieces: Some(spec.piespecs.clone()),
@@ -315,7 +315,7 @@ pub(crate) fn run_with_sink(
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
                         sheets_used: evt.objective.0,
-                        last_sheet_area: evt.objective.1,
+                        bbox_penalty: evt.objective.1,
                         seed: evt.seed,
                         solution: Some(sol),
                         pieces: Some(spec.piespecs.clone()),
@@ -328,7 +328,7 @@ pub(crate) fn run_with_sink(
                 sink.send(&ProgressMessage::Done {
                     seed: *best_seed,
                     sheets_used: best.objective.0,
-                    last_sheet_area: best.objective.1,
+                    bbox_penalty: best.objective.1,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
                 })

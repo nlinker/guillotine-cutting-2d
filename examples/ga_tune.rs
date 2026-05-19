@@ -20,10 +20,10 @@ use rand_xoshiro::Xoshiro256StarStar;
 const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
-/// Ideal: 2 sheets, 1×400×400 on last sheet.
-const IDEAL_OBJ: Objective = (2, 400 * 400, 0);
+/// Ideal: 2 sheets, 1×400×400 on last sheet (bbox_penalty=0 for a single piece).
+const IDEAL_OBJ: Objective = (2, 0, 400 * 400);
 /// 1-piece threshold: 2 sheets, any piece ≤ 495×495 on last sheet.
-const ONE_PIECE_OBJ: Objective = (2, 495 * 495, u64::MAX);
+const ONE_PIECE_OBJ: Objective = (2, 0, 495 * 495);
 
 struct Variant {
     name: &'static str,
@@ -34,7 +34,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
     let mut best_obj: Objective = (usize::MAX, i64::MAX, u64::MAX);
     let mut sum_sheets: usize = 0;
-    let mut sum_area: i64 = 0;
+    let mut sum_bbox: i64 = 0;
     let mut ideal_count = 0usize;
     let mut one_piece_count = 0usize;
 
@@ -43,7 +43,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         let ind = run_ga(problem, &v.cfg, &mut rng);
         let obj = ind.objective;
         sum_sheets += obj.0;
-        sum_area += obj.1;
+        sum_bbox += obj.1;
         if obj < best_obj {
             best_obj = obj;
         }
@@ -57,7 +57,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
 
     let elapsed = t0.elapsed();
     let avg_sheets = sum_sheets / N_SEEDS;
-    let avg_area = sum_area / N_SEEDS as i64;
+    let avg_bbox = sum_bbox / N_SEEDS as i64;
 
     println!(
         "{:<40}  ideal={:3}/{}  1-piece={:3}/{}  best=({},{})\tavg=({},{})  t={:.1}s",
@@ -69,7 +69,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         best_obj.0,
         best_obj.1,
         avg_sheets,
-        avg_area,
+        avg_bbox,
         elapsed.as_secs_f64(),
     );
 }

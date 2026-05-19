@@ -10,10 +10,10 @@ impl ProgressSink for StdoutSink {
             ProgressMessage::Progress {
                 generation,
                 sheets_used,
-                last_sheet_area,
+                bbox_penalty,
                 ..
             } => {
-                eprint!("\rgen={generation:<6} sheets={sheets_used}  last_area={last_sheet_area:<12}");
+                eprint!("\rgen={generation:<6} sheets={sheets_used}  bbox_pen={bbox_penalty:<12}");
                 std::io::stderr().flush()
             }
             _ => {
