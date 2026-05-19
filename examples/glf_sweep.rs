@@ -1,17 +1,19 @@
+use std::sync::Arc;
 /// Sweep all feasible widths for a fixed piece set, compute optimal placement via GLF
 /// cut-tree reconstruction, and render each solution to tmp/{width}_opt.svg.
-/// Also passes each GLF solution through the encoder -> decoder and renders the result
-/// to tmp/{width}_enc.svg.  index.html shows both side by side.
+/// Also runs the GA for each width and renders the best found solution to
+/// tmp/{width}_enc.svg.  index.html shows both side by side.
 ///
 /// Run with:  cargo run --example glf_sweep --release
 use std::{fs, path::Path};
 
 use cutting::{
+    ga::{self, GaConfig, GaEvent},
     glf::build_glf,
     model::{ProblemSpec, Sheet},
     parse::parse_problem,
     render::render_svg,
-    slas::{decoder::decode_spec, encoder::encode_spec},
+    slas::decoder::decode_spec,
 };
 
 const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
@@ -25,34 +27,56 @@ fn main() {
     let out_dir = Path::new("tmp");
     fs::create_dir_all(out_dir).expect("failed to create tmp/");
 
+    let ga_cfg = Arc::new(GaConfig {
+        pop_size: 200,
+        n_generations: 1000,
+        n_elite: 5,
+        tournament_k: 5,
+        crossover_p: 0.80,
+        swap_p: 0.15,
+        flip_p: 0.05,
+        point_p: 0.10,
+        point_delta: (1, 3),
+        inverse_p: 0.05,
+    });
+
     let mut written = 0u32;
     let mut entries: Vec<(u32, u32)> = Vec::new(); // (width, height)
+
     for width in min_w..=max_w {
         let Some(height) = glf.eval_full_set(width) else {
             continue;
         };
         let Some(sol) = glf.reconstruct(width) else { continue };
 
-        let spec = ProblemSpec {
+        let spec = Arc::new(ProblemSpec {
             sheet: Sheet { width, height },
             ..base_spec.clone()
-        };
+        });
 
-        // GLF direct solution
+        // GLF exact solution
         let svg = render_svg(&spec, &sol).expect("render failed");
         fs::write(out_dir.join(format!("{width}_opt.svg")), &svg).expect("write failed");
 
-        // Encoder -> decoder round trip
-        let genome = encode_spec(&spec, &sol);
-        let sol_enc = decode_spec(&spec, &genome);
-        let svg_enc = render_svg(&spec, &sol_enc).expect("render_enc failed");
-        fs::write(out_dir.join(format!("{width}_enc.svg")), &svg_enc).expect("write enc failed");
+        // GA solution
+        let seeds = vec![0u64];
+        let mut handle = ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0);
+        let results = loop {
+            match handle.rx.blocking_recv() {
+                Some(GaEvent::Done(r)) => break r,
+                _ => {}
+            }
+        };
+        let (_, best) = results.iter().next().expect("no GA result");
+        let sol_ga = decode_spec(&spec, &best.genome);
+        let svg_ga = render_svg(&spec, &sol_ga).expect("render ga failed");
+        fs::write(out_dir.join(format!("{width}_enc.svg")), &svg_ga).expect("write ga failed");
 
         println!(
-            "width={width:3}  height={height:3}  area={:5}  glf_sheets={}  enc_sheets={}",
+            "width={width:3}  height={height:3}  area={:5}  glf_sheets={}  ga_sheets={}",
             width * height,
             sol.sheets_used(),
-            sol_enc.sheets_used(),
+            sol_ga.sheets_used(),
         );
         entries.push((width, height));
         written += 1;
@@ -117,8 +141,8 @@ fn build_index_html(entries: &[(u32, u32)]) -> String {
     <img id="frame-glf" class="frame" alt="GLF">
   </div>
   <div class="col">
-    <span class="col-label">Encode &#8594; Decode</span>
-    <img id="frame-enc" class="frame" alt="Enc&#8594;Dec">
+    <span class="col-label">GA</span>
+    <img id="frame-enc" class="frame" alt="GA">
   </div>
 </div>
 <script>

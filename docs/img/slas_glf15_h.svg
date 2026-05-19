@@ -11,7 +11,7 @@
   <text x="448" y="227" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#333">#0</text>
   <text x="448" y="249" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">12×3</text>
 
+  <line x1="169" y1="588" x2="728" y2="588" stroke-dasharray="5,5" stroke="#505050" fill="none"/>
   <text x="448" y="450" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">12×6</text>
   <text x="380" y="788" text-anchor="middle" dominant-baseline="middle" font-size="20" fill="#555">15×23</text>
-  <line x1="169" y1="588" x2="728" y2="588" stroke-dasharray="5,5" stroke="#505050" fill="none"/>
 </svg>

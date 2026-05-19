@@ -84,7 +84,17 @@ fn cfg(
     flip_p: f64,
     point_p: f64,
 ) -> GaConfig {
-    cfgi(pop_size, n_generations, n_elite, tournament_k, crossover_p, swap_p, flip_p, point_p, 0.05)
+    cfgi(
+        pop_size,
+        n_generations,
+        n_elite,
+        tournament_k,
+        crossover_p,
+        swap_p,
+        flip_p,
+        point_p,
+        0.05,
+    )
 }
 
 fn cfgi(

@@ -11,9 +11,9 @@ use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
-    slas::decoder::{Gene, Genome, decode},
     expand::expand_problem,
     model::{Objective, Problem, ProblemSpec},
+    slas::decoder::{Gene, Genome, decode},
 };
 
 /// GA hyperparameters.
@@ -85,6 +85,23 @@ impl fmt::Display for GaConfig {
             self.point_delta.1,
             self.inverse_p,
         )
+    }
+}
+
+impl Default for GaConfig {
+    fn default() -> Self {
+        Self {
+            pop_size: 200,
+            n_generations: 1000,
+            n_elite: 2,
+            tournament_k: 3,
+            crossover_p: 0.80,
+            swap_p: 0.15,
+            flip_p: 0.05,
+            point_p: 0.10,
+            point_delta: (1, 3),
+            inverse_p: 0.05,
+        }
     }
 }
 
@@ -254,6 +271,7 @@ fn run_ga_inner<R: Rng>(
         }
 
         if let Some(ctx) = ctx
+            && ctx.progress_interval > 0
             && (step + 1) % ctx.progress_interval == 0
         {
             if ctx.stop.load(Ordering::Relaxed) {
@@ -315,7 +333,8 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
                     let thread_ctx = GaContext { seed, ..ctx.clone() };
                     s.spawn(move || {
                         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                        (seed, run_ga_inner(p, c, &mut rng, pool_ref, Some(&thread_ctx)))
+                        let individual = run_ga_inner(p, c, &mut rng, pool_ref, Some(&thread_ctx));
+                        (seed, individual)
                     })
                 })
                 .collect::<Vec<_>>()
@@ -552,7 +571,7 @@ mod tests {
     use rand_xoshiro::Xoshiro256StarStar;
 
     use super::*;
-    use crate::{expand::expand_problem, parse::parse_problem};
+    use crate::{expand::expand_problem, model::validate_solution, parse::parse_problem};
 
     fn g(piece_idx: usize) -> Gene {
         Gene {
@@ -673,7 +692,12 @@ mod tests {
 
     #[test]
     fn tournament_is_deterministic() {
-        let pop = vec![ind(0, (0, 5, 0)), ind(1, (0, 3, 0)), ind(2, (0, 8, 0)), ind(3, (0, 1, 0))];
+        let pop = vec![
+            ind(0, (0, 5, 0)),
+            ind(1, (0, 3, 0)),
+            ind(2, (0, 8, 0)),
+            ind(3, (0, 1, 0)),
+        ];
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         assert_eq!(w1.objective, w2.objective);
@@ -751,7 +775,12 @@ mod tests {
 
     #[test]
     fn elite_top_k_sorted() {
-        let pop = vec![ind(0, (0, 50, 0)), ind(1, (0, 10, 0)), ind(2, (0, 30, 0)), ind(3, (0, 20, 0))];
+        let pop = vec![
+            ind(0, (0, 50, 0)),
+            ind(1, (0, 10, 0)),
+            ind(2, (0, 30, 0)),
+            ind(3, (0, 20, 0)),
+        ];
         let elite = select_elite(&pop, 2);
         assert_eq!(
             elite.iter().map(|e| (e.objective.0, e.objective.1)).collect::<Vec<_>>(),
@@ -848,5 +877,37 @@ mod tests {
         let (c1b, c2b) = ox_crossover(&p1, &p2, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert_eq!(c1a, c1b);
         assert_eq!(c2a, c2b);
+    }
+
+    /// GA with cut_promotion_enabled=true must produce non-overlapping, in-bounds placements.
+    /// Uses the GLF-15 piece set at widths that previously triggered promotion bugs.
+    #[test]
+    fn ga_cut_promotion_solutions_are_valid() {
+        let specs = [
+            "15x35F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "17x31F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "22x24F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "28x19F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+        ];
+        let cfg = GaConfig {
+            pop_size: 50,
+            n_generations: 200,
+            ..GaConfig::default()
+        };
+        for spec_str in specs {
+            let problem = expand_problem(&parse_problem(spec_str).unwrap());
+            for seed in 0u64..3 {
+                let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+                let best = run_ga(&problem, &cfg, &mut rng);
+                let sol = decode(&problem, &best.genome);
+                let errors = validate_solution(&problem, &sol);
+                assert!(
+                    errors.is_empty(),
+                    "spec={spec_str} seed={seed}: {} error(s):\n  {}",
+                    errors.len(),
+                    errors.join("\n  "),
+                );
+            }
+        }
     }
 }

@@ -79,8 +79,8 @@ pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
         .block_on(async move {
             let app = Router::new()
                 .route("/", get(|| async { Html(INDEX_HTML) }))
-                .route("/chart.js", get(serve_chartjs))
-                .route("/svg.js", get(serve_svgjs))
+                .route("/web/chart.min.js", get(serve_chartjs))
+                .route("/web/svg.min.js", get(serve_svgjs))
                 .route("/stream", get(stream_handler));
             let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
             println!("Listening on http://localhost:{port}");

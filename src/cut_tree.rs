@@ -1,0 +1,278 @@
+use crate::model::{Placement, Problem};
+
+/// A node in the guillotine cut tree for one sheet.
+#[derive(Debug, Clone)]
+pub enum CutNode {
+    /// Leaf: a single placed piece.
+    Piece {
+        piece_idx: usize,
+        x: u32,
+        y: u32,
+        pw: u32,
+        ph: u32,
+    },
+    /// Leaf: an unused waste rectangle.
+    Waste { x: u32, y: u32, w: u32, h: u32 },
+    /// Internal: a horizontal cut at absolute y-coordinate `cut_y`.
+    /// `top` covers `[rect.y, cut_y)`, `bottom` covers `[cut_y, rect.y+rect.h)`.
+    HSplit {
+        cut_y: u32,
+        top: Box<CutNode>,
+        bottom: Box<CutNode>,
+    },
+    /// Internal: a vertical cut at absolute x-coordinate `cut_x`.
+    /// `left` covers `[rect.x, cut_x)`, `right` covers `[cut_x, rect.x+rect.w)`.
+    VSplit {
+        cut_x: u32,
+        left: Box<CutNode>,
+        right: Box<CutNode>,
+    },
+}
+
+/// Bounding rectangle used during recursion.
+#[derive(Debug, Clone, Copy)]
+struct Rect {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+impl Rect {
+    #[allow(dead_code)]
+    fn contains_point(&self, px: u32, py: u32) -> bool {
+        px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlacedPiece {
+    piece_idx: usize,
+    x: u32,
+    y: u32,
+    pw: u32,
+    ph: u32,
+}
+
+impl PlacedPiece {
+    fn right(&self) -> u32 {
+        self.x + self.pw
+    }
+
+    fn bottom(&self) -> u32 {
+        self.y + self.ph
+    }
+}
+
+/// Guillotine cut-tree reconstruction from a known `(Problem, Solution)` pair.
+/// Given pieces already placed at known coordinates, `build_cut_tree` tries to
+/// recover a valid binary guillotine tree for each sheet.  The algorithm is a
+/// recursive splitter: for a rectangle containing a set of placed pieces it
+/// tries every H- and V-cut at piece boundaries until it finds one that
+/// separates the pieces into two independent halves, then recurses.
+///
+/// Returns one `CutNode` per sheet (index = sheet index).
+/// Returns `Err` if any region cannot be split by a guillotine cut.
+pub fn build_cut_tree(problem: &Problem, placements: &[Placement]) -> Result<Vec<CutNode>, String> {
+    let n_sheets = placements.iter().map(|p| p.sheet_idx).max().map_or(0, |m| m + 1);
+    let sw = problem.sheet.width;
+    let sh = problem.sheet.height;
+
+    (0..n_sheets)
+        .map(|sheet_idx| {
+            let sheet_placements: Vec<PlacedPiece> = placements
+                .iter()
+                .filter(|p| p.sheet_idx == sheet_idx)
+                .map(|p| {
+                    let piece = &problem.pieces[p.piece_idx];
+                    let (pw, ph) = if p.rotated {
+                        (piece.height, piece.width)
+                    } else {
+                        (piece.width, piece.height)
+                    };
+                    PlacedPiece {
+                        piece_idx: p.piece_idx,
+                        x: p.x,
+                        y: p.y,
+                        pw,
+                        ph,
+                    }
+                })
+                .collect();
+            let rect = Rect {
+                x: 0,
+                y: 0,
+                w: sw,
+                h: sh,
+            };
+            split(rect, &sheet_placements).ok_or_else(|| {
+                format!(
+                    "sheet {sheet_idx}: region ({},{} {}×{}) cannot be guillotine-split",
+                    rect.x, rect.y, rect.w, rect.h
+                )
+            })
+        })
+        .collect()
+}
+
+/// Recursively split `rect` to accommodate all `pieces`.
+/// Returns `None` if no guillotine cut can partition the pieces.
+fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
+    match pieces.len() {
+        0 => {
+            return Some(CutNode::Waste {
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: rect.h,
+            });
+        }
+        1 => {
+            let p = pieces[0];
+            if p.x == rect.x && p.y == rect.y && p.pw == rect.w && p.ph == rect.h {
+                return Some(CutNode::Piece {
+                    piece_idx: p.piece_idx,
+                    x: p.x,
+                    y: p.y,
+                    pw: p.pw,
+                    ph: p.ph,
+                });
+            }
+            // Single piece doesn't fill the rect — still guillotine-splittable.
+            // Fall through to the general case.
+        }
+        _ => {}
+    }
+
+    // Collect candidate H-cut positions: y-coordinates of all piece top/bottom edges
+    // that are strictly inside the rect (i.e. rect.y < cut_y < rect.y + rect.h).
+    let mut h_cuts: Vec<u32> = pieces
+        .iter()
+        .flat_map(|p| [p.y, p.bottom()])
+        .filter(|&y| y > rect.y && y < rect.y + rect.h)
+        .collect();
+    h_cuts.sort_unstable();
+    h_cuts.dedup();
+
+    for cut_y in &h_cuts {
+        let cut_y = *cut_y;
+        // A valid H-cut must not pass through the interior of any piece.
+        if pieces.iter().any(|p| p.y < cut_y && p.bottom() > cut_y) {
+            continue;
+        }
+        let top_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.bottom() <= cut_y).collect();
+        let bot_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.y >= cut_y).collect();
+        if top_pieces.len() + bot_pieces.len() != pieces.len() {
+            continue; // some piece straddles the cut (shouldn't happen after the guard above)
+        }
+        let top_rect = Rect {
+            x: rect.x,
+            y: rect.y,
+            w: rect.w,
+            h: cut_y - rect.y,
+        };
+        let bot_rect = Rect {
+            x: rect.x,
+            y: cut_y,
+            w: rect.w,
+            h: rect.y + rect.h - cut_y,
+        };
+        if let (Some(top_node), Some(bot_node)) = (split(top_rect, &top_pieces), split(bot_rect, &bot_pieces)) {
+            return Some(CutNode::HSplit {
+                cut_y,
+                top: Box::new(top_node),
+                bottom: Box::new(bot_node),
+            });
+        }
+    }
+
+    // Collect candidate V-cut positions.
+    let mut v_cuts: Vec<u32> = pieces
+        .iter()
+        .flat_map(|p| [p.x, p.right()])
+        .filter(|&x| x > rect.x && x < rect.x + rect.w)
+        .collect();
+    v_cuts.sort_unstable();
+    v_cuts.dedup();
+
+    for cut_x in &v_cuts {
+        let cut_x = *cut_x;
+        if pieces.iter().any(|p| p.x < cut_x && p.right() > cut_x) {
+            continue;
+        }
+        let left_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.right() <= cut_x).collect();
+        let right_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.x >= cut_x).collect();
+        if left_pieces.len() + right_pieces.len() != pieces.len() {
+            continue;
+        }
+        let left_rect = Rect {
+            x: rect.x,
+            y: rect.y,
+            w: cut_x - rect.x,
+            h: rect.h,
+        };
+        let right_rect = Rect {
+            x: cut_x,
+            y: rect.y,
+            w: rect.x + rect.w - cut_x,
+            h: rect.h,
+        };
+        if let (Some(left_node), Some(right_node)) = (split(left_rect, &left_pieces), split(right_rect, &right_pieces))
+        {
+            return Some(CutNode::VSplit {
+                cut_x,
+                left: Box::new(left_node),
+                right: Box::new(right_node),
+            });
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{expand::expand_problem, parse::parse_problem, slas::decoder::decode};
+
+    #[test]
+    fn single_piece_fills_sheet() {
+        let spec = parse_problem("10x8F:0:10x8").unwrap();
+        let problem = expand_problem(&spec);
+        let genome = vec![crate::slas::decoder::Gene {
+            piece_idx: 0,
+            rotate: false,
+            point_selector: 0,
+            inverse: false,
+        }];
+        let sol = decode(&problem, &genome);
+        let trees = build_cut_tree(&problem, &sol.placements).unwrap();
+        assert_eq!(trees.len(), 1);
+        assert!(matches!(trees[0], CutNode::Piece { .. }));
+    }
+
+    #[test]
+    fn two_pieces_side_by_side() {
+        // Sheet 10×5, two pieces 5×5.
+        let spec = parse_problem("10x5F:0:5x5/2").unwrap();
+        let problem = expand_problem(&spec);
+        let genome = vec![
+            crate::slas::decoder::Gene {
+                piece_idx: 0,
+                rotate: false,
+                point_selector: 0,
+                inverse: false,
+            },
+            crate::slas::decoder::Gene {
+                piece_idx: 1,
+                rotate: false,
+                point_selector: 0,
+                inverse: false,
+            },
+        ];
+        let sol = decode(&problem, &genome);
+        assert_eq!(sol.sheets_used(), 1);
+        let trees = build_cut_tree(&problem, &sol.placements).unwrap();
+        assert_eq!(trees.len(), 1);
+        assert!(matches!(trees[0], CutNode::VSplit { .. } | CutNode::HSplit { .. }));
+    }
+}

@@ -6,13 +6,13 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    slas::decoder::decode_spec,
     ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
     glf::build_glf,
     model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
+    slas::decoder::decode_spec,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};

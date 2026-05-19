@@ -266,9 +266,9 @@ mod tests {
         // sorted by (sheet_idx, pw, ph)
         assert_eq!(tuple(&p[0]), (0, 125, 0, false)); // P1  pw=65 ph=85
         assert_eq!(tuple(&p[1]), (0, 125, 85, true)); // P4r pw=75 ph=65
-        assert_eq!(tuple(&p[2]), (0, 0, 0, false));   // P0  pw=125 ph=85
-        assert_eq!(tuple(&p[3]), (1, 0, 65, true));   // P3r pw=105 ph=75
-        assert_eq!(tuple(&p[4]), (1, 0, 0, false));   // P2  pw=205 ph=65
+        assert_eq!(tuple(&p[2]), (0, 0, 0, false)); // P0  pw=125 ph=85
+        assert_eq!(tuple(&p[3]), (1, 0, 65, true)); // P3r pw=105 ph=75
+        assert_eq!(tuple(&p[4]), (1, 0, 0, false)); // P2  pw=205 ph=65
     }
 
     #[test]
@@ -280,9 +280,8 @@ mod tests {
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
         let obj_a = sol_a.objective(&problem);
         let obj_b = sol_b.objective(&problem);
-        assert_eq!((obj_a.0, obj_a.1), (2, 9)); // staircase: 3×3 at (0,0) -> 9
-        assert_eq!((obj_b.0, obj_b.1), (2, 40)); // staircase: 10×4 at (0,0) -> 40
+        assert_eq!((obj_a.0, obj_a.2), (2, 9)); // staircase: 3×3 at (0,0) -> 9
+        assert_eq!((obj_b.0, obj_b.2), (2, 40)); // staircase: 10×4 at (0,0) -> 40
         assert!(obj_a < obj_b);
     }
-
 }

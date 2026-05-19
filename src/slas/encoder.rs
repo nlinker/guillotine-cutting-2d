@@ -1,7 +1,10 @@
 use smallvec::{SmallVec, smallvec};
 
-use crate::{expand, model, model::{FreeRect, Piece, Problem, Solution}};
 use super::decoder::{Gene, Genome, find_placement, fits_in, guillotine_split, open_new_sheet, sheet_rect};
+use crate::{
+    expand, model,
+    model::{FreeRect, Piece, Problem, Solution},
+};
 
 type FreeList = SmallVec<[FreeRect; 16]>;
 
@@ -29,8 +32,7 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
         let pl = &solution.placements[pl_idx];
         let piece = &problem.pieces[pl.piece_idx];
 
-        let point_selector =
-            preferred_free_rect(&free, pl.sheet_idx, pl.x, pl.y, piece, pl.rotated) as u32;
+        let point_selector = preferred_free_rect(&free, pl.sheet_idx, pl.x, pl.y, piece, pl.rotated) as u32;
 
         let found = find_placement(&free, piece, pl.rotated, point_selector)
             .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, pl.rotated));
@@ -63,7 +65,12 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
             };
 
             free.extend(guillotine_split(&fr, pw, ph, inverse));
-            genome.push(Gene { piece_idx: pl.piece_idx, rotate: pl.rotated, point_selector, inverse });
+            genome.push(Gene {
+                piece_idx: pl.piece_idx,
+                rotate: pl.rotated,
+                point_selector,
+                inverse,
+            });
         }
     }
 
@@ -89,16 +96,14 @@ fn preferred_free_rect(
     prefer_rotate: bool,
 ) -> usize {
     if let Some(i) = free.iter().position(|fr| {
-        fr.sheet_idx == sheet_idx
-            && fr.x == x
-            && fr.y == y
-            && fits_in(fr, piece, prefer_rotate).is_some()
+        fr.sheet_idx == sheet_idx && fr.x == x && fr.y == y && fits_in(fr, piece, prefer_rotate).is_some()
     }) {
         return i;
     }
-    if let Some(i) = free.iter().position(|fr| {
-        fr.sheet_idx == sheet_idx && fits_in(fr, piece, prefer_rotate).is_some()
-    }) {
+    if let Some(i) = free
+        .iter()
+        .position(|fr| fr.sheet_idx == sheet_idx && fits_in(fr, piece, prefer_rotate).is_some())
+    {
         return i;
     }
     free.iter()
@@ -109,11 +114,20 @@ fn preferred_free_rect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, model::{Placement, Solution}, parse::parse_problem};
-    use crate::slas::decoder::decode;
+    use crate::{
+        expand::expand_problem,
+        model::{Placement, Solution},
+        parse::parse_problem,
+        slas::decoder::decode,
+    };
 
     fn g(piece_idx: usize, rotate: bool, ps: u32) -> Gene {
-        Gene { piece_idx, rotate, point_selector: ps, inverse: false }
+        Gene {
+            piece_idx,
+            rotate,
+            point_selector: ps,
+            inverse: false,
+        }
     }
 
     #[test]
@@ -124,10 +138,34 @@ mod tests {
         let problem = expand_problem(&spec);
         let optimal = Solution {
             placements: vec![
-                Placement { sheet_idx: 0, piece_idx: 0, x: 0, y: 0, rotated: false },
-                Placement { sheet_idx: 0, piece_idx: 1, x: 1, y: 0, rotated: false },
-                Placement { sheet_idx: 0, piece_idx: 2, x: 0, y: 1, rotated: false },
-                Placement { sheet_idx: 0, piece_idx: 3, x: 1, y: 1, rotated: false },
+                Placement {
+                    sheet_idx: 0,
+                    piece_idx: 0,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+                Placement {
+                    sheet_idx: 0,
+                    piece_idx: 1,
+                    x: 1,
+                    y: 0,
+                    rotated: false,
+                },
+                Placement {
+                    sheet_idx: 0,
+                    piece_idx: 2,
+                    x: 0,
+                    y: 1,
+                    rotated: false,
+                },
+                Placement {
+                    sheet_idx: 0,
+                    piece_idx: 3,
+                    x: 1,
+                    y: 1,
+                    rotated: false,
+                },
             ],
             leftovers: vec![],
         };

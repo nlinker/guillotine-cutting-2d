@@ -95,8 +95,8 @@
 <div id="results"></div>
 
 <!-- these js are served from run_serve -->
-<script src="/chart.js"></script>
-<script src="/svg.js"></script>
+<script src="/web/chart.min.js"></script>
+<script src="/web/svg.min.js"></script>
 <script>
 // note: this is the same as in src/render.rs
 const PALETTE = ['#ffb6c1','#add8e6','#90ee90','#ffff99','#ffc87a','#dda0dd',
@@ -109,28 +109,52 @@ const T = DARK
 
 // == default data ============================================================
 const DEFAULT_PIECES = [
-  {name:'Стойка',    w:2384, h:600, count:1, rotate:false},
-  {name:'Стойка',    w:2384, h:600, count:1, rotate:false},
-  {name:'Стойка',    w:2288, h:500, count:1, rotate:false},
-  {name:'Низ',       w:1768, h:600, count:1, rotate:false},
-  {name:'Цоколь',    w:1768, h:80,  count:2, rotate:false},
-  {name:'Крыша',     w:1800, h:710, count:1, rotate:false},
-  {name:'Полки',     w:550,  h:490, count:5, rotate:false},
-  {name:'Полки',     w:1202, h:490, count:2, rotate:false},
-  {name:'Ребро',     w:1202, h:300, count:1, rotate:false},
-  {name:'Распорка',  w:300,  h:490, count:1, rotate:false},
-  {name:'Перегородка', w:150,  h:490, count:2, rotate:true},
+  {name: "А01", width: 164,  height: 520, count: 5},
+  {name: "А02", width: 168,  height: 530, count: 2},
+  {name: "А03", width: 170,  height:  65, count: 1},
+  {name: "А04", width: 170,  height:  65, count: 1},
+  {name: "А05", width: 170,  height: 200, count: 2},
+  {name: "А06", width: 200,  height: 530, count: 1},
+  {name: "А07", width: 200,  height: 545, count: 1},
+  {name: "А08", width: 355,  height: 530, count: 2},
+  {name: "А09", width: 481,  height: 135, count: 2},
+  {name: "А10", width: 481,  height: 199, count: 7},
+  {name: "А11", width: 481,  height: 84,  count: 6},
+  {name: "А12", width: 493,  height: 476, count: 15},
+  {name: "А13", width: 562,  height: 520, count: 1},
+  {name: "А14", width: 566,  height: 100, count: 1},
+  {name: "А15", width: 566,  height: 520, count: 1},
+  {name: "А16", width: 566,  height: 530, count: 1},
+  {name: "А17", width: 566,  height: 530, count: 2},
+  {name: "А18", width: 568,  height:  65, count: 6},
+  {name: "А19", width: 568,  height:  65, count: 7},
+  {name: "А20", width: 568,  height: 200, count: 6},
+  {name: "А21", width: 600,  height: 506, count: 1},
+  {name: "А22", width: 600,  height: 530, count: 3},
+  {name: "А23", width: 600,  height: 545, count: 3},
+  {name: "А24", width: 600,  height: 560, count: 1},
+  {name: "А25", width: 604,  height: 460, count: 1},
+  {name: "А26", width: 754,  height: 530, count: 4},
+  {name: "А27", width: 754,  height: 545, count: 8},
+  {name: "А28", width: 754,  height: 560, count: 2},
+  {name: "А29", width: 754,  height: 560, count: 2},
+  {name: "А30", width: 868,  height:  40, count: 1},
+  {name: "А31", width: 868,  height:  40, count: 1},
+  {name: "А32", width: 868,  height: 180, count: 1},
+  {name: "А33", width: 899,  height: 560, count: 1},
+  {name: "А34", width: 2106, height: 530, count: 2},
+  {name: "А35", width: 2477, height: 530, count: 2},
 ];
 
 // == pieces table =============================================================
 function addRow(p) {
-  p = p || {name:'', w:'', h:'', count:1, rotate:false};
+  p = p || {name:'', width:'', height:'', count:1, rotate:false};
   const tbody = document.getElementById('pieces-tbody');
   const tr = document.createElement('tr');
   tr.innerHTML =
     `<td><input type="text"   value="${p.name}"></td>` +
-    `<td><input type="number" value="${p.w}" min="1"></td>` +
-    `<td><input type="number" value="${p.h}" min="1"></td>` +
+    `<td><input type="number" value="${p.width ?? ''}" min="1"></td>` +
+    `<td><input type="number" value="${p.height ?? ''}" min="1"></td>` +
     `<td><input type="number" value="${p.count}" min="1"></td>` +
     `<td><input type="checkbox"${p.rotate ? ' checked' : ''}></td>` +
     `<td><button class="rm-btn" type="button">×</button></td>`;

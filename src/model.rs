@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::cut_tree::build_cut_tree;
+
 /// Lexicographic objective value `(sheets_used, staircase_area, bbox_grouping_penalty)`. Lower is better.
 pub type Objective = (usize, i64, u64);
 
@@ -40,7 +42,7 @@ pub struct ProblemSpec {
 impl ProblemSpec {
     /// Canonicalize piece specs so `(width, height, can_rotate)` triples are unique.
     ///
-    /// For rotateable pieces: normalize dimensions to `(min(w,h), max(w,h))`.
+    /// For rotatable pieces: normalize dimensions to `(min(w,h), max(w,h))`.
     /// Then merge entries with identical `(width, height, can_rotate)` by summing `count`.
     /// First-appearance order is preserved.
     pub fn normalize(&mut self) {
@@ -156,8 +158,8 @@ impl Solution {
 
     /// Three-level lexicographic fitness (lower is better):
     ///   1. minimize `sheets_used`
-    ///   2. minimize staircase area on the last sheet
-    ///   3. minimize `bbox_grouping_penalty` (spatial spread of same-size pieces)
+    ///   2. minimize `bbox_grouping_penalty` (spatial spread of same-size pieces)
+    ///   3. minimize staircase area on the last sheet
     ///
     /// Rust tuple `Ord` provides lexicographic comparison for free.
     pub fn objective(&self, problem: &Problem) -> Objective {
@@ -166,8 +168,8 @@ impl Solution {
         }
         (
             self.sheets_used(),
-            self.staircase_area_last_sheet(problem) as i64,
-            self.bbox_grouping_penalty(problem),
+            self.bbox_grouping_penalty(problem) as i64,
+            self.staircase_area_last_sheet(problem),
         )
     }
 
@@ -287,6 +289,52 @@ impl Solution {
         }
         area
     }
+}
+
+/// Check that no piece exceeds the sheet and no two pieces on the same sheet overlap
+/// and the solution is guillotine-constrained.
+pub fn validate_solution(problem: &Problem, sol: &Solution) -> Vec<String> {
+    let sw = problem.sheet.width;
+    let sh = problem.sheet.height;
+    let mut errors = Vec::new();
+    for (i, pl) in sol.placements.iter().enumerate() {
+        let piece = &problem.pieces[pl.piece_idx];
+        let (pw, ph) = if pl.rotated {
+            (piece.height, piece.width)
+        } else {
+            (piece.width, piece.height)
+        };
+        if pl.x + pw > sw || pl.y + ph > sh {
+            errors.push(format!(
+                "piece[{i}] at ({},{}) {}×{} exceeds sheet {}×{}",
+                pl.x, pl.y, pw, ph, sw, sh,
+            ));
+        }
+        for (j, other) in sol.placements[..i].iter().enumerate() {
+            if other.sheet_idx != pl.sheet_idx {
+                continue;
+            }
+            let op = &problem.pieces[other.piece_idx];
+            let (ow, oh) = if other.rotated {
+                (op.height, op.width)
+            } else {
+                (op.width, op.height)
+            };
+            let no_overlap =
+                pl.x + pw <= other.x || other.x + ow <= pl.x || pl.y + ph <= other.y || other.y + oh <= pl.y;
+            if !no_overlap {
+                errors.push(format!(
+                    "piece[{i}] ({},{} {}×{}) overlaps piece[{j}] ({},{} {}×{}) on sheet {}",
+                    pl.x, pl.y, pw, ph, other.x, other.y, ow, oh, pl.sheet_idx,
+                ));
+            }
+        }
+    }
+    // Guillotine validity.
+    if let Err(e) = build_cut_tree(problem, &sol.placements) {
+        errors.push(format!("not guillotine: {e}"));
+    }
+    errors
 }
 
 #[cfg(test)]
