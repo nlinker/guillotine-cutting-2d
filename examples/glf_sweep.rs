@@ -38,6 +38,7 @@ fn main() {
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
+        spread_first: false,
     });
 
     let mut written = 0u32;

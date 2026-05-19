@@ -32,9 +32,9 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = (usize::MAX, i64::MAX, u64::MAX, u64::MAX);
+    let mut best_obj: Objective = (usize::MAX, u64::MAX, u64::MAX, u64::MAX);
     let mut sum_sheets: usize = 0;
-    let mut sum_bbox: i64 = 0;
+    let mut sum_bbox: u64 = 0;
     let mut ideal_count = 0usize;
     let mut one_piece_count = 0usize;
 
@@ -57,7 +57,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
 
     let elapsed = t0.elapsed();
     let avg_sheets = sum_sheets / N_SEEDS;
-    let avg_bbox = sum_bbox / N_SEEDS as i64;
+    let avg_bbox = sum_bbox / N_SEEDS as u64;
 
     println!(
         "{:<40}  ideal={:3}/{}  1-piece={:3}/{}  best=({},{})\tavg=({},{})  t={:.1}s",
@@ -119,6 +119,7 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
+        spread_first: false,
     }
 }
 

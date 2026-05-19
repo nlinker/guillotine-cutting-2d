@@ -72,6 +72,9 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
+        /// Put sheet_spread_penalty before bbox_grouping_penalty in the objective
+        #[arg(long, default_value_t = false)]
+        spread_first: bool,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -113,8 +116,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink,
             sink_interval,
             render,
+            spread_first,
         } => {
-            let cfg = ga_config(gens, pop, elite, k);
+            let cfg = ga_config(gens, pop, elite, k, spread_first);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
             if render {
@@ -377,7 +381,7 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
+pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spread_first: bool) -> GaConfig {
     GaConfig {
         pop_size: pop,
         n_generations: gens,
@@ -389,5 +393,6 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
+        spread_first,
     }
 }

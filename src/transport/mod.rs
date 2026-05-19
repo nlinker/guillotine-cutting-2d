@@ -14,7 +14,7 @@ pub enum ProgressMessage {
     Progress {
         generation: usize,
         sheets_used: usize,
-        bbox_penalty: i64,
+        bbox_penalty: u64,
         seed: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         solution: Option<SolutionSpec>,
@@ -24,7 +24,7 @@ pub enum ProgressMessage {
     Done {
         seed: u64,
         sheets_used: usize,
-        bbox_penalty: i64,
+        bbox_penalty: u64,
         solution: SolutionSpec,
         pieces: Vec<PieceSpec>,
     },

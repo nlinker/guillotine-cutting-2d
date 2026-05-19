@@ -4,10 +4,10 @@ use crate::cut_tree::build_cut_tree;
 
 /// Four-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. `bbox_grouping_penalty` — spatial scatter of same-size pieces within each sheet
-///   2. `sheet_spread_penalty` — same-size pieces spread across multiple sheets (0 = all confined)
+///   1. primary grouping criterion   — `bbox_grouping_penalty` or `sheet_spread_penalty` (see `GaConfig::spread_first`)
+///   2. secondary grouping criterion — the other one
 ///   3. `staircase_area_last_sheet`
-pub type Objective = (usize, i64, u64, u64);
+pub type Objective = (usize, u64, u64, u64);
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,17 +160,32 @@ impl Solution {
             .unwrap_or(0)
     }
 
+    /// Evaluates the objective with a configurable ordering of the two grouping criteria.
+    ///
+    /// `spread_first = false` (default): `(sheets, bbox, spread, staircase)` —
+    ///   minimise within-sheet scatter first, then cross-sheet spread.
+    /// `spread_first = true`:            `(sheets, spread, bbox, staircase)` —
+    ///   keep same-type pieces on one sheet first, then compact within each sheet.
+    ///
     /// Rust tuple `Ord` provides lexicographic comparison for free.
-    pub fn objective(&self, problem: &Problem) -> Objective {
+    pub fn eval(&self, problem: &Problem, spread_first: bool) -> Objective {
         if self.placements.is_empty() {
             return (0, 0, 0, 0);
         }
-        (
-            self.sheets_used(),
-            self.bbox_grouping_penalty(problem) as i64,
-            self.sheet_spread_penalty(problem),
-            self.staircase_area_last_sheet(problem),
-        )
+        let sheets = self.sheets_used();
+        let bbox = self.bbox_grouping_penalty(problem);
+        let spread = self.sheet_spread_penalty(problem);
+        let staircase = self.staircase_area_last_sheet(problem);
+        if spread_first {
+            (sheets, spread, bbox, staircase)
+        } else {
+            (sheets, bbox, spread, staircase)
+        }
+    }
+
+    /// Canonical objective with `spread_first = false`. Kept for tests and benchmarks.
+    pub fn objective(&self, problem: &Problem) -> Objective {
+        self.eval(problem, false)
     }
 
     /// Inter-sheet spread penalty: sum over each canonical piece size of

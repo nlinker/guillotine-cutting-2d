@@ -66,13 +66,18 @@ pub struct GaConfig {
     /// represent cut trees that the default `lw <= lh` heuristic cannot.
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
+
+    /// When `true`, the objective puts `sheet_spread_penalty` before `bbox_grouping_penalty`
+    /// so the GA first tries to confine same-type pieces to one sheet, then compacts within
+    /// each sheet.  Default: `false` (bbox compactness is the primary grouping criterion).
+    pub spread_first: bool,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}{}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -84,6 +89,7 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
+            if self.spread_first { " spread_first" } else { "" },
         )
     }
 }
@@ -101,6 +107,7 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            spread_first: false,
         }
     }
 }
@@ -214,7 +221,7 @@ fn run_ga_inner<R: Rng>(
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
 ) -> Individual {
-    let mut pop = init_population(problem, config.pop_size, rng);
+    let mut pop = init_population(problem, config.pop_size, config.spread_first, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
@@ -243,7 +250,7 @@ fn run_ga_inner<R: Rng>(
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
-                objective: sol1.objective(problem),
+                objective: sol1.eval(problem, config.spread_first),
             });
 
             if next_pop.len() < config.pop_size {
@@ -259,7 +266,7 @@ fn run_ga_inner<R: Rng>(
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
-                    objective: sol2.objective(problem),
+                    objective: sol2.eval(problem, config.spread_first),
                 });
             }
         }
@@ -529,7 +536,12 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
 }
 
 /// Generates `size` random individuals, each with a shuffled genome and a freshly computed
-pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
+pub fn init_population<R: Rng>(
+    problem: &Problem,
+    size: usize,
+    spread_first: bool,
+    rng: &mut R,
+) -> Vec<Individual> {
     let n = problem.pieces.len();
     (0..size)
         .map(|_| {
@@ -537,7 +549,7 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> V
             let sol = decode(problem, &genome);
             Individual {
                 genome,
-                objective: sol.objective(problem),
+                objective: sol.eval(problem, spread_first),
             }
         })
         .collect()
@@ -709,7 +721,7 @@ mod tests {
         let flat = expand_problem(&spec);
         let n = flat.pieces.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&flat, 20, &mut rng);
+        let pop = init_population(&flat, 20, false, &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
@@ -720,8 +732,8 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
-        let pop1 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop1 = init_population(&flat, 5, false, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&flat, 5, false, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
@@ -737,6 +749,7 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            spread_first: false,
         }
     }
 
