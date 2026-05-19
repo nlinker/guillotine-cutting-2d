@@ -2,8 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Lexicographic objective value `(sheets_used, staircase_area, bbox_grouping_penalty)`. Lower is better.
-pub type Objective = (usize, i64, u64);
+/// Four-level lexicographic fitness (lower is better):
+///   0. `sheets_used`
+///   1. `bbox_grouping_penalty` — spatial scatter of same-size pieces within each sheet
+///   2. `sheet_spread_penalty` — same-size pieces spread across multiple sheets (0 = all confined)
+///   3. `staircase_area_last_sheet`
+pub type Objective = (usize, i64, u64, u64);
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,21 +160,47 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Three-level lexicographic fitness (lower is better):
-    ///   1. minimize `sheets_used`
-    ///   2. minimize `bbox_grouping_penalty` (spatial spread of same-size pieces)
-    ///   3. minimize staircase area on the last sheet
-    ///
     /// Rust tuple `Ord` provides lexicographic comparison for free.
     pub fn objective(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return (0, 0, 0);
+            return (0, 0, 0, 0);
         }
         (
             self.sheets_used(),
             self.bbox_grouping_penalty(problem) as i64,
+            self.sheet_spread_penalty(problem),
             self.staircase_area_last_sheet(problem),
         )
+    }
+
+    /// Inter-sheet spread penalty: sum over each canonical piece size of
+    /// `(distinct_sheets_that_hold_that_size - 1)`.
+    /// Zero when every piece size is confined to exactly one sheet.
+    ///
+    /// Canonical size normalises for rotation: key = `(min(pw,ph), max(pw,ph))`.
+    pub fn sheet_spread_penalty(&self, problem: &Problem) -> u64 {
+        if self.placements.is_empty() {
+            return 0;
+        }
+        let mut pairs: Vec<((u32, u32), usize)> = self
+            .placements
+            .iter()
+            .map(|p| {
+                let piece = &problem.pieces[p.piece_idx];
+                let (pw, ph) = if p.rotated {
+                    (piece.height, piece.width)
+                } else {
+                    (piece.width, piece.height)
+                };
+                ((pw.min(ph), pw.max(ph)), p.sheet_idx)
+            })
+            .collect();
+        pairs.sort_unstable();
+        pairs.dedup(); // now each (canonical_size, sheet_idx) pair is unique
+        // penalty = Σ (distinct_sheets_per_size - 1) = total_pairs - distinct_sizes
+        let total = pairs.len();
+        let distinct_sizes = pairs.windows(2).filter(|w| w[0].0 != w[1].0).count() + 1;
+        (total - distinct_sizes) as u64
     }
 
     /// Sort placements by `(sheet_idx, pw, ph)` so that `bbox_grouping_penalty` can

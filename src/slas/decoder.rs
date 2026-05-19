@@ -280,8 +280,8 @@ mod tests {
         let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
         let obj_a = sol_a.objective(&problem);
         let obj_b = sol_b.objective(&problem);
-        assert_eq!((obj_a.0, obj_a.2), (2, 9)); // staircase: 3×3 at (0,0) -> 9
-        assert_eq!((obj_b.0, obj_b.2), (2, 40)); // staircase: 10×4 at (0,0) -> 40
+        assert_eq!((obj_a.0, obj_a.3), (2, 9)); // staircase: 3×3 at (0,0) -> 9
+        assert_eq!((obj_b.0, obj_b.3), (2, 40)); // staircase: 10×4 at (0,0) -> 40
         assert!(obj_a < obj_b);
     }
 }
