@@ -1,5 +1,4 @@
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,13 +14,13 @@ pub type Objective = (usize, u64, u64, u64);
 /// Order of the two grouping criteria inside `Objective`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CriteriaOrder {
-    /// `(sheets, bbox_grouping_penalty, sheet_spread_penalty, staircase)` — default.
-    /// Minimises within-sheet scatter first, then cross-sheet spread.
-    #[default]
-    BboxFirst,
     /// `(sheets, sheet_spread_penalty, bbox_grouping_penalty, staircase)`.
     /// Keeps same-type pieces on one sheet first, then compacts within each sheet.
+    #[default]
     SpreadFirst,
+    /// `(sheets, bbox_grouping_penalty, sheet_spread_penalty, staircase)` — default.
+    /// Minimizes within-sheet scatter first, then cross-sheet spread.
+    BboxFirst,
 }
 
 impl fmt::Display for CriteriaOrder {
@@ -35,11 +34,14 @@ impl fmt::Display for CriteriaOrder {
 
 impl FromStr for CriteriaOrder {
     type Err = String;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "bbox-first" => Ok(Self::BboxFirst),
             "spread-first" => Ok(Self::SpreadFirst),
-            _ => Err(format!("unknown criteria order '{s}'; expected bbox-first or spread-first")),
+            _ => Err(format!(
+                "unknown criteria order '{s}'; expected bbox-first or spread-first"
+            )),
         }
     }
 }
@@ -206,14 +208,14 @@ impl Solution {
         let spread = self.sheet_spread_penalty(problem);
         let staircase = self.staircase_area_last_sheet(problem);
         match order {
-            CriteriaOrder::BboxFirst => (sheets, bbox, spread, staircase),
             CriteriaOrder::SpreadFirst => (sheets, spread, bbox, staircase),
+            CriteriaOrder::BboxFirst => (sheets, bbox, spread, staircase),
         }
     }
 
-    /// Canonical objective with `CriteriaOrder::BboxFirst`. Kept for tests and benchmarks.
+    /// Canonical objective with `CriteriaOrder::default()`. Kept for tests and benchmarks.
     pub fn objective(&self, problem: &Problem) -> Objective {
-        self.eval(problem, CriteriaOrder::BboxFirst)
+        self.eval(problem, CriteriaOrder::default())
     }
 
     /// Inter-sheet spread penalty: sum over each canonical piece size of

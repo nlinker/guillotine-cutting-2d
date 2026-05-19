@@ -7,9 +7,8 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
-    model::CriteriaOrder,
     glf::build_glf,
-    model::{ProblemSpec, SolutionSpec},
+    model::{CriteriaOrder, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
@@ -73,8 +72,8 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
-        /// Order of the two grouping criteria: bbox-first (default) or spread-first
-        #[arg(long, default_value_t = CriteriaOrder::BboxFirst)]
+        /// Order of the two grouping criteria: spread-first or bbox-first
+        #[arg(long, default_value_t = CriteriaOrder::default())]
         criteria_order: CriteriaOrder,
     },
     /// Start a web server with an interactive UI

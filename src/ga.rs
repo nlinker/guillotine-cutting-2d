@@ -68,7 +68,6 @@ pub struct GaConfig {
     pub inverse_p: f64,
 
     /// Order of the two grouping criteria in the objective.
-    /// See [`CriteriaOrder`] for the available variants.
     pub criteria_order: CriteriaOrder,
 }
 
@@ -88,11 +87,7 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
-            if self.criteria_order != CriteriaOrder::BboxFirst {
-                format!(" order={}", self.criteria_order)
-            } else {
-                String::new()
-            },
+            self.criteria_order,
         )
     }
 }
@@ -539,12 +534,7 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
 }
 
 /// Generates `size` random individuals, each with a shuffled genome and a freshly computed
-pub fn init_population<R: Rng>(
-    problem: &Problem,
-    size: usize,
-    order: CriteriaOrder,
-    rng: &mut R,
-) -> Vec<Individual> {
+pub fn init_population<R: Rng>(problem: &Problem, size: usize, order: CriteriaOrder, rng: &mut R) -> Vec<Individual> {
     let n = problem.pieces.len();
     (0..size)
         .map(|_| {
@@ -735,8 +725,18 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
-        let pop1 = init_population(&flat, 5, CriteriaOrder::default(), &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&flat, 5, CriteriaOrder::default(), &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop1 = init_population(
+            &flat,
+            5,
+            CriteriaOrder::default(),
+            &mut Xoshiro256StarStar::seed_from_u64(7),
+        );
+        let pop2 = init_population(
+            &flat,
+            5,
+            CriteriaOrder::default(),
+            &mut Xoshiro256StarStar::seed_from_u64(7),
+        );
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 

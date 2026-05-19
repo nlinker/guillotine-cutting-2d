@@ -11,7 +11,7 @@ use std::time::Instant;
 use cutting::{
     expand::expand_problem,
     ga::{GaConfig, run_ga},
-    model::Objective,
+    model::{CriteriaOrder, Objective},
     parse::parse_problem,
 };
 use rand::SeedableRng;
@@ -119,7 +119,7 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
-        criteria_order: cutting::model::CriteriaOrder::default(),
+        criteria_order: CriteriaOrder::default(),
     }
 }
 

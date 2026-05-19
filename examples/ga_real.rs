@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Instant};
 
 use cutting::{
     ga::{GaConfig, GaEvent, run_ga_mt},
-    model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
+    model::{CriteriaOrder, Objective, PieceSpec, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     slas::decoder::decode_spec,
 };
@@ -27,7 +27,7 @@ fn ga_cfg() -> GaConfig {
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        criteria_order: cutting::model::CriteriaOrder::default(),
+        criteria_order: CriteriaOrder::default(),
     }
 }
 

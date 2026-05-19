@@ -13,7 +13,7 @@ use axum::{
     },
     routing::get,
 };
-use cutting::model::{PieceSpec, ProblemSpec, Sheet};
+use cutting::model::{CriteriaOrder, PieceSpec, ProblemSpec, Sheet};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -99,7 +99,13 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             let sheet_w = spec.sheet.width;
             let sheet_h = spec.sheet.height;
             let problem = Arc::new(spec);
-            let cfg = Arc::new(crate::ga_config(params.gens, params.pop, 5, 5, cutting::model::CriteriaOrder::default()));
+            let cfg = Arc::new(crate::ga_config(
+                params.gens,
+                params.pop,
+                5,
+                5,
+                CriteriaOrder::default(),
+            ));
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
             let mut sink = SseSink {
