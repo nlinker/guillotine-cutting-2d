@@ -26,17 +26,15 @@ Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
 Private Const LABEL_PCT_CELL   As String = "K4"  ' label size as % of minor block dimension (default 8)
-Private Const LABEL_TXT_MIN    As Long   = 80    ' label text height lower bound at labelPct=100 (scales with labelPct)
-Private Const LABEL_TXT_MAX    As Long   = 100   ' label text height upper bound at labelPct=100 (scales with labelPct)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
-Private Const CFG_SEED_CELL    As String = "L1"  ' base random seed (--seed)
-Private Const CFG_THREADS_CELL As String = "L2"  ' parallel threads (--threads)
-Private Const CFG_GENS_CELL    As String = "L3"  ' generations per run (--gens)
-Private Const CFG_POP_CELL     As String = "L4"  ' population size (--pop)
+Private Const CFG_SEED_CELL    As String = "N1"  ' base random seed (--seed)
+Private Const CFG_THREADS_CELL As String = "N2"  ' parallel threads (--threads)
+Private Const CFG_GENS_CELL    As String = "N3"  ' generations per run (--gens)
+Private Const CFG_POP_CELL     As String = "N4"  ' population size (--pop)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
 Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
 Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
@@ -191,7 +189,8 @@ End Sub
 
 ' Writes progress labels (column to the left of status cells) and clears previous results.
 Private Sub InitOutputArea(ws As Worksheet)
-    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
+    Dim rBase As Range: Set rBase = ws.Range(RESULT_CELL)
+    ws.Range(ws.Cells(rBase.Row + 1, rBase.Column), ws.Cells(1000, rBase.Column + 6)).ClearContents
     ws.Range(OUT_OBJ_CELL).NumberFormat = "# ### ### ##0"
     ClearCutLengths ws
     ClearLayoutShapes ws
@@ -202,17 +201,7 @@ End Sub
 Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     Dim rRow As Long:  rRow  = ws.Range(RESULT_CELL).Row
     Dim rCol As Long:  rCol  = ws.Range(RESULT_CELL).Column  ' "Sheet" label column
-    Dim r    As Long:  r     = rRow
-
-    ' Headers
-    ws.Cells(r, rCol).Value     = "Sheet"
-    ws.Cells(r, rCol + 1).Value = "Piece"
-    ws.Cells(r, rCol + 2).Value = "X"
-    ws.Cells(r, rCol + 3).Value = "Y"
-    ws.Cells(r, rCol + 4).Value = "Width"
-    ws.Cells(r, rCol + 5).Value = "Height"
-    ws.Cells(r, rCol + 6).Value = "Rotated"
-    r = r + 1
+    Dim r    As Long:  r     = rRow + 1
 
     Dim pl As Object
     For Each pl In sol("placements")
@@ -587,8 +576,8 @@ Public Sub RunCut()
                         CStr(msg("bbox_penalty")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
-                    ws.Range(ws.Range(RESULT_CELL), _
-                             ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
+                    Dim rBase As Range: Set rBase = ws.Range(RESULT_CELL)
+                    ws.Range(ws.Cells(rBase.Row + 1, rBase.Column), ws.Cells(1000, rBase.Column + 6)).ClearContents
                     RenderPlacements ws, msg("solution"), msg("pieces")
                     DrawLayout ws, msg("solution"), msg("pieces"), _
                         ws.Range(SHEET_W_CELL).Value, ws.Range(SHEET_H_CELL).Value
@@ -632,7 +621,8 @@ Public Sub StopCut()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
     ws.Range(OUT_STATUS_CELL).Value = "Stopped"
-    ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
+    Dim rBase As Range: Set rBase = ws.Range(RESULT_CELL)
+    ws.Range(ws.Cells(rBase.Row + 1, rBase.Column), ws.Cells(1000, rBase.Column + 6)).ClearContents
     ClearCutLengths ws
     ClearLayoutShapes ws
     ClearPieceColors ws
@@ -640,95 +630,44 @@ End Sub
 
 '' == AutoCAD export ==========================================================
 
-' Returns a running AutoCAD instance, or Nothing if AutoCAD is not open.
-' Tries the generic ProgID first (AutoCAD 2002), then the versioned one for 2015.
+' Returns a running AutoCAD 2015 instance, or Nothing if AutoCAD is not open.
 Private Function GetAcadInstance() As Object
     Dim acad As Object
     On Error Resume Next
-    Set acad = GetObject(, "AutoCAD.Application")     ' AutoCAD 2002
-    If acad Is Nothing Then _
-        Set acad = GetObject(, "AutoCAD.Application.20")  ' AutoCAD 2015
+    Set acad = GetObject(, "AutoCAD.Application.20")
     On Error GoTo 0
     Set GetAcadInstance = acad
 End Function
 
-' Returns the name of a text style using Tahoma TTF (creates it if absent).
-' Tahoma is a TrueType font with full Unicode/Cyrillic glyph support.
-' CharSet 204 = RUSSIAN_CHARSET - tells GDI to use the Cyrillic code page for hinting.
-Private Function EnsureCutTextStyle(doc As Object) As String
-    Const STYLE_NAME As String = "CUT_STYLE"
-    Dim sty As Object
-    On Error Resume Next
-    Set sty = doc.TextStyles(STYLE_NAME)
-    On Error GoTo 0
-    If sty Is Nothing Then
-        Set sty = doc.TextStyles.Add(STYLE_NAME)
-        sty.SetFont "Tahoma", False, False, 204, 0
-    End If
-    EnsureCutTextStyle = STYLE_NAME
-End Function
-
-' Adds one or two centered AddText objects to blkDef labelling the piece.
-' Two lines (labelDim on top/right, labelName on bottom/left) when minSide >= 100;
-' single line ("labelDim labelName") otherwise.
+' Adds a single centered text label to blkDef using the drawing's current text style.
+' Text height = minSide * labelPct / 2; for tall-narrow blocks the text is rotated 90°.
 Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
-                          labelDim As String, labelName As String, _
-                          cutStyle As String, labelPct As Double)
-    Dim minSide   As Long:    minSide   = IIf(bw < bh, bw, bh)
-    Dim maxSide   As Long:    maxSide   = IIf(bw < bh, bh, bw)
+                          pw As Long, ph As Long, pieceName As String, _
+                          labelPct As Double)
     Dim rotated90 As Boolean: rotated90 = (bw < bh)
+    Dim minSide   As Long:    minSide   = IIf(rotated90, bw, bh)
 
-    Dim lbl1 As String, lbl2 As String, nChars As Long
-    If Len(labelName) > 0 Then
-        lbl1 = labelDim & " (" & labelName & ")"
-        nChars = Len(lbl1)
+    Dim labelDim As String: labelDim = CStr(pw) & "x" & CStr(ph)
+    Dim lbl As String
+    If Len(pieceName) > 0 Then
+        lbl = labelDim & " (" & pieceName & ")"
     Else
-        lbl1 = labelDim
-        nChars = Len(lbl1)
+        lbl = labelDim
     End If
 
-    ' Text height: minSide * labelPct/2, so I4=100 gives minSide*50%.
-    ' Text is allowed to overflow the block boundary — readability beats containment.
-    Dim txtH As Double
-    txtH = CDbl(minSide) * labelPct / 2
+    Dim txtH As Double: txtH = CDbl(minSide) * labelPct / 2
 
-    ' Clamp bounds scale with labelPct: at I4=100 -> [80,100]; at I4=50 -> [40,50]; at I4=200 -> [160,200].
-    Dim txtMin As Double: txtMin = LABEL_TXT_MIN * labelPct
-    Dim txtMax As Double: txtMax = LABEL_TXT_MAX * labelPct
-    If txtH < txtMin Then txtH = txtMin
-    If txtH > txtMax Then txtH = txtMax
-
-    Dim cx As Double: cx = CDbl(bw) / 2
-    Dim cy As Double: cy = CDbl(bh) / 2
-    Dim off As Double: off = txtH * 0.65
-
-    Dim pt1(0 To 2) As Double
-    Dim pt2(0 To 2) As Double
-    pt1(2) = 0: pt2(2) = 0
-    If useTwoLines Then
-        If rotated90 Then
-            pt1(0) = cx - off: pt1(1) = cy
-            pt2(0) = cx + off: pt2(1) = cy
-        Else
-            pt1(0) = cx: pt1(1) = cy + off
-            pt2(0) = cx: pt2(1) = cy - off
-        End If
-    Else
-        pt1(0) = cx: pt1(1) = cy
-    End If
+    Dim pt(0 To 2) As Double
+    pt(0) = CDbl(bw) / 2
+    pt(1) = CDbl(bh) / 2
+    pt(2) = 0
 
     Dim t As Object
-    Set t = blkDef.AddText(lbl1, pt1, txtH)
-    t.StyleName = cutStyle: t.Alignment = 4: t.TextAlignmentPoint = pt1
+    Set t = blkDef.AddText(lbl, pt, txtH)
+    t.StyleName = "Standard"
+    t.Alignment = 4: t.TextAlignmentPoint = pt
     If rotated90 Then t.Rotation = 1.5707963265
     Set t = Nothing
-
-    If useTwoLines Then
-        Set t = blkDef.AddText(lbl2, pt2, txtH)
-        t.StyleName = cutStyle: t.Alignment = 4: t.TextAlignmentPoint = pt2
-        If rotated90 Then t.Rotation = 1.5707963265
-        Set t = Nothing
-    End If
 End Sub
 
 Public Sub SendToAutoCAD()
@@ -760,8 +699,6 @@ Public Sub SendToAutoCAD()
     End If
     Set doc = acad.ActiveDocument
     acad.Visible = True
-
-    Dim cutStyle As String: cutStyle = EnsureCutTextStyle(doc)
 
     ' Clear all entities from model space (AOM - synchronous, no timing issues)
     Dim ms As Object: Set ms = doc.ModelSpace
@@ -820,11 +757,7 @@ Public Sub SendToAutoCAD()
         Set rectObj = blkDef.AddLightWeightPolyline(rPts)
         rectObj.Closed = True
 
-        ' AutoCAD 2002 (version 15.x) cannot render the Unicode × (cross) sign - use plain "x".
-        Dim dimSep    As String: dimSep    = IIf(Val(acad.Version) < 16, "x", ChrW(215))
-        Dim labelDim  As String: labelDim  = CStr(pw) & dimSep & CStr(ph)
-        Dim labelName As String: labelName = CStr(ws.Cells(r, rCol + 1).Value)
-        AddPieceLabel blkDef, bw, bh, labelDim, labelName, cutStyle, labelPct
+        AddPieceLabel blkDef, bw, bh, pw, ph, CStr(ws.Cells(r, rCol + 1).Value), labelPct
 
         ' Insert point = bottom-left of block in drawing space
         ' acad_x = xOff + py,  acad_y = shW - px - pw
@@ -844,44 +777,45 @@ Public Sub SendToAutoCAD()
     Dim si As Long
     For si = 0 To nSheets - 1
         Dim sxOff As Long: sxOff = si * (shH + SHEET_GAP_ACAD)
-        Dim sPts(0 To 7) As Double
-        sPts(0) = sxOff:                  sPts(1) = 0
-        sPts(2) = sxOff + shH + kerf:     sPts(3) = 0
-        sPts(4) = sxOff + shH + kerf:     sPts(5) = shW + kerf
-        sPts(6) = sxOff:                  sPts(7) = shW + kerf
-        Dim shRect As Object
-        Set shRect = ms.AddLightWeightPolyline(sPts)
-        shRect.Closed = True
+        ' Inner rectangle — working area after margin
+        Dim iPts(0 To 7) As Double
+        iPts(0) = sxOff + margin:                iPts(1) = margin
+        iPts(2) = sxOff + shH + kerf - margin:   iPts(3) = margin
+        iPts(4) = sxOff + shH + kerf - margin:   iPts(5) = shW + kerf - margin
+        iPts(6) = sxOff + margin:                iPts(7) = shW + kerf - margin
+        Dim innerRect As Object
+        Set innerRect = ms.AddLightWeightPolyline(iPts)
+        innerRect.Closed = True
 
         If margin > 0 Then
-            ' Inner rectangle — working area after margin
-            Dim iPts(0 To 7) As Double
-            iPts(0) = sxOff + margin:                iPts(1) = margin
-            iPts(2) = sxOff + shH + kerf - margin:   iPts(3) = margin
-            iPts(4) = sxOff + shH + kerf - margin:   iPts(5) = shW + kerf - margin
-            iPts(6) = sxOff + margin:                iPts(7) = shW + kerf - margin
-            Dim innerRect As Object
-            Set innerRect = ms.AddLightWeightPolyline(iPts)
-            innerRect.Closed = True
+            ' Outer rectangle — whole sheet including kerf
+            Dim sPts(0 To 7) As Double
+            sPts(0) = sxOff:                  sPts(1) = 0
+            sPts(2) = sxOff + shH + kerf:     sPts(3) = 0
+            sPts(4) = sxOff + shH + kerf:     sPts(5) = shW + kerf
+            sPts(6) = sxOff:                  sPts(7) = shW + kerf
+            Dim shRect As Object
+            Set shRect = ms.AddLightWeightPolyline(sPts)
+            shRect.Closed = True
 
-            ' Hatch the margin band between outer and inner rectangles
-            Dim ht As Object
-            Set ht = ms.AddHatch(0, "ANSI31", False)
-            Dim outerLoop(0) As Object: Set outerLoop(0) = shRect
-            Dim innerLoop(0) As Object: Set innerLoop(0) = innerRect
-            ht.AppendOuterLoop outerLoop
-            ht.AppendInnerLoop innerLoop
-            ht.PatternScale = CDbl(margin) / 2
-            ht.Color = 8  ' gray
-            ht.Evaluate
-            Set ht = Nothing
-            Set innerRect = Nothing
+'             ' Hatch the margin band between outer and inner rectangles
+'             Dim ht As Object
+'             Set ht = ms.AddHatch(0, "ANSI31", False)
+'             Dim outerLoop(0) As Object: Set outerLoop(0) = shRect
+'             Dim innerLoop(0) As Object: Set innerLoop(0) = innerRect
+'             ht.AppendOuterLoop outerLoop
+'             ht.AppendInnerLoop innerLoop
+'             ht.PatternScale = CDbl(margin) / 2
+'             ht.Color = 8  ' gray
+'             ht.Evaluate
+'             Set ht = Nothing
+'             Set innerRect = Nothing
         End If
 
         Set shRect = Nothing
     Next si
 
-    doc.SendCommand "ZOOM" & vbCr & "e" & vbCr
+    acad.ZoomExtents
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================
