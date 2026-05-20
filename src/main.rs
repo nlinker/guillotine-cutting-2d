@@ -329,10 +329,12 @@ pub(crate) fn run_with_sink(
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
                 let (best_seed, best) = &results[0];
                 let sol = decode_spec(&spec, &best.genome);
+                let cut_lengths = sol.cut_lengths(&spec);
                 sink.send(&ProgressMessage::Done {
                     seed: *best_seed,
                     sheets_used: best.objective.0,
                     bbox_penalty: best.objective.1,
+                    cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
                 })

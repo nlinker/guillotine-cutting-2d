@@ -25,6 +25,7 @@ pub enum ProgressMessage {
         seed: u64,
         sheets_used: usize,
         bbox_penalty: u64,
+        cut_lengths: Vec<u64>,
         solution: SolutionSpec,
         pieces: Vec<PieceSpec>,
     },

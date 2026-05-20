@@ -16,10 +16,10 @@ pub type Objective = (usize, u64, u64, u64);
 pub enum CriteriaOrder {
     /// `(sheets, sheet_spread_penalty, bbox_grouping_penalty, staircase)`.
     /// Keeps same-type pieces on one sheet first, then compacts within each sheet.
-    #[default]
     SpreadFirst,
     /// `(sheets, bbox_grouping_penalty, sheet_spread_penalty, staircase)` — default.
     /// Minimizes within-sheet scatter first, then cross-sheet spread.
+    #[default]
     BboxFirst,
 }
 
@@ -134,6 +134,53 @@ impl SolutionSpec {
             .map(|m| m + 1)
             .unwrap_or(0)
     }
+
+    /// Total guillotine cut length per sheet (mm).
+    ///
+    /// Pieces + leftovers tile the working area exactly (up to kerf rounding).
+    /// Every internal boundary is shared by exactly two adjacent rectangles, so
+    /// `total_cut_length = Σ(internal edge lengths) / 2`.
+    /// "Internal" means the edge does not lie on the working-area boundary
+    /// `[margin, sheet.width-margin] × [margin, sheet.height-margin]`.
+    /// The working-area perimeter is added once per sheet when `margin > 0`.
+    pub fn cut_lengths(&self, spec: &ProblemSpec) -> Vec<u64> {
+        let n = self.sheets_used();
+        if n == 0 {
+            return vec![];
+        }
+        let m = spec.margin;
+        let rw = spec.sheet.width - m;
+        let bh = spec.sheet.height - m;
+        let mut totals = vec![0u64; n];
+
+        for pl in &self.placements {
+            let ps = &spec.piespecs[pl.piespec_idx];
+            let (pw, ph) = if pl.rotated {
+                (ps.height, ps.width)
+            } else {
+                (ps.width, ps.height)
+            };
+            let si = pl.sheet_idx;
+            if pl.x > m        { totals[si] += ph as u64; }
+            if pl.x + pw < rw  { totals[si] += ph as u64; }
+            if pl.y > m        { totals[si] += pw as u64; }
+            if pl.y + ph < bh  { totals[si] += pw as u64; }
+        }
+        for lr in &self.leftovers {
+            let si = lr.sheet_idx;
+            if lr.x > m           { totals[si] += lr.h as u64; }
+            if lr.x + lr.w < rw   { totals[si] += lr.h as u64; }
+            if lr.y > m           { totals[si] += lr.w as u64; }
+            if lr.y + lr.h < bh   { totals[si] += lr.w as u64; }
+        }
+
+        let margin_perim = if m > 0 {
+            2 * ((spec.sheet.width - 2 * m) as u64 + (spec.sheet.height - 2 * m) as u64)
+        } else {
+            0
+        };
+        totals.into_iter().map(|t| t / 2 + margin_perim).collect()
+    }
 }
 
 // == Flat types (internal, flat-indexed) =======================================
@@ -222,7 +269,7 @@ impl Solution {
     /// `(distinct_sheets_that_hold_that_size - 1)`.
     /// Zero when every piece size is confined to exactly one sheet.
     ///
-    /// Canonical size normalises for rotation: key = `(min(pw,ph), max(pw,ph))`.
+    /// Canonical size normalizes for rotation: key = `(min(pw,ph), max(pw,ph))`.
     pub fn sheet_spread_penalty(&self, problem: &Problem) -> u64 {
         if self.placements.is_empty() {
             return 0;
@@ -473,5 +520,100 @@ mod tests {
             leftovers: vec![],
         };
         assert_eq!(sol.staircase_area_last_sheet(&prob), 600 * 100 + 500 * 100);
+    }
+
+    // 2×2 grid of 50×50 pieces tiling a 100×100 sheet exactly (no leftovers, no margin).
+    // Cuts: y=50 full-width (100) + x=50 in each strip (50+50) = 200.
+    #[test]
+    fn cut_lengths_no_margin() {
+        let spec = ProblemSpec {
+            sheet: Sheet { width: 100, height: 100 },
+            kerf: 0,
+            margin: 0,
+            piespecs: vec![PieceSpec {
+                name: String::new(),
+                width: 50,
+                height: 50,
+                count: 4,
+                can_rotate: false,
+            }],
+        };
+        let sol = SolutionSpec {
+            placements: vec![
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y:  0, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 50, y:  0, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y: 50, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 50, y: 50, rotated: false },
+            ],
+            leftovers: vec![],
+        };
+        assert_eq!(sol.cut_lengths(&spec), vec![200]);
+    }
+
+    // Same grid on a 120×120 sheet with margin=10.
+    // Working area 100×100; pieces at margin-adjusted coords.
+    // Inner cuts: 200; margin perimeter: 2*(100+100) = 400. Total: 600.
+    #[test]
+    fn cut_lengths_with_margin() {
+        let spec = ProblemSpec {
+            sheet: Sheet { width: 120, height: 120 },
+            kerf: 0,
+            margin: 10,
+            piespecs: vec![PieceSpec {
+                name: String::new(),
+                width: 50,
+                height: 50,
+                count: 4,
+                can_rotate: false,
+            }],
+        };
+        let sol = SolutionSpec {
+            placements: vec![
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 10, y: 10, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 10, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 10, y: 60, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 60, rotated: false },
+            ],
+            leftovers: vec![],
+        };
+        assert_eq!(sol.cut_lengths(&spec), vec![600]);
+    }
+
+    // Four 50×50 pieces in a 2×2 grid on a 120×120 sheet with kerf=10, no margin.
+    // Expanded: each piece is 60×60 on a 130×130 sheet.
+    // SLAS trace (inverse=false, point_selector=0):
+    //   piece 0 → (0,0,130,130): lw=lh=70 → right=(60,0,70,60), bottom=(0,60,130,70)
+    //   piece 1 → (60,0,70,60):  lw=10,lh=0, lw>lh → right=(120,0,10,60), no bottom
+    //   piece 2 → (0,60,130,70): lw=70,lh=10, lw>lh → right=(60,60,70,70), bottom=(0,120,60,10)
+    //   piece 3 → (60,60,70,70): lw=lh=10 → right=(120,60,10,60), bottom=(60,120,70,10)
+    #[test]
+    fn cut_lengths_with_kerf() {
+        let spec = ProblemSpec {
+            sheet: Sheet { width: 120, height: 120 },
+            kerf: 10,
+            margin: 0,
+            piespecs: vec![PieceSpec {
+                name: String::new(),
+                width: 50,
+                height: 50,
+                count: 4,
+                can_rotate: false,
+            }],
+        };
+        let sol = SolutionSpec {
+            placements: vec![
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y:  0, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y:  0, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y: 60, rotated: false },
+                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 60, rotated: false },
+            ],
+            leftovers: vec![
+                FreeRect { sheet_idx: 0, x: 120, y:   0, w: 10, h: 60 },
+                FreeRect { sheet_idx: 0, x:   0, y: 120, w: 60, h: 10 },
+                FreeRect { sheet_idx: 0, x: 120, y:  60, w: 10, h: 60 },
+                FreeRect { sheet_idx: 0, x:  60, y: 120, w: 70, h: 10 },
+            ],
+        };
+        assert_eq!(sol.cut_lengths(&spec), vec![445]);
     }
 }

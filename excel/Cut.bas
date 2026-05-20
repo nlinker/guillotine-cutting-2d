@@ -21,15 +21,15 @@ Private Const OPEN_EXISTING    As Long   = 3
 Private Const FILE_ATTR_NORMAL As Long   = &H80
 Private Const BUFFER_SIZE      As Long   = 8192
 
-Private Const SHEET_W_CELL     As String = "H1"  ' sheet width (mm)
-Private Const SHEET_H_CELL     As String = "I1"  ' sheet height (mm)
-Private Const KERF_CELL        As String = "I2"  ' blade kerf width (mm)
-Private Const MARGIN_CELL      As String = "I3"  ' edge margin (mm)
-Private Const LABEL_PCT_CELL   As String = "I4"  ' label size as % of minor block dimension (default 8)
+Private Const SHEET_W_CELL     As String = "J1"  ' sheet width (mm)
+Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
+Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
+Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
+Private Const LABEL_PCT_CELL   As String = "K4"  ' label size as % of minor block dimension (default 8)
 Private Const LABEL_TXT_MIN    As Long   = 80    ' label text height lower bound at labelPct=100 (scales with labelPct)
 Private Const LABEL_TXT_MAX    As Long   = 100   ' label text height upper bound at labelPct=100 (scales with labelPct)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
-Private Const RESULT_CELL      As String = "M7"  ' top-left of placement table ("Sheet" label column, first result row)
+Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
@@ -37,12 +37,13 @@ Private Const CFG_SEED_CELL    As String = "L1"  ' base random seed (--seed)
 Private Const CFG_THREADS_CELL As String = "L2"  ' parallel threads (--threads)
 Private Const CFG_GENS_CELL    As String = "L3"  ' generations per run (--gens)
 Private Const CFG_POP_CELL     As String = "L4"  ' population size (--pop)
-Private Const OUT_STATUS_CELL  As String = "P1"  ' status text
-Private Const OUT_GEN_CELL     As String = "P2"  ' current generation
-Private Const OUT_OBJ_CELL     As String = "P3"  ' best objective
-Private Const OUT_SHEETS_CELL  As String = "P4"  ' sheets used
+Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
+Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
+Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
+Private Const OUT_SHEETS_CELL  As String = "R4"  ' sheets used
+Private Const OUT_CUT_CELL     As String = "R5"  ' cuts used for each of the sheets
 
-Private Const CANVAS_RANGE     As String = "G6:L6"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_RANGE     As String = "I7:N7"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 #If VBA7 Then
@@ -192,6 +193,7 @@ End Sub
 Private Sub InitOutputArea(ws As Worksheet)
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
     ws.Range(OUT_OBJ_CELL).NumberFormat = "# ### ### ##0"
+    ClearCutLengths ws
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
@@ -364,9 +366,33 @@ Private Sub ColorPieceRows(ws As Worksheet, pieces As Object)
     Dim i As Long
     For i = DataStartRow(ws) To 200
         If ws.Cells(i, dc + 1).Value = "" Then Exit For
-        ws.Range(ws.Cells(i, dc), ws.Cells(i, dc + 4)).Interior.Color = PieceColor(ci)
+        ' ws.Range(ws.Cells(i, dc), ws.Cells(i, dc + 4)).Interior.Color = PieceColor(ci)
         ci = ci + 1
     Next i
+End Sub
+
+'' == Cut length ==============================================================
+
+Private Sub ClearCutLengths(ws As Worksheet)
+    Dim base As Range: Set base = ws.Range(OUT_CUT_CELL)
+    ws.Range(base, ws.Cells(base.Row, base.Column + 50)).ClearContents
+End Sub
+
+' Writes pre-computed per-sheet cut lengths from the Rust "done" message.
+' cutLengths is msg("cut_lengths") — a JSON array with one value per sheet.
+' Values are written to R5, S5, T5, … (OUT_CUT_CELL and to the right).
+Private Sub WriteCutLengths(ws As Worksheet, cutLengths As Object)
+    If cutLengths Is Nothing Then Exit Sub
+    Dim base As Range: Set base = ws.Range(OUT_CUT_CELL)
+    Dim si As Long: si = 0
+    Dim v As Variant
+    For Each v In cutLengths
+        With ws.Cells(base.Row, base.Column + si)
+            .Value = CLng(v)
+            .NumberFormat = "# ### ##0"
+        End With
+        si = si + 1
+    Next v
 End Sub
 
 '' == JSON builder =============================================================
@@ -553,12 +579,12 @@ Public Sub RunCut()
                 Case "progress"
                     SetProgress ws, "Running...", _
                         CStr(msg("generation")), _
-                        CStr(msg("last_sheet_area")), _
+                        CStr(msg("bbox_penalty")), _
                         CStr(msg("sheets_used"))
 
                 Case "done"
                     SetProgress ws, "Done " & ChrW(10003), "", _
-                        CStr(msg("last_sheet_area")), _
+                        CStr(msg("bbox_penalty")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
                     ws.Range(ws.Range(RESULT_CELL), _
@@ -567,6 +593,7 @@ Public Sub RunCut()
                     DrawLayout ws, msg("solution"), msg("pieces"), _
                         ws.Range(SHEET_W_CELL).Value, ws.Range(SHEET_H_CELL).Value
                     ColorPieceRows ws, msg("pieces")
+                    WriteCutLengths ws, msg("cut_lengths")
                     Application.ScreenUpdating = True
                     g_Running = False
 
@@ -606,6 +633,7 @@ Public Sub StopCut()
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
     ws.Range(OUT_STATUS_CELL).Value = "Stopped"
     ws.Range(ws.Range(RESULT_CELL), ws.Cells(1000, ws.Range(RESULT_CELL).Column + 6)).ClearContents
+    ClearCutLengths ws
     ClearLayoutShapes ws
     ClearPieceColors ws
 End Sub
@@ -650,14 +678,8 @@ Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
     Dim maxSide   As Long:    maxSide   = IIf(bw < bh, bh, bw)
     Dim rotated90 As Boolean: rotated90 = (bw < bh)
 
-    Dim useTwoLines As Boolean: useTwoLines = (Len(labelName) > 0) And (minSide >= 100)
-
     Dim lbl1 As String, lbl2 As String, nChars As Long
-    If useTwoLines Then
-        lbl1 = labelDim
-        lbl2 = "(" & labelName & ")"
-        nChars = IIf(Len(lbl1) > Len(lbl2), Len(lbl1), Len(lbl2))
-    ElseIf Len(labelName) > 0 Then
+    If Len(labelName) > 0 Then
         lbl1 = labelDim & " (" & labelName & ")"
         nChars = Len(lbl1)
     Else
