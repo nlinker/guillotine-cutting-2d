@@ -25,7 +25,7 @@ Private Const SHEET_W_CELL     As String = "J1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
-Private Const LABEL_PCT_CELL   As String = "K4"  ' label size as % of minor block dimension (default 8)
+Private Const LABEL_PCT_CELL   As String = "K4"  ' label text height in drawing units (mm)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -265,19 +265,26 @@ Private Sub ClearLayoutShapes(ws As Worksheet)
 End Sub
 
 ' Draws cutting layout as Excel shapes; origin and width taken from CANVAS_RANGE.
-' Sheets are displayed side-by-side; pieces are color-coded by name.
+' Sheets are rotated 90° CCW (solver-Y → display-X, solver-X → display-Y) to match
+' the AutoCAD drawing orientation, and arranged in two columns within CANVAS_RANGE.
+' Pieces are color-coded by piece type.
 Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
-                       sheetW As Long, sheetH As Long)
-    If sheetW <= 0 Or sheetH <= 0 Then Exit Sub
+                       shW As Long, shH As Long)
+    If shW <= 0 Or shH <= 0 Then Exit Sub
 
     ClearLayoutShapes ws
 
-    Dim cvs         As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
-    Dim originLeft  As Double: originLeft  = cvs.Cells(1, 1).Left
-    Dim originTop   As Double: originTop   = cvs.Cells(1, 1).Top
-    Dim sheetsDispW As Double: sheetsDispW = cvs.Cells(1, cvs.Columns.Count).Left - originLeft
-    Dim scl         As Double: scl         = sheetsDispW / sheetW
-    Dim sheetDispH  As Double: sheetDispH  = sheetH * scl
+    Dim cvs        As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
+    Dim originLeft As Double: originLeft  = cvs.Cells(1, 1).Left
+    Dim originTop  As Double: originTop   = cvs.Cells(1, 1).Top
+    Dim canvasW    As Double: canvasW     = cvs.Cells(1, cvs.Columns.Count).Left - originLeft
+
+    ' After 90° CCW rotation the sheet is shH wide and shW tall in display space.
+    ' Two columns fit side by side within canvasW.
+    Dim colW    As Double: colW    = (canvasW - CANVAS_SHEET_GAP) / 2
+    Dim scl     As Double: scl     = colW / shH
+    Dim shDispW As Double: shDispW = shH * scl   ' = colW
+    Dim shDispH As Double: shDispH = shW * scl
 
     ' Count sheets
     Dim nSheets As Long: nSheets = 0
@@ -286,13 +293,13 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         If pl("sheet_idx") + 1 > nSheets Then nSheets = pl("sheet_idx") + 1
     Next pl
 
-    ' Draw sheet backgrounds (stacked vertically)
+    ' Draw sheet backgrounds in 2-column grid
     Dim si As Long
     For si = 0 To nSheets - 1
-        Dim bgTop As Double: bgTop = originTop + si * (sheetDispH + CANVAS_SHEET_GAP)
+        Dim bgLeft As Double: bgLeft = originLeft + (si Mod 2) * (shDispW + CANVAS_SHEET_GAP)
+        Dim bgTop  As Double: bgTop  = originTop  + (si \ 2)   * (shDispH + CANVAS_SHEET_GAP)
         Dim bg As Shape
-        Set bg = ws.Shapes.AddShape(msoShapeRectangle, originLeft, bgTop, _
-                                    sheetsDispW, sheetDispH)
+        Set bg = ws.Shapes.AddShape(msoShapeRectangle, bgLeft, bgTop, shDispW, shDispH)
         bg.Name = "cut_bg_" & si
         bg.Fill.ForeColor.RGB = RGB(248, 248, 248)
         bg.Fill.Transparency = 0
@@ -302,7 +309,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
         bg.TextFrame.Characters.Font.Size = 8
     Next si
 
-    ' Draw pieces
+    ' Draw pieces (rotated 90° CCW: display_x = solver_y, display_y = solver_x)
     Dim pIdx As Long: pIdx = 0
     For Each pl In sol("placements")
         Dim idx   As Long: idx   = pl("piespec_idx") + 1
@@ -315,10 +322,12 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
             pw = pieces(idx)("width"):  ph = pieces(idx)("height")
         End If
 
-        Dim rLeft   As Double: rLeft   = originLeft + pl("x") * scl
-        Dim rTop    As Double: rTop    = originTop + shIdx * (sheetDispH + CANVAS_SHEET_GAP) + pl("y") * scl
-        Dim rWidth  As Double: rWidth  = pw * scl
-        Dim rHeight As Double: rHeight = ph * scl
+        Dim shLeft  As Double: shLeft  = originLeft + (shIdx Mod 2) * (shDispW + CANVAS_SHEET_GAP)
+        Dim shTop   As Double: shTop   = originTop  + (shIdx \ 2)   * (shDispH + CANVAS_SHEET_GAP)
+        Dim rLeft   As Double: rLeft   = shLeft + pl("y") * scl
+        Dim rTop    As Double: rTop    = shTop  + pl("x") * scl
+        Dim rWidth  As Double: rWidth  = ph * scl
+        Dim rHeight As Double: rHeight = pw * scl
         If rWidth  < 1# Then rWidth  = 1#
         If rHeight < 1# Then rHeight = 1#
 
@@ -640,12 +649,11 @@ Private Function GetAcadInstance() As Object
 End Function
 
 ' Adds a single centered text label to blkDef using the drawing's current text style.
-' Text height = minSide * labelPct / 2; for tall-narrow blocks the text is rotated 90°.
+' Text height = labelH (mm, same for all pieces); tall-narrow blocks are rotated 90°.
 Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
                           pw As Long, ph As Long, pieceName As String, _
-                          labelPct As Double)
+                          labelH As Double)
     Dim rotated90 As Boolean: rotated90 = (bw < bh)
-    Dim minSide   As Long:    minSide   = IIf(rotated90, bw, bh)
 
     Dim labelDim As String: labelDim = CStr(pw) & "x" & CStr(ph)
     Dim lbl As String
@@ -655,7 +663,7 @@ Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
         lbl = labelDim
     End If
 
-    Dim txtH As Double: txtH = CDbl(minSide) * labelPct / 2
+    Dim txtH As Double: txtH = labelH
 
     Dim pt(0 To 2) As Double
     pt(0) = CDbl(bw) / 2
@@ -678,9 +686,9 @@ Public Sub SendToAutoCAD()
     Dim shH      As Long:   shH      = ws.Range(SHEET_H_CELL).Value
     Dim kerf     As Long:   kerf     = ws.Range(KERF_CELL).Value
     Dim margin   As Long:   margin   = ws.Range(MARGIN_CELL).Value
-    Dim labelPct As Double: labelPct = 0.08
+    Dim labelPct As Double: labelPct = 50#
     If ws.Range(LABEL_PCT_CELL).Value <> "" Then
-        labelPct = CDbl(ws.Range(LABEL_PCT_CELL).Value) / 100#
+        labelPct = CDbl(ws.Range(LABEL_PCT_CELL).Value)
     End If
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
@@ -786,33 +794,6 @@ Public Sub SendToAutoCAD()
         Dim innerRect As Object
         Set innerRect = ms.AddLightWeightPolyline(iPts)
         innerRect.Closed = True
-
-        If margin > 0 Then
-            ' Outer rectangle — whole sheet including kerf
-            Dim sPts(0 To 7) As Double
-            sPts(0) = sxOff:                  sPts(1) = 0
-            sPts(2) = sxOff + shH + kerf:     sPts(3) = 0
-            sPts(4) = sxOff + shH + kerf:     sPts(5) = shW + kerf
-            sPts(6) = sxOff:                  sPts(7) = shW + kerf
-            Dim shRect As Object
-            Set shRect = ms.AddLightWeightPolyline(sPts)
-            shRect.Closed = True
-
-'             ' Hatch the margin band between outer and inner rectangles
-'             Dim ht As Object
-'             Set ht = ms.AddHatch(0, "ANSI31", False)
-'             Dim outerLoop(0) As Object: Set outerLoop(0) = shRect
-'             Dim innerLoop(0) As Object: Set innerLoop(0) = innerRect
-'             ht.AppendOuterLoop outerLoop
-'             ht.AppendInnerLoop innerLoop
-'             ht.PatternScale = CDbl(margin) / 2
-'             ht.Color = 8  ' gray
-'             ht.Evaluate
-'             Set ht = Nothing
-'             Set innerRect = Nothing
-        End If
-
-        Set shRect = Nothing
     Next si
 
     acad.ZoomExtents
