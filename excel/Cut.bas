@@ -31,10 +31,10 @@ Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table (
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
-Private Const CFG_SEED_CELL    As String = "N1"  ' base random seed (--seed)
-Private Const CFG_THREADS_CELL As String = "N2"  ' parallel threads (--threads)
-Private Const CFG_GENS_CELL    As String = "N3"  ' generations per run (--gens)
-Private Const CFG_POP_CELL     As String = "N4"  ' population size (--pop)
+Private Const CFG_SEED_CELL     As String = "N1"  ' base random seed (--seed)
+Private Const CFG_GENS_CELL     As String = "N2"  ' generations per run (--gens)
+Private Const CFG_POP_CELL      As String = "N3"  ' population size (--pop)
+Private Const CFG_CRITERIA_CELL As String = "N4"  ' criteria order: bbox-first or spread-first (--criteria-order)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
 Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
 Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
@@ -476,11 +476,10 @@ Public Sub RunCut()
     Close #fNum
 
     ' Read GA config from sheet (use defaults if cells empty)
-    ' nThreads = 0 - auto-detect via available_parallelism()
-    Dim nSeed    As Long: nSeed    = 42
-    Dim nThreads As Long: nThreads = 0
-    Dim nGens    As Long: nGens    = 2000
-    Dim nPop     As Long: nPop     = 200
+    Dim nSeed     As Long:   nSeed     = 42
+    Dim nGens     As Long:   nGens     = 2000
+    Dim nPop      As Long:   nPop      = 200
+    Dim sCriteria As String: sCriteria = "bbox-first"
     If ws.CheckBoxes(CFG_RANDOM_SEED_CHK).Value = xlOn Then
         Randomize
         nSeed = Int(Rnd() * 10000)
@@ -488,14 +487,15 @@ Public Sub RunCut()
     ElseIf ws.Range(CFG_SEED_CELL).Value <> "" Then
         nSeed = CLng(ws.Range(CFG_SEED_CELL).Value)
     End If
-    If ws.Range(CFG_THREADS_CELL).Value <> "" Then nThreads = CLng(ws.Range(CFG_THREADS_CELL).Value)
-    If ws.Range(CFG_GENS_CELL).Value    <> "" Then nGens    = CLng(ws.Range(CFG_GENS_CELL).Value)
-    If ws.Range(CFG_POP_CELL).Value     <> "" Then nPop     = CLng(ws.Range(CFG_POP_CELL).Value)
+    If ws.Range(CFG_GENS_CELL).Value     <> "" Then nGens     = CLng(ws.Range(CFG_GENS_CELL).Value)
+    If ws.Range(CFG_POP_CELL).Value      <> "" Then nPop      = CLng(ws.Range(CFG_POP_CELL).Value)
+    If ws.Range(CFG_CRITERIA_CELL).Value <> "" Then sCriteria = ws.Range(CFG_CRITERIA_CELL).Value
 
-    ' Launch cut.exe (non-blocking Shell)
+    ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
-        & " --seed " & nSeed & " --threads " & nThreads & " --gens " & nGens & " --pop " & nPop
+        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
+        & " --criteria-order " & sCriteria
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe
@@ -799,6 +799,24 @@ Public Sub SendToAutoCAD()
     acad.ZoomExtents
 End Sub
 
+'' == One-time sheet setup =====================================================
+
+' Runs all one-time setup steps: criteria-order dropdown + "Can rotate?" checkboxes.
+Public Sub SetupAll()
+    SetupCriteriaValidation
+    CreateCheckboxes
+End Sub
+
+Private Sub SetupCriteriaValidation()
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    With ws.Range(CFG_CRITERIA_CELL).Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+             Formula1:="bbox-first,spread-first"
+    End With
+End Sub
+
 '' == Checkboxes for "Can rotate?" =============================================
 
 Sub CreateCheckboxes()
@@ -810,7 +828,7 @@ Sub CreateCheckboxes()
         If shp.Name <> CFG_RANDOM_SEED_CHK Then shp.Delete
     Next shp
 
-    Dim cbCol     As Long:   cbCol     = DataCol(ws) + 5
+    Dim cbCol     As Long:   cbCol     = DataCol(ws) + 4
     Dim colWidth  As Double: colWidth  = ws.Columns(cbCol).Width
     Dim cell      As Range
     Dim cb        As CheckBox
