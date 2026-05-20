@@ -272,16 +272,13 @@ mod tests {
     }
 
     #[test]
-    fn objective_prefers_smaller_area_on_last_sheet() {
-        // Sheet 10×10, kerf=0. Pieces: 10×6 (big), 10×4 (medium), 3×3 (small).
+    fn staircase_area_sums_all_sheets() {
+        // Sheet 10×10, kerf=0. Genome [0,1,2] packs sheet 0 full (10×6 + 10×4 = 100)
+        // and puts 3×3 alone on sheet 1 (staircase = 9). Sum = 109.
         let spec = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
         let problem = expand_problem(&spec);
-        let sol_a = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
-        let sol_b = decode(&problem, &vec![g(0, false, 0), g(2, false, 0), g(1, false, 0)]);
-        let obj_a = sol_a.objective(&problem);
-        let obj_b = sol_b.objective(&problem);
-        assert_eq!((obj_a.0, obj_a.3), (2, 9)); // staircase: 3×3 at (0,0) -> 9
-        assert_eq!((obj_b.0, obj_b.3), (2, 40)); // staircase: 10×4 at (0,0) -> 40
-        assert!(obj_a < obj_b);
+        let sol = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
+        assert_eq!(sol.sheets_used(), 2);
+        assert_eq!(sol.staircase_area(&problem), 109);
     }
 }

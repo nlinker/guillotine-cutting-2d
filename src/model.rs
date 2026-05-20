@@ -8,7 +8,7 @@ use crate::cut_tree::build_cut_tree;
 ///   0. `sheets_used`
 ///   1. primary grouping criterion   (order determined by `CriteriaOrder`)
 ///   2. secondary grouping criterion (the other one)
-///   3. `staircase_area_last_sheet`
+///   3. `staircase_area` (sum across all sheets)
 pub type Objective = (usize, u64, u64, u64);
 
 /// Order of the two grouping criteria inside `Objective`.
@@ -253,7 +253,7 @@ impl Solution {
         let sheets = self.sheets_used();
         let bbox = self.bbox_grouping_penalty(problem);
         let spread = self.sheet_spread_penalty(problem);
-        let staircase = self.staircase_area_last_sheet(problem);
+        let staircase = self.staircase_area(problem);
         match order {
             CriteriaOrder::SpreadFirst => (sheets, spread, bbox, staircase),
             CriteriaOrder::BboxFirst => (sheets, bbox, spread, staircase),
@@ -366,50 +366,45 @@ impl Solution {
         penalty
     }
 
-    /// Area of the staircase polygon from (0,0) bounding all pieces on the last sheet.
+    /// Sum of staircase-polygon areas across all sheets.
     ///
-    /// Builds the Pareto-optimal set of bottom-right corners (rx, ry): a corner is kept
-    /// iff no other corner has both x ≥ rx and y ≥ ry. The resulting step function is
-    /// integrated top-to-bottom to give the enclosed area.
-    pub fn staircase_area_last_sheet(&self, problem: &Problem) -> u64 {
-        if self.placements.is_empty() {
+    /// For each sheet: build the Pareto-optimal set of bottom-right corners (rx, ry)
+    /// of all placed pieces; integrate the resulting step function top-to-bottom.
+    /// Returns the sum of these areas over every sheet used.
+    pub fn staircase_area(&self, problem: &Problem) -> u64 {
+        let n = self.sheets_used();
+        if n == 0 {
             return 0;
         }
-        let last = self.sheets_used() - 1;
-
-        // Build Pareto-optimal set of bottom-right corners.
-        let mut stairs: Vec<(u32, u32)> = Vec::new();
-        for pl in self.placements.iter().filter(|p| p.sheet_idx == last) {
-            let piece = &problem.pieces[pl.piece_idx];
-            let (pw, ph) = if pl.rotated {
-                (piece.height, piece.width)
-            } else {
-                (piece.width, piece.height)
-            };
-            let rx = pl.x + pw;
-            let ry = pl.y + ph;
-
-            if stairs.iter().any(|&(x, y)| x >= rx && y >= ry) {
+        let mut total = 0u64;
+        for sheet in 0..n {
+            let mut stairs: Vec<(u32, u32)> = Vec::new();
+            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+                let piece = &problem.pieces[pl.piece_idx];
+                let (pw, ph) = if pl.rotated {
+                    (piece.height, piece.width)
+                } else {
+                    (piece.width, piece.height)
+                };
+                let rx = pl.x + pw;
+                let ry = pl.y + ph;
+                if stairs.iter().any(|&(x, y)| x >= rx && y >= ry) {
+                    continue;
+                }
+                stairs.retain(|&(x, y)| !(x <= rx && y <= ry));
+                stairs.push((rx, ry));
+            }
+            if stairs.is_empty() {
                 continue;
             }
-            stairs.retain(|&(x, y)| !(x <= rx && y <= ry));
-            stairs.push((rx, ry));
+            stairs.sort_unstable_by_key(|&(_, y)| y);
+            let mut prev_y = 0u32;
+            for (x, y) in stairs {
+                total += x as u64 * (y - prev_y) as u64;
+                prev_y = y;
+            }
         }
-
-        if stairs.is_empty() {
-            return 0;
-        }
-
-        // Sort by y ascending -> x descending (staircase top-to-bottom, widest first).
-        stairs.sort_unstable_by_key(|&(_, y)| y);
-
-        let mut area = 0u64;
-        let mut prev_y = 0u32;
-        for (x, y) in stairs {
-            area += x as u64 * (y - prev_y) as u64;
-            prev_y = y;
-        }
-        area
+        total
     }
 }
 
@@ -519,7 +514,7 @@ mod tests {
             ],
             leftovers: vec![],
         };
-        assert_eq!(sol.staircase_area_last_sheet(&prob), 600 * 100 + 500 * 100);
+        assert_eq!(sol.staircase_area(&prob), 600 * 100 + 500 * 100);
     }
 
     // 2×2 grid of 50×50 pieces tiling a 100×100 sheet exactly (no leftovers, no margin).
