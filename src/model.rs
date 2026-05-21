@@ -1,50 +1,13 @@
-use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Four-level lexicographic fitness (lower is better):
+/// Three-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. primary grouping criterion   (order determined by `CriteriaOrder`)
-///   2. secondary grouping criterion (the other one)
-///   3. `staircase_area` (sum across all sheets)
-pub type Objective = (usize, u64, u64, u64);
-
-/// Order of the two grouping criteria inside `Objective`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CriteriaOrder {
-    /// `(sheets, sheet_spread_penalty, bbox_grouping_penalty, staircase)`.
-    /// Keeps same-type pieces on one sheet first, then compacts within each sheet.
-    SpreadFirst,
-    /// `(sheets, bbox_grouping_penalty, sheet_spread_penalty, staircase)` — default.
-    /// Minimizes within-sheet scatter first, then cross-sheet spread.
-    #[default]
-    BboxFirst,
-}
-
-impl fmt::Display for CriteriaOrder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BboxFirst => f.write_str("bbox-first"),
-            Self::SpreadFirst => f.write_str("spread-first"),
-        }
-    }
-}
-
-impl FromStr for CriteriaOrder {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "bbox-first" => Ok(Self::BboxFirst),
-            "spread-first" => Ok(Self::SpreadFirst),
-            _ => Err(format!(
-                "unknown criteria order '{s}'; expected bbox-first or spread-first"
-            )),
-        }
-    }
-}
+///   1. `mfg_cost` — manufacturability cost (rotations×10 + fence resets×3 + cuts×1)
+///   2. `staircase_area` (sum across all sheets)
+pub type Objective = (usize, u64, u64);
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +195,10 @@ pub struct FreeRect {
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub leftovers: Vec<FreeRect>,
+    /// Manufacturability cost computed by the decoder from the cut tree.
+    /// Zero when constructed outside the decoder (e.g. generator, tests).
+    #[serde(default)]
+    pub mfg_cost: u32,
 }
 
 impl Solution {
@@ -244,126 +211,20 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Evaluates the objective under the given `CriteriaOrder`.
+    /// Evaluates the lexicographic objective `(sheets_used, mfg_cost, staircase_area)`.
     /// Rust tuple `Ord` provides lexicographic comparison for free.
-    pub fn eval(&self, problem: &Problem, order: CriteriaOrder) -> Objective {
+    pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return (0, 0, 0, 0);
+            return (0, 0, 0);
         }
         let sheets = self.sheets_used();
-        let bbox = self.bbox_grouping_penalty(problem);
-        let spread = self.sheet_spread_penalty(problem);
         let staircase = self.staircase_area(problem);
-        match order {
-            CriteriaOrder::SpreadFirst => (sheets, spread, bbox, staircase),
-            CriteriaOrder::BboxFirst => (sheets, bbox, spread, staircase),
-        }
+        (sheets, self.mfg_cost as u64, staircase)
     }
 
-    /// Canonical objective with `CriteriaOrder::default()`. Kept for tests and benchmarks.
+    /// Alias for `eval`. Kept for tests and benchmarks.
     pub fn objective(&self, problem: &Problem) -> Objective {
-        self.eval(problem, CriteriaOrder::default())
-    }
-
-    /// Inter-sheet spread penalty: sum over each canonical piece size of
-    /// `(distinct_sheets_that_hold_that_size - 1)`.
-    /// Zero when every piece size is confined to exactly one sheet.
-    ///
-    /// Canonical size normalizes for rotation: key = `(min(pw,ph), max(pw,ph))`.
-    pub fn sheet_spread_penalty(&self, problem: &Problem) -> u64 {
-        if self.placements.is_empty() {
-            return 0;
-        }
-        let mut pairs: Vec<((u32, u32), usize)> = self
-            .placements
-            .iter()
-            .map(|p| {
-                let piece = &problem.pieces[p.piece_idx];
-                let (pw, ph) = if p.rotated {
-                    (piece.height, piece.width)
-                } else {
-                    (piece.width, piece.height)
-                };
-                ((pw.min(ph), pw.max(ph)), p.sheet_idx)
-            })
-            .collect();
-        pairs.sort_unstable();
-        pairs.dedup(); // now each (canonical_size, sheet_idx) pair is unique
-        // penalty = Σ (distinct_sheets_per_size - 1) = total_pairs - distinct_sizes
-        let total = pairs.len();
-        let distinct_sizes = pairs.windows(2).filter(|w| w[0].0 != w[1].0).count() + 1;
-        (total - distinct_sizes) as u64
-    }
-
-    /// Sort placements by `(sheet_idx, pw, ph)` so that `bbox_grouping_penalty` can
-    /// do a zero-alloc linear scan. Called by `decode()` after building the solution.
-    pub fn sort_placements(&mut self, problem: &Problem) {
-        self.placements.sort_unstable_by_key(|p| {
-            let piece = &problem.pieces[p.piece_idx];
-            let (pw, ph) = if p.rotated {
-                (piece.height, piece.width)
-            } else {
-                (piece.width, piece.height)
-            };
-            (p.sheet_idx, pw, ph)
-        });
-    }
-
-    /// Spatial grouping penalty: sum over groups `(sheet_idx, pw, ph)` of
-    /// `bbox_area - sum_piece_area`. Zero when all same-size pieces on a sheet are
-    /// clustered together; large when they are scattered.
-    ///
-    /// Requires `placements` sorted by `(sheet_idx, pw, ph)` — call `sort_placements`
-    /// first. On unsorted input the result is undefined (not a panic).
-    pub fn bbox_grouping_penalty(&self, problem: &Problem) -> u64 {
-        let group_key = |p: &Placement| -> (usize, u32, u32) {
-            let piece = &problem.pieces[p.piece_idx];
-            let (pw, ph) = if p.rotated {
-                (piece.height, piece.width)
-            } else {
-                (piece.width, piece.height)
-            };
-            (p.sheet_idx, pw, ph)
-        };
-        debug_assert!(
-            self.placements.windows(2).all(|w| group_key(&w[0]) <= group_key(&w[1])),
-            "placements must be sorted by (sheet_idx, pw, ph) before calling bbox_grouping_penalty"
-        );
-        let mut penalty = 0u64;
-        let mut start = 0;
-        let n = self.placements.len();
-        while start < n {
-            let pl0 = &self.placements[start];
-            let (pw0, ph0, _) = {
-                let (a, b, c) = group_key(pl0);
-                (b, c, a)
-            };
-            let key0 = group_key(pl0);
-            let mut min_x = pl0.x;
-            let mut min_y = pl0.y;
-            let mut max_x = pl0.x + pw0;
-            let mut max_y = pl0.y + ph0;
-            let mut area = pw0 as u64 * ph0 as u64;
-            let mut end = start + 1;
-            while end < n {
-                let key = group_key(&self.placements[end]);
-                if key != key0 {
-                    break;
-                }
-                let pl = &self.placements[end];
-                let pw = key.1;
-                let ph = key.2;
-                min_x = min_x.min(pl.x);
-                min_y = min_y.min(pl.y);
-                max_x = max_x.max(pl.x + pw);
-                max_y = max_y.max(pl.y + ph);
-                area += pw as u64 * ph as u64;
-                end += 1;
-            }
-            penalty += (max_x - min_x) as u64 * (max_y - min_y) as u64 - area;
-            start = end;
-        }
-        penalty
+        self.eval(problem)
     }
 
     /// Sum of staircase-polygon areas across all sheets.
@@ -513,6 +374,7 @@ mod tests {
                 pl(3, 0, 100), // стойка:    corner (500, 200)
             ],
             leftovers: vec![],
+            mfg_cost: 0,
         };
         assert_eq!(sol.staircase_area(&prob), 600 * 100 + 500 * 100);
     }

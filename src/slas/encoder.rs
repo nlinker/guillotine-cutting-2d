@@ -168,6 +168,7 @@ mod tests {
                 },
             ],
             leftovers: vec![],
+            mfg_cost: 0,
         };
         let genome = encode(&optimal, &problem);
         assert_eq!(genome.len(), 4);

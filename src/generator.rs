@@ -169,6 +169,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
         optimal_solution: Solution {
             placements,
             leftovers: Vec::new(),
+            mfg_cost: 0,
         },
     }
 }

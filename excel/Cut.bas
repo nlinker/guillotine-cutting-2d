@@ -34,7 +34,6 @@ Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: rando
 Private Const CFG_SEED_CELL     As String = "N1"  ' base random seed (--seed)
 Private Const CFG_GENS_CELL     As String = "N2"  ' generations per run (--gens)
 Private Const CFG_POP_CELL      As String = "N3"  ' population size (--pop)
-Private Const CFG_CRITERIA_CELL As String = "N4"  ' criteria order: bbox-first or spread-first (--criteria-order)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
 Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
 Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
@@ -476,10 +475,9 @@ Public Sub RunCut()
     Close #fNum
 
     ' Read GA config from sheet (use defaults if cells empty)
-    Dim nSeed     As Long:   nSeed     = 42
-    Dim nGens     As Long:   nGens     = 2000
-    Dim nPop      As Long:   nPop      = 200
-    Dim sCriteria As String: sCriteria = "bbox-first"
+    Dim nSeed As Long: nSeed = 42
+    Dim nGens As Long: nGens = 2000
+    Dim nPop  As Long: nPop  = 200
     If ws.CheckBoxes(CFG_RANDOM_SEED_CHK).Value = xlOn Then
         Randomize
         nSeed = Int(Rnd() * 10000)
@@ -487,15 +485,13 @@ Public Sub RunCut()
     ElseIf ws.Range(CFG_SEED_CELL).Value <> "" Then
         nSeed = CLng(ws.Range(CFG_SEED_CELL).Value)
     End If
-    If ws.Range(CFG_GENS_CELL).Value     <> "" Then nGens     = CLng(ws.Range(CFG_GENS_CELL).Value)
-    If ws.Range(CFG_POP_CELL).Value      <> "" Then nPop      = CLng(ws.Range(CFG_POP_CELL).Value)
-    If ws.Range(CFG_CRITERIA_CELL).Value <> "" Then sCriteria = ws.Range(CFG_CRITERIA_CELL).Value
+    If ws.Range(CFG_GENS_CELL).Value <> "" Then nGens = CLng(ws.Range(CFG_GENS_CELL).Value)
+    If ws.Range(CFG_POP_CELL).Value  <> "" Then nPop  = CLng(ws.Range(CFG_POP_CELL).Value)
 
     ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
-        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
-        & " --criteria-order " & sCriteria
+        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe
@@ -577,12 +573,12 @@ Public Sub RunCut()
                 Case "progress"
                     SetProgress ws, "Running...", _
                         CStr(msg("generation")), _
-                        CStr(msg("bbox_penalty")), _
+                        CStr(msg("mfg_cost")), _
                         CStr(msg("sheets_used"))
 
                 Case "done"
                     SetProgress ws, "Done " & ChrW(10003), "", _
-                        CStr(msg("bbox_penalty")), _
+                        CStr(msg("mfg_cost")), _
                         CStr(msg("sheets_used"))
                     Application.ScreenUpdating = False
                     Dim rBase As Range: Set rBase = ws.Range(RESULT_CELL)
@@ -815,20 +811,9 @@ End Sub
 
 '' == One-time sheet setup =====================================================
 
-' Runs all one-time setup steps: criteria-order dropdown + "Can rotate?" checkboxes.
+' Runs one-time setup: "Can rotate?" checkboxes.
 Public Sub SetupAll()
-    SetupCriteriaValidation
     CreateCheckboxes
-End Sub
-
-Private Sub SetupCriteriaValidation()
-    Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
-    With ws.Range(CFG_CRITERIA_CELL).Validation
-        .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="bbox-first,spread-first"
-    End With
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================

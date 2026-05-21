@@ -14,7 +14,7 @@
 use cutting::ga::{GaConfig, run_ga};
 use cutting::{
     generator::{GeneratorConfig, generate},
-    model::{CriteriaOrder, Objective, Sheet},
+    model::{Objective, Sheet},
 };
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
@@ -142,7 +142,6 @@ fn main() {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            criteria_order: CriteriaOrder::default(),
         },
     }];
 

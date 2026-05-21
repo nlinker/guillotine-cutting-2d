@@ -10,7 +10,7 @@ use std::{fs, path::Path};
 use cutting::{
     ga::{self, GaConfig, GaEvent},
     glf::build_glf,
-    model::{CriteriaOrder, ProblemSpec, Sheet},
+    model::{ProblemSpec, Sheet},
     parse::parse_problem,
     render::render_svg,
     slas::decoder::decode_spec,
@@ -38,7 +38,6 @@ fn main() {
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        criteria_order: CriteriaOrder::default(),
     });
 
     let mut written = 0u32;

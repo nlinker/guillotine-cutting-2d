@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     fmt,
     sync::{
         Arc, Mutex,
@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     expand::expand_problem,
-    model::{CriteriaOrder, Objective, Problem, ProblemSpec},
+    model::{Objective, Problem, ProblemSpec},
     slas::decoder::{Gene, Genome, decode},
 };
 
@@ -67,15 +67,13 @@ pub struct GaConfig {
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
 
-    /// Order of the two grouping criteria in the objective.
-    pub criteria_order: CriteriaOrder,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}{}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -87,7 +85,6 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
-            self.criteria_order,
         )
     }
 }
@@ -105,7 +102,6 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            criteria_order: CriteriaOrder::default(),
         }
     }
 }
@@ -219,7 +215,7 @@ fn run_ga_inner<R: Rng>(
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
 ) -> Individual {
-    let mut pop = init_population(problem, config.pop_size, config.criteria_order, rng);
+    let mut pop = init_population(problem, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
@@ -248,7 +244,7 @@ fn run_ga_inner<R: Rng>(
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
-                objective: sol1.eval(problem, config.criteria_order),
+                objective: sol1.eval(problem),
             });
 
             if next_pop.len() < config.pop_size {
@@ -264,7 +260,7 @@ fn run_ga_inner<R: Rng>(
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
-                    objective: sol2.eval(problem, config.criteria_order),
+                    objective: sol2.eval(problem),
                 });
             }
         }
@@ -364,12 +360,12 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
 ///
 /// ```text
 ///          lo    hi
-///           ↓     ↓
-/// P1: [ 0 │ 1  2 │ 3  4 ]  ──->  C1: [ 4 │ 1  2 │ 3  0 ]
-/// P2: [ 3 │ 0  4 │ 1  2 ]  ──->  C2: [ 2 │ 0  4 │ 3  1 ]
+///           в†“     в†“
+/// P1: [ 0 в”‚ 1  2 в”‚ 3  4 ]  в”Ђв”Ђ->  C1: [ 4 в”‚ 1  2 в”‚ 3  0 ]
+/// P2: [ 3 в”‚ 0  4 в”‚ 1  2 ]  в”Ђв”Ђ->  C2: [ 2 в”‚ 0  4 в”‚ 3  1 ]
 ///
-///   C1 segment ← P1;  remaining ← P2 from hi, wrapping, skipping dupes
-///   C2 segment ← P2;  remaining ← P1 from hi, wrapping, skipping dupes
+///   C1 segment в†ђ P1;  remaining в†ђ P2 from hi, wrapping, skipping dupes
+///   C2 segment в†ђ P2;  remaining в†ђ P1 from hi, wrapping, skipping dupes
 /// ```
 pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
     let n = p1.len();
@@ -453,8 +449,8 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
         odd = !odd;
     }
 
-    // Even cycles: C1 ← P1, C2 ← P2 (already correct from clone)
-    // Odd cycles:  C1 ← P2, C2 ← P1
+    // Even cycles: C1 в†ђ P1, C2 в†ђ P2 (already correct from clone)
+    // Odd cycles:  C1 в†ђ P2, C2 в†ђ P1
     let mut c1 = p1.clone();
     let mut c2 = p2.clone();
     for i in 0..n {
@@ -470,7 +466,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 /// Mutate a genome in-place. For each gene, independently:
 /// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
 /// - with probability `flip_p`: flip `rotate`
-/// - with probability `point_p`: nudge `point_selector` by ±`point_delta` wrapping
+/// - with probability `point_p`: nudge `point_selector` by В±`point_delta` wrapping
 /// - with probability `inverse_p`: flip `inverse` (reverses SLAS split direction)
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
@@ -534,7 +530,7 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
 }
 
 /// Generates `size` random individuals, each with a shuffled genome and a freshly computed
-pub fn init_population<R: Rng>(problem: &Problem, size: usize, order: CriteriaOrder, rng: &mut R) -> Vec<Individual> {
+pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
     let n = problem.pieces.len();
     (0..size)
         .map(|_| {
@@ -542,7 +538,7 @@ pub fn init_population<R: Rng>(problem: &Problem, size: usize, order: CriteriaOr
             let sol = decode(problem, &genome);
             Individual {
                 genome,
-                objective: sol.eval(problem, order),
+                objective: sol.eval(problem),
             }
         })
         .collect()
@@ -689,7 +685,7 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let pop = vec![ind(0, (0, 30, 0, 0)), ind(1, (0, 10, 0, 0)), ind(2, (0, 20, 0, 0))];
+        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
         assert_eq!((winner.objective.0, winner.objective.1), (0, 10));
@@ -698,10 +694,10 @@ mod tests {
     #[test]
     fn tournament_is_deterministic() {
         let pop = vec![
-            ind(0, (0, 5, 0, 0)),
-            ind(1, (0, 3, 0, 0)),
-            ind(2, (0, 8, 0, 0)),
-            ind(3, (0, 1, 0, 0)),
+            ind(0, (0, 5, 0)),
+            ind(1, (0, 3, 0)),
+            ind(2, (0, 8, 0)),
+            ind(3, (0, 1, 0)),
         ];
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
@@ -714,7 +710,7 @@ mod tests {
         let flat = expand_problem(&spec);
         let n = flat.pieces.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&flat, 20, CriteriaOrder::default(), &mut rng);
+        let pop = init_population(&flat, 20, &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
@@ -725,18 +721,8 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
-        let pop1 = init_population(
-            &flat,
-            5,
-            CriteriaOrder::default(),
-            &mut Xoshiro256StarStar::seed_from_u64(7),
-        );
-        let pop2 = init_population(
-            &flat,
-            5,
-            CriteriaOrder::default(),
-            &mut Xoshiro256StarStar::seed_from_u64(7),
-        );
+        let pop1 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
@@ -752,7 +738,6 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            criteria_order: CriteriaOrder::default(),
         }
     }
 
@@ -783,7 +768,7 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let pop = vec![ind(0, (0, 30, 0, 0)), ind(1, (0, 10, 0, 0)), ind(2, (0, 20, 0, 0))];
+        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
         assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 10));
@@ -792,10 +777,10 @@ mod tests {
     #[test]
     fn elite_top_k_sorted() {
         let pop = vec![
-            ind(0, (0, 50, 0, 0)),
-            ind(1, (0, 10, 0, 0)),
-            ind(2, (0, 30, 0, 0)),
-            ind(3, (0, 20, 0, 0)),
+            ind(0, (0, 50, 0)),
+            ind(1, (0, 10, 0)),
+            ind(2, (0, 30, 0)),
+            ind(3, (0, 20, 0)),
         ];
         let elite = select_elite(&pop, 2);
         assert_eq!(
@@ -806,7 +791,7 @@ mod tests {
 
     #[test]
     fn elite_n_exceeds_pop() {
-        let pop = vec![ind(0, (0, 5, 0, 0)), ind(1, (0, 3, 0, 0))];
+        let pop = vec![ind(0, (0, 5, 0)), ind(1, (0, 3, 0))];
         let elite = select_elite(&pop, 10);
         assert_eq!(elite.len(), 2);
         assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 3));

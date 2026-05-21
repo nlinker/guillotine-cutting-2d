@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use cutting::{
     ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
     glf::build_glf,
-    model::{CriteriaOrder, ProblemSpec, SolutionSpec},
+    model::{ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
@@ -72,9 +72,6 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
-        /// Order of the two grouping criteria: spread-first or bbox-first
-        #[arg(long, default_value_t = CriteriaOrder::default())]
-        criteria_order: CriteriaOrder,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -116,9 +113,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink,
             sink_interval,
             render,
-            criteria_order,
         } => {
-            let cfg = ga_config(gens, pop, elite, k, criteria_order);
+            let cfg = ga_config(gens, pop, elite, k);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
             if render {
@@ -280,7 +276,7 @@ pub(crate) fn run_with_sink(
                     let msg = ProgressMessage::Progress {
                         generation: p.generation,
                         sheets_used: p.objective.0,
-                        bbox_penalty: p.objective.1,
+                        mfg_cost: p.objective.1 as u32,
                         seed: p.seed,
                         solution: None,
                         pieces: None,
@@ -300,7 +296,7 @@ pub(crate) fn run_with_sink(
                         let msg = ProgressMessage::Progress {
                             generation: evt.generation,
                             sheets_used: evt.objective.0,
-                            bbox_penalty: evt.objective.1,
+                            mfg_cost: evt.objective.1 as u32,
                             seed: evt.seed,
                             solution: Some(sol),
                             pieces: Some(spec.piespecs.clone()),
@@ -319,7 +315,7 @@ pub(crate) fn run_with_sink(
                     sink.send(&ProgressMessage::Progress {
                         generation: evt.generation,
                         sheets_used: evt.objective.0,
-                        bbox_penalty: evt.objective.1,
+                        mfg_cost: evt.objective.1 as u32,
                         seed: evt.seed,
                         solution: Some(sol),
                         pieces: Some(spec.piespecs.clone()),
@@ -333,7 +329,7 @@ pub(crate) fn run_with_sink(
                 sink.send(&ProgressMessage::Done {
                     seed: *best_seed,
                     sheets_used: best.objective.0,
-                    bbox_penalty: best.objective.1,
+                    mfg_cost: best.objective.1 as u32,
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
@@ -383,7 +379,7 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, criteria_order: CriteriaOrder) -> GaConfig {
+pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
     GaConfig {
         pop_size: pop,
         n_generations: gens,
@@ -395,6 +391,5 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, criteri
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        criteria_order,
     }
 }

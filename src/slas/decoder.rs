@@ -1,6 +1,7 @@
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
+    cut_tree::{build_cut_tree, mfg_cost_from_trees},
     expand, model,
     model::{FreeRect, Piece, Placement, Problem, Solution},
 };
@@ -73,12 +74,14 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
-    let mut sol = Solution {
+    let leftovers = free.into_vec();
+    let trees = build_cut_tree(problem, &placements).expect("decoder always produces guillotine");
+    let mfg_cost = mfg_cost_from_trees(&trees);
+    Solution {
         placements,
-        leftovers: free.into_vec(),
-    };
-    sol.sort_placements(problem);
-    sol
+        leftovers,
+        mfg_cost,
+    }
 }
 
 pub(crate) fn open_new_sheet(
@@ -262,13 +265,13 @@ mod tests {
         assert_eq!(sol.sheets_used(), 2);
         let p = &sol.placements;
         assert_eq!(p.len(), 5);
+        let find = |idx: usize| p.iter().find(|pl| pl.piece_idx == idx).unwrap();
         let tuple = |pl: &Placement| (pl.sheet_idx, pl.x, pl.y, pl.rotated);
-        // sorted by (sheet_idx, pw, ph)
-        assert_eq!(tuple(&p[0]), (0, 125, 0, false)); // P1  pw=65 ph=85
-        assert_eq!(tuple(&p[1]), (0, 125, 85, true)); // P4r pw=75 ph=65
-        assert_eq!(tuple(&p[2]), (0, 0, 0, false)); // P0  pw=125 ph=85
-        assert_eq!(tuple(&p[3]), (1, 0, 65, true)); // P3r pw=105 ph=75
-        assert_eq!(tuple(&p[4]), (1, 0, 0, false)); // P2  pw=205 ph=65
+        assert_eq!(tuple(find(0)), (0, 0, 0, false));   // P0  at (0,0) sheet 0
+        assert_eq!(tuple(find(1)), (0, 125, 0, false)); // P1  at (125,0) sheet 0
+        assert_eq!(tuple(find(2)), (1, 0, 0, false));   // P2  at (0,0) sheet 1
+        assert_eq!(tuple(find(3)), (1, 0, 65, true));   // P3r at (0,65) sheet 1
+        assert_eq!(tuple(find(4)), (0, 125, 85, true)); // P4r at (125,85) sheet 0
     }
 
     #[test]

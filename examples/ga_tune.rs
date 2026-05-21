@@ -11,7 +11,7 @@ use std::time::Instant;
 use cutting::{
     expand::expand_problem,
     ga::{GaConfig, run_ga},
-    model::{CriteriaOrder, Objective},
+    model::Objective,
     parse::parse_problem,
 };
 use rand::SeedableRng;
@@ -20,10 +20,10 @@ use rand_xoshiro::Xoshiro256StarStar;
 const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
-/// Ideal: 2 sheets, 1×400×400 on last sheet (bbox_penalty=0 for a single piece).
-const IDEAL_OBJ: Objective = (2, 0, 0, 400 * 400);
+/// Ideal: 2 sheets, 1×400×400 on last sheet (mfg_cost and staircase minimal).
+const IDEAL_OBJ: Objective = (2, 0, 400 * 400);
 /// 1-piece threshold: 2 sheets, any piece ≤ 495×495 on last sheet.
-const ONE_PIECE_OBJ: Objective = (2, 0, 0, 495 * 495);
+const ONE_PIECE_OBJ: Objective = (2, 0, 495 * 495);
 
 struct Variant {
     name: &'static str,
@@ -32,7 +32,7 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = (usize::MAX, u64::MAX, u64::MAX, u64::MAX);
+    let mut best_obj: Objective = (usize::MAX, u64::MAX, u64::MAX);
     let mut sum_sheets: usize = 0;
     let mut sum_bbox: u64 = 0;
     let mut ideal_count = 0usize;
@@ -119,7 +119,6 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
-        criteria_order: CriteriaOrder::default(),
     }
 }
 
