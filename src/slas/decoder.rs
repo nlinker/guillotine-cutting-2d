@@ -1,12 +1,18 @@
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
-    cut_tree::{build_cut_tree, mfg_cost_from_trees},
     expand, model,
     model::{FreeRect, Piece, Placement, Problem, Solution},
 };
 
-type FreeList = SmallVec<[FreeRect; 16]>;
+/// Cut axis used to track each free rect's parent split context for incremental mfg_cost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SplitAxis { H, V }
+
+/// (axis, position) of the cut that produced a free rect.
+pub(crate) type CutCtx = (SplitAxis, u32);
+
+type FreeList = SmallVec<[(FreeRect, Option<CutCtx>); 16]>;
 type FreePair = SmallVec<[FreeRect; 2]>;
 
 /// One element of the solution genome (V-vector encoding).
@@ -47,9 +53,11 @@ pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::Solutio
 ///
 /// Precondition: every piece fits on an empty sheet.
 pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
-    let mut free: FreeList = smallvec![sheet_rect(problem, 0)];
+    let mut free: FreeList = smallvec![(sheet_rect(problem, 0), None)];
     let mut placements: Vec<Placement> = Vec::with_capacity(genome.len());
     let mut sheets_open: usize = 1;
+    let mut mfg_cost: u32 = 0;
+
     for gene in genome {
         let piece = &problem.pieces[gene.piece_idx];
 
@@ -57,7 +65,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, gene.rotate));
 
         if let Some((idx, pw, ph, rotated)) = found {
-            let fr = free.remove(idx);
+            let (fr, fr_ctx) = free.remove(idx);
             placements.push(Placement {
                 sheet_idx: fr.sheet_idx,
                 piece_idx: gene.piece_idx,
@@ -65,7 +73,20 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
                 y: fr.y,
                 rotated,
             });
-            free.extend(guillotine_split(&fr, pw, ph, gene.inverse));
+
+            let lw = fr.w - pw;
+            let lh = fr.h - ph;
+            mfg_cost += mfg_cost_increment(fr_ctx, lw, lh, fr.x + pw, fr.y + ph, gene.inverse);
+
+            let splits = guillotine_split(&fr, pw, ph, gene.inverse);
+            let mut si = 0;
+            if lw > 0 {
+                free.push((splits[si], Some((SplitAxis::V, fr.x + pw))));
+                si += 1;
+            }
+            if lh > 0 {
+                free.push((splits[si], Some((SplitAxis::H, fr.y + ph))));
+            }
         } else {
             debug_assert!(
                 false,
@@ -74,13 +95,48 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
-    let leftovers = free.into_vec();
-    let trees = build_cut_tree(problem, &placements).expect("decoder always produces guillotine");
-    let mfg_cost = mfg_cost_from_trees(&trees);
-    Solution {
-        placements,
-        leftovers,
-        mfg_cost,
+    let leftovers = free.into_iter().map(|(fr, _)| fr).collect();
+    Solution { placements, leftovers, mfg_cost }
+}
+
+const W_R: u32 = 10;
+const W_D: u32 = 3;
+const W_C: u32 = 1;
+
+/// Cost increment for one piece placement, computed from the parent cut context and
+/// the leftover dimensions produced by the split.
+fn mfg_cost_increment(
+    parent: Option<CutCtx>,
+    lw: u32,
+    lh: u32,
+    v_pos: u32, // fr.x + pw — position of the V-cut
+    h_pos: u32, // fr.y + ph — position of the H-cut
+    inverse: bool,
+) -> u32 {
+    match (lw, lh) {
+        (0, 0) => 0,
+        (0, _) => W_C + setup_cost(parent, SplitAxis::H, h_pos),
+        (_, 0) => W_C + setup_cost(parent, SplitAxis::V, v_pos),
+        _ => {
+            let (first_axis, first_pos) = if (lw <= lh) != inverse {
+                (SplitAxis::H, h_pos)
+            } else {
+                (SplitAxis::V, v_pos)
+            };
+            W_C + setup_cost(parent, first_axis, first_pos) + W_C + W_R
+        }
+    }
+}
+
+#[inline]
+fn setup_cost(parent: Option<CutCtx>, axis: SplitAxis, pos: u32) -> u32 {
+    match parent {
+        None => 0,
+        Some((pa, pp)) => {
+            if pa != axis { W_R }
+            else if pp != pos { W_D }
+            else { 0 }
+        }
     }
 }
 
@@ -95,7 +151,7 @@ pub(crate) fn open_new_sheet(
     let new_fr = sheet_rect(problem, sheet_idx);
     let (pw, ph, rotated) = fits_in(&new_fr, piece, prefer_rotate)?;
     let idx = free.len();
-    free.push(new_fr);
+    free.push((new_fr, None));
     *sheets_open += 1;
     Some((idx, pw, ph, rotated))
 }
@@ -103,7 +159,7 @@ pub(crate) fn open_new_sheet(
 /// Scan `free` starting at `point_selector % |free|`, wrapping around.
 /// Returns `(index, placed_w, placed_h, rotated)` for the first fitting rect, or `None`.
 pub(crate) fn find_placement(
-    free: &[FreeRect],
+    free: &[(FreeRect, Option<CutCtx>)],
     piece: &Piece,
     prefer_rotate: bool,
     point_selector: u32,
@@ -115,7 +171,7 @@ pub(crate) fn find_placement(
     let start = (point_selector as usize) % n;
     for i in 0..n {
         let idx = (start + i) % n;
-        if let Some((pw, ph, rotated)) = fits_in(&free[idx], piece, prefer_rotate) {
+        if let Some((pw, ph, rotated)) = fits_in(&free[idx].0, piece, prefer_rotate) {
             return Some((idx, pw, ph, rotated));
         }
     }
