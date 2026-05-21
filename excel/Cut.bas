@@ -25,7 +25,7 @@ Private Const SHEET_W_CELL     As String = "J1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
-Private Const LABEL_PCT_CELL   As String = "K4"  ' label text height in drawing units (mm)
+Private Const ACAD_FONT_SIZE   As String = "K4"  ' label text height in drawing units (mm)
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -220,7 +220,7 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
             ph = pieces(idx)("height")
         End If
 
-        ws.Cells(r, rCol).Value     = pl("sheet_idx")
+        ws.Cells(r, rCol).Value     = pl("sheet_idx") + 1
         ws.Cells(r, rCol + 1).Value = pieceName
         ws.Cells(r, rCol + 2).Value = pl("x")
         ws.Cells(r, rCol + 3).Value = pl("y")
@@ -678,6 +678,19 @@ Private Sub AddPieceLabel(blkDef As Object, bw As Long, bh As Long, _
     Set t = Nothing
 End Sub
 
+Private Sub AddSheetLabel(ms As Object, sheetNum As Long, xCenter As Double, y As Double)
+    Dim pt(0 To 2) As Double
+    pt(0) = xCenter
+    pt(1) = y
+    pt(2) = 0
+    Dim t As Object
+    Set t = ms.AddText(ChrW(1051) & ChrW(1080) & ChrW(1089) & ChrW(1090) & " " & sheetNum, pt, 60)
+    t.StyleName = "Standard"
+    t.Alignment = 4
+    t.TextAlignmentPoint = pt
+    Set t = Nothing
+End Sub
+
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.sheets(SHEET_NAME)
@@ -687,8 +700,8 @@ Public Sub SendToAutoCAD()
     Dim kerf     As Long:   kerf     = ws.Range(KERF_CELL).Value
     Dim margin   As Long:   margin   = ws.Range(MARGIN_CELL).Value
     Dim labelPct As Double: labelPct = 50#
-    If ws.Range(LABEL_PCT_CELL).Value <> "" Then
-        labelPct = CDbl(ws.Range(LABEL_PCT_CELL).Value)
+    If ws.Range(ACAD_FONT_SIZE).Value <> "" Then
+        labelPct = CDbl(ws.Range(ACAD_FONT_SIZE).Value)
     End If
     If shW = 0 Or shH = 0 Then
         MsgBox "Sheet dimensions not set (H1, I1).", vbExclamation: Exit Sub
@@ -737,7 +750,7 @@ Public Sub SendToAutoCAD()
     For r = rRow To 10000
         If ws.Cells(r, rCol).Value = "" And ws.Cells(r, rCol + 1).Value = "" Then Exit For
 
-        Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value)       ' sheet index (0-based)
+        Dim shIdx As Long: shIdx = CLng(ws.Cells(r, rCol).Value) - 1   ' table is 1-based; convert to 0-based
         Dim px As Long: px = CLng(ws.Cells(r, rCol + 2).Value)          ' X from sheet left (Y-down coords)
         Dim py As Long: py = CLng(ws.Cells(r, rCol + 3).Value)          ' Y from sheet top  (Y-down coords)
         Dim pw As Long: pw = CLng(ws.Cells(r, rCol + 4).Value)          ' placed width
@@ -794,6 +807,7 @@ Public Sub SendToAutoCAD()
         Dim innerRect As Object
         Set innerRect = ms.AddLightWeightPolyline(iPts)
         innerRect.Closed = True
+        AddSheetLabel ms, si + 1, CDbl(sxOff) + CDbl(shH + kerf) / 2, shW + kerf + 70
     Next si
 
     acad.ZoomExtents
