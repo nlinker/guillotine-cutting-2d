@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
     expand::expand_problem,
-    model::{Objective, Problem, ProblemSpec},
+    model::{Objective, Piece, Problem, ProblemSpec},
     slas::decoder::{Gene, Genome, decode},
 };
 
@@ -241,6 +241,7 @@ fn run_ga_inner<R: Rng>(
                 config.point_delta,
                 config.inverse_p,
             );
+            regularize(&mut g1, &problem.pieces);
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
                 genome: g1,
@@ -257,6 +258,7 @@ fn run_ga_inner<R: Rng>(
                     config.point_delta,
                     config.inverse_p,
                 );
+                regularize(&mut g2, &problem.pieces);
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
                     genome: g2,
@@ -504,6 +506,29 @@ pub fn mutate<R: Rng>(
     }
 }
 
+/// Reorder a genome so that pieces of the same `(width, height)` type are consecutive,
+/// preserving the relative order of first occurrence for each type and the relative
+/// order of pieces within each type group.
+///
+/// Example: [A1,B1,A2,C1,B2,A3] → [A1,A2,A3,B1,B2,C1]
+///
+/// Runs in O(n·k) where k = number of distinct piece types (typically 10–30).
+pub fn regularize(genome: &mut Genome, pieces: &[Piece]) {
+    let mut groups: Vec<((u32, u32), Vec<Gene>)> = Vec::new();
+    for &gene in genome.iter() {
+        let p = &pieces[gene.piece_idx];
+        let key = (p.width, p.height);
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some(g) => g.1.push(gene),
+            None    => groups.push((key, vec![gene])),
+        }
+    }
+    genome.clear();
+    for (_, bucket) in groups {
+        genome.extend(bucket);
+    }
+}
+
 /// Returns the `n_elite` individuals with the lowest objective (lower is better),
 /// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
 /// Typical value: `n_elite = 1`.
@@ -681,6 +706,30 @@ mod tests {
             0.1,
         );
         assert_eq!(g1, g2);
+    }
+
+    #[test]
+    fn regularize_groups_same_type() {
+        // pieces: 0,2,4 are 10×3; 1,3,5 are 5×5
+        let p = |w, h| Piece { name: String::new(), width: w, height: h, can_rotate: false };
+        let pieces = vec![p(10,3), p(5,5), p(10,3), p(5,5), p(10,3), p(5,5)];
+        // interleaved input
+        let mut genome: Genome = (0..6).map(g).collect(); // [0,1,2,3,4,5]
+        regularize(&mut genome, &pieces);
+        // first type encountered is 10×3 (piece 0), then 5×5 (piece 1)
+        assert_eq!(ids(&genome), vec![0, 2, 4, 1, 3, 5]);
+    }
+
+    #[test]
+    fn regularize_preserves_permutation() {
+        let spec = parse_problem("10x10R:0:3x2,3x2,4x3,4x3,5x1").unwrap();
+        let flat = expand_problem(&spec);
+        let mut rng = Xoshiro256StarStar::seed_from_u64(7);
+        for _ in 0..20 {
+            let mut genome = super::random_genome(flat.pieces.len(), &mut rng);
+            regularize(&mut genome, &flat.pieces);
+            assert_eq!(sorted_ids(&genome), (0..flat.pieces.len()).collect::<Vec<_>>());
+        }
     }
 
     #[test]
