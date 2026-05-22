@@ -3,11 +3,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Three-level lexicographic fitness (lower is better):
+/// Four-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. `mfg_cost` — manufacturability cost (rotations×10 + fence resets×3 + cuts×1)
-///   2. `staircase_area` (sum across all sheets)
-pub type Objective = (usize, u64, u64);
+///   1. `spread_penalty` — same-size pieces spread across multiple sheets (0 = all confined)
+///   2. `mfg_cost` — manufacturability cost (rotations×10 + fence resets×3 + cuts×1)
+///   3. `staircase_area` (sum across all sheets)
+pub type Objective = (usize, u64, u64, u64);
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,15 +212,44 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Evaluates the lexicographic objective `(sheets_used, mfg_cost, staircase_area)`.
     /// Rust tuple `Ord` provides lexicographic comparison for free.
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return (0, 0, 0);
+            return (0, 0, 0, 0);
         }
         let sheets = self.sheets_used();
+        let spread = self.sheet_spread_penalty(problem);
         let staircase = self.staircase_area(problem);
-        (sheets, self.mfg_cost as u64, staircase)
+        (sheets, spread, self.mfg_cost as u64, staircase)
+    }
+
+    /// Inter-sheet spread penalty: sum over each canonical piece size of
+    /// `(distinct_sheets_that_hold_that_size - 1)`.
+    /// Zero when every piece size is confined to exactly one sheet.
+    ///
+    /// Canonical size normalises for rotation: key = `(min(w,h), max(w,h))`.
+    pub fn sheet_spread_penalty(&self, problem: &Problem) -> u64 {
+        if self.placements.is_empty() {
+            return 0;
+        }
+        let mut pairs: Vec<((u32, u32), usize)> = self
+            .placements
+            .iter()
+            .map(|p| {
+                let piece = &problem.pieces[p.piece_idx];
+                let (pw, ph) = if p.rotated {
+                    (piece.height, piece.width)
+                } else {
+                    (piece.width, piece.height)
+                };
+                ((pw.min(ph), pw.max(ph)), p.sheet_idx)
+            })
+            .collect();
+        pairs.sort_unstable();
+        pairs.dedup();
+        let total = pairs.len();
+        let distinct_sizes = pairs.windows(2).filter(|w| w[0].0 != w[1].0).count() + 1;
+        (total - distinct_sizes) as u64
     }
 
     /// Alias for `eval`. Kept for tests and benchmarks.
