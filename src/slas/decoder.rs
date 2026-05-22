@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
@@ -22,7 +23,7 @@ type FreePair = SmallVec<[FreeRect; 2]>;
 /// scanning from a variable offset gives the GA freedom to steer pieces to different regions.
 /// `inverse`: when true, flips the SLAS split direction — `lw <= lh` picks vertical instead
 /// of horizontal. Lets the GA represent cut trees that SLAS cannot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gene {
     pub piece_idx: usize,
     pub rotate: bool,
