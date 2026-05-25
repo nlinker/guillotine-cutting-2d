@@ -451,23 +451,20 @@ fn run_with_any_handle(
     Ok(())
 }
 
-/// Slas-only entry point kept for the web server (unchanged signature).
-pub(crate) fn run_with_sink(
+/// Decoder-aware entry point for the web server.
+pub(crate) fn run_with_sink_any(
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: &[u64],
     progress_interval: usize,
+    decoder: &str,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let any = slas_handle_to_any(run_ga_mt(
-        Arc::clone(&spec),
-        Arc::clone(&cfg),
-        seeds.to_vec(),
-        progress_interval,
-    ));
+    let any = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), progress_interval, decoder);
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
+
 
 fn run_calc_render(
     spec: &ProblemSpec,

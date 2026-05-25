@@ -79,6 +79,7 @@
     <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
+    <label><input type="checkbox" id="use-gslas" checked> G&#8209;SLAS</label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -276,14 +277,6 @@ function buildRowColors(specs) {
   return specs.map((_, ci) => PALETTE[ci % PALETTE.length]);
 }
 
-function colorInputRows(_specs) {
-  const rows = document.querySelectorAll('#pieces-tbody tr');
-  rows.forEach((tr, ci) => { tr.style.background = PALETTE[ci % PALETTE.length]; });
-}
-
-function clearInputRowColors() {
-  document.querySelectorAll('#pieces-tbody tr').forEach(tr => { tr.style.background = ''; });
-}
 
 // == placements table =========================================================
 function buildPlacementsTable(solution, pieces, elapsed, mfgCost, sheets, seed) {
@@ -371,7 +364,6 @@ document.getElementById('form').addEventListener('submit', (e) => {
   document.getElementById('layout-wrap').style.display = 'none';
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
-  clearInputRowColors();
   initChart();
 
   if (randomSeedChk.checked) {
@@ -389,6 +381,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('gens',     document.getElementById('gens').value);
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
+  params.set('decoder',  document.getElementById('use-gslas').checked ? 'gslas' : 'slas');
 
   es = new EventSource('/stream?' + params);
 
@@ -401,7 +394,6 @@ document.getElementById('form').addEventListener('submit', (e) => {
     const d = JSON.parse(ev.data);
     if (d.solution) {
       const rowColor = buildRowColors(d.pieces);
-      colorInputRows(lastSpecs || []);
       drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';
     }
