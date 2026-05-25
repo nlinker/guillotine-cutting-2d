@@ -10,12 +10,17 @@ of sheets used (ties broken by the used area on the last sheet).
 Some (or all) pieces can be specified as rotatable.
 All cuts are guillotine cuts, i.e. straight lines across the full remaining rectangle.
 
+
 ## Example
 
-Each frame shows the exact optimal placement of the same piece set
-for a given sheet width, minimizing height.
 The problem is NP-hard, so for large inputs exact computation is infeasible;
 the GA finds good approximations instead.
+
+For example, here are the solutions of one instance of the problem for widths = 20..42.
+Each frame shows the exact optimal placement of the same piece set
+for a given sheet width, minimizing height.
+You can see that for any width W the optimums for W and W+1 are totally different,
+and this combinatorics makes the problem hard:
 
 ![optimal_solutions.avif](docs/img/optimal_solutions.avif)
 
