@@ -6,17 +6,18 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    ga::{GaConfig, GaEvent, ProgressEvent, run_ga_mt},
+    ga::{GaConfig, GaEvent, GaHandle, run_ga_mt},
     glf::build_glf,
-    model::{ProblemSpec, SolutionSpec},
+    gslas::ga as gslas_ga,
+    model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
-    slas::decoder::decode_spec,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
+use tokio::sync::mpsc;
 
 mod web;
 
@@ -72,6 +73,9 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
+        /// Decoder variant: "slas" (default) or "gslas" (group SLAS, one gene per piece type)
+        #[arg(long, default_value = "slas")]
+        decoder: String,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -113,14 +117,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink,
             sink_interval,
             render,
+            decoder,
         } => {
             let cfg = ga_config(gens, pop, elite, k);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
             if render {
-                run_calc_render(&spec, &cfg, seed, n_threads, progress)?;
+                run_calc_render(&spec, &cfg, seed, n_threads, progress, &decoder)?;
             } else {
-                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
+                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval, &decoder)?;
             }
         }
         Command::Serve { port } => web::run_serve(port)?,
@@ -149,13 +154,136 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// ── decoder-agnostic event pipeline ──────────────────────────────────────────
+
+/// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
+struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
+
+impl LazyDecode {
+    fn decode(self, spec: &ProblemSpec) -> SolutionSpec {
+        (self.0)(spec)
+    }
+}
+
+/// Unified progress event, decoder-agnostic.
+struct PendingProgress {
+    seed: u64,
+    generation: usize,
+    objective: Objective,
+    lazy: LazyDecode,
+}
+
+enum AnyEvent {
+    Progress { seed: u64, generation: usize, objective: Objective, lazy: LazyDecode },
+    Done { results: Vec<(u64, Objective, LazyDecode)> },
+}
+
+/// Decoder-agnostic handle. Dropping it signals the bridge thread (via the rx
+/// side of the channel), which in turn drops the inner GA handle, stopping the GA.
+struct AnyHandle {
+    rx: mpsc::UnboundedReceiver<AnyEvent>,
+}
+
+/// Convert a flat slas `GaHandle` into an `AnyHandle`. A bridge thread forwards
+/// events, wrapping each genome in a lazy `slas::decoder::decode_spec` closure.
+fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
+    let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
+    std::thread::spawn(move || {
+        let mut handle = handle;
+        while let Some(evt) = handle.rx.blocking_recv() {
+            let any = match evt {
+                GaEvent::Progress(p) => {
+                    let genome = p.genome;
+                    AnyEvent::Progress {
+                        seed: p.seed,
+                        generation: p.generation,
+                        objective: p.objective,
+                        lazy: LazyDecode(Box::new(move |spec| {
+                            cutting::slas::decoder::decode_spec(spec, &genome)
+                        })),
+                    }
+                }
+                GaEvent::Done(results) => AnyEvent::Done {
+                    results: results
+                        .into_iter()
+                        .map(|(seed, ind)| {
+                            let (genome, obj) = (ind.genome, ind.objective);
+                            let lazy = LazyDecode(Box::new(move |spec| {
+                                cutting::slas::decoder::decode_spec(spec, &genome)
+                            }));
+                            (seed, obj, lazy)
+                        })
+                        .collect(),
+                },
+            };
+            if tx.send(any).is_err() {
+                break;
+            }
+        }
+        // `handle` is dropped here → handle.stop() → GA threads halt
+    });
+    AnyHandle { rx }
+}
+
+/// Convert a `gslas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
+/// events, wrapping each genome in a lazy `gslas::decoder::decode_spec` closure.
+fn gslas_handle_to_any(handle: gslas_ga::GaHandle) -> AnyHandle {
+    let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
+    std::thread::spawn(move || {
+        let mut handle = handle;
+        while let Some(evt) = handle.rx.blocking_recv() {
+            let any = match evt {
+                gslas_ga::GaEvent::Progress(p) => {
+                    let genome = p.genome;
+                    AnyEvent::Progress {
+                        seed: p.seed,
+                        generation: p.generation,
+                        objective: p.objective,
+                        lazy: LazyDecode(Box::new(move |spec| {
+                            cutting::gslas::decoder::decode_spec(spec, &genome)
+                        })),
+                    }
+                }
+                gslas_ga::GaEvent::Done(results) => AnyEvent::Done {
+                    results: results
+                        .into_iter()
+                        .map(|(seed, ind)| {
+                            let (genome, obj) = (ind.genome, ind.objective);
+                            let lazy = LazyDecode(Box::new(move |spec| {
+                                cutting::gslas::decoder::decode_spec(spec, &genome)
+                            }));
+                            (seed, obj, lazy)
+                        })
+                        .collect(),
+                },
+            };
+            if tx.send(any).is_err() {
+                break;
+            }
+        }
+    });
+    AnyHandle { rx }
+}
+
+/// Create an `AnyHandle` for the chosen decoder.
+fn make_any_handle(
+    spec: Arc<ProblemSpec>,
+    cfg: Arc<GaConfig>,
+    seeds: Vec<u64>,
+    progress_interval: usize,
+    decoder: &str,
+) -> AnyHandle {
+    match decoder {
+        "gslas" => gslas_handle_to_any(gslas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
+        _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
+    }
+}
+
+// ── public entry points ───────────────────────────────────────────────────────
+
 fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
     let v: serde_json::Value = serde_json::from_str(s)?;
-    let sol_val = if v.get("solution").is_some() {
-        &v["solution"]
-    } else {
-        &v
-    };
+    let sol_val = if v.get("solution").is_some() { &v["solution"] } else { &v };
     Ok(serde_json::from_value(sol_val.clone())?)
 }
 
@@ -179,157 +307,138 @@ fn run_calc_with_sink(
     progress_interval: usize,
     sink_mode: &str,
     sink_interval_ms: u64,
+    decoder: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
-    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
+    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
 
     let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     eprintln!(
-        "Pieces  : {} ({} types)   Sheet: {}×{}",
+        "Pieces  : {} ({} types)   Sheet: {}×{}   Decoder: {}",
         total,
         spec.piespecs.len(),
         spec.sheet.width,
-        spec.sheet.height
+        spec.sheet.height,
+        decoder,
     );
     eprintln!("GA cfg  : {cfg}");
     eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
+    let any_handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
+
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink(
-                Arc::clone(&spec),
-                Arc::clone(&cfg),
-                &seeds,
-                progress_interval,
-                &mut sink,
-                sink_interval_ms,
-            )
+            run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
-                let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink(
-                    Arc::clone(&spec),
-                    Arc::clone(&cfg),
-                    &seeds,
-                    progress_interval,
-                    &mut sink,
-                    sink_interval_ms,
-                )
+                let mut sink =
+                    cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
+                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink(
-                    Arc::clone(&spec),
-                    Arc::clone(&cfg),
-                    &seeds,
-                    progress_interval,
-                    &mut sink,
-                    sink_interval_ms,
-                )
+                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink(
-                    Arc::clone(&spec),
-                    Arc::clone(&cfg),
-                    &seeds,
-                    progress_interval,
-                    &mut sink,
-                    sink_interval_ms,
-                )
+                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
             }
         }
     }
 }
 
-pub(crate) fn run_with_sink(
+/// Decoder-agnostic event loop over an `AnyHandle`. Called by both the CLI and (via
+/// `run_with_sink`) the web server. Handles throttling and forwarding to `sink`.
+fn run_with_any_handle(
+    mut handle: AnyHandle,
     spec: Arc<ProblemSpec>,
-    cfg: Arc<GaConfig>,
-    seeds: &[u64],
-    progress_interval: usize,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), progress_interval);
-
     let throttled = sink_interval_ms > 0;
     let throttle = Duration::from_millis(sink_interval_ms);
     let mut last_sent: Option<Instant> = None;
-    let mut best_pending: Option<ProgressEvent> = None;
-
+    let mut best_pending: Option<PendingProgress> = None;
     let t0 = Instant::now();
+
     loop {
         match handle.rx.blocking_recv() {
             None => break,
-            Some(GaEvent::Progress(p)) => {
+            Some(AnyEvent::Progress { seed, generation, objective, lazy }) => {
                 if !throttled {
+                    // Raw progress: no decode, no solution payload
+                    drop(lazy);
                     let msg = ProgressMessage::Progress {
-                        generation: p.generation,
-                        sheets_used: p.objective.0,
-                        mfg_cost: p.objective.2 as u32,
-                        seed: p.seed,
+                        generation,
+                        sheets_used: objective.0,
+                        mfg_cost: objective.2 as u32,
+                        seed,
                         solution: None,
                         pieces: None,
                     };
                     if sink.send(&msg).is_err() {
-                        handle.stop();
                         break;
                     }
                 } else {
-                    let better = best_pending.as_ref().is_none_or(|b| p.objective < b.objective);
+                    let better =
+                        best_pending.as_ref().is_none_or(|b| objective < b.objective);
                     if better {
-                        best_pending = Some(p);
+                        best_pending =
+                            Some(PendingProgress { seed, generation, objective, lazy });
                     }
+                    // else: lazy (and the genome captured inside) is dropped here
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
-                    if should_flush && let Some(evt) = best_pending.take() {
-                        let sol = decode_spec(&spec, &evt.genome);
-                        let msg = ProgressMessage::Progress {
-                            generation: evt.generation,
-                            sheets_used: evt.objective.0,
-                            mfg_cost: evt.objective.2 as u32,
-                            seed: evt.seed,
-                            solution: Some(sol),
-                            pieces: Some(spec.piespecs.clone()),
-                        };
-                        if sink.send(&msg).is_err() {
-                            handle.stop();
-                            break;
+                    if should_flush {
+                        if let Some(pending) = best_pending.take() {
+                            let sol = pending.lazy.decode(&spec);
+                            let msg = ProgressMessage::Progress {
+                                generation: pending.generation,
+                                sheets_used: pending.objective.0,
+                                mfg_cost: pending.objective.2 as u32,
+                                seed: pending.seed,
+                                solution: Some(sol),
+                                pieces: Some(spec.piespecs.clone()),
+                            };
+                            if sink.send(&msg).is_err() {
+                                break;
+                            }
+                            last_sent = Some(Instant::now());
                         }
-                        last_sent = Some(Instant::now());
                     }
                 }
             }
-            Some(GaEvent::Done(results)) => {
-                if let Some(evt) = best_pending.take() {
-                    let sol = decode_spec(&spec, &evt.genome);
+            Some(AnyEvent::Done { mut results }) => {
+                // Flush any throttled pending event first
+                if let Some(pending) = best_pending.take() {
+                    let sol = pending.lazy.decode(&spec);
                     sink.send(&ProgressMessage::Progress {
-                        generation: evt.generation,
-                        sheets_used: evt.objective.0,
-                        mfg_cost: evt.objective.2 as u32,
-                        seed: evt.seed,
+                        generation: pending.generation,
+                        sheets_used: pending.objective.0,
+                        mfg_cost: pending.objective.2 as u32,
+                        seed: pending.seed,
                         solution: Some(sol),
                         pieces: Some(spec.piespecs.clone()),
                     })
                     .ok();
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (best_seed, best) = &results[0];
-                let sol = decode_spec(&spec, &best.genome);
+                let (best_seed, best_obj, lazy) = results.remove(0);
+                let sol = lazy.decode(&spec);
                 let cut_lengths = sol.cut_lengths(&spec);
                 sink.send(&ProgressMessage::Done {
-                    seed: *best_seed,
-                    sheets_used: best.objective.0,
-                    mfg_cost: best.objective.2 as u32,
+                    seed: best_seed,
+                    sheets_used: best_obj.0,
+                    mfg_cost: best_obj.2 as u32,
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
@@ -342,27 +451,47 @@ pub(crate) fn run_with_sink(
     Ok(())
 }
 
+/// Slas-only entry point kept for the web server (unchanged signature).
+pub(crate) fn run_with_sink(
+    spec: Arc<ProblemSpec>,
+    cfg: Arc<GaConfig>,
+    seeds: &[u64],
+    progress_interval: usize,
+    sink: &mut dyn ProgressSink,
+    sink_interval_ms: u64,
+) -> Result<(), Box<dyn Error>> {
+    let any = slas_handle_to_any(run_ga_mt(
+        Arc::clone(&spec),
+        Arc::clone(&cfg),
+        seeds.to_vec(),
+        progress_interval,
+    ));
+    run_with_any_handle(any, spec, sink, sink_interval_ms)
+}
+
 fn run_calc_render(
     spec: &ProblemSpec,
     cfg: &GaConfig,
     base_seed: u64,
     n_threads: usize,
     progress_interval: usize,
+    decoder: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
-    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
+    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();
-    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval);
+    let mut handle =
+        make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
     loop {
         match handle.rx.blocking_recv() {
             None => break,
-            Some(GaEvent::Progress(_)) => {}
-            Some(GaEvent::Done(results)) => {
+            Some(AnyEvent::Progress { .. }) => {}
+            Some(AnyEvent::Done { mut results }) => {
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (_, best) = &results[0];
-                let sol = decode_spec(&spec, &best.genome);
+                let (_, _, lazy) = results.remove(0);
+                let sol = lazy.decode(&spec);
                 print!("{}", render_svg(&spec, &sol)?);
                 break;
             }
