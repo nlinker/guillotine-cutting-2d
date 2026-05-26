@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use cutting::{
     ga::{GaConfig, GaEvent, GaHandle, run_ga_mt},
     glf::build_glf,
-    gslas::ga as gslas_ga,
+    glas::ga as glas_ga,
     model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -73,7 +73,7 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
-        /// Decoder variant: "slas" (default) or "gslas" (group SLAS, one gene per piece type)
+        /// Decoder variant: "slas" (default) or "glas" (group SLAS, one gene per piece type)
         #[arg(long, default_value = "slas")]
         decoder: String,
     },
@@ -225,32 +225,32 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
     AnyHandle { rx }
 }
 
-/// Convert a `gslas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
-/// events, wrapping each genome in a lazy `gslas::decoder::decode_spec` closure.
-fn gslas_handle_to_any(handle: gslas_ga::GaHandle) -> AnyHandle {
+/// Convert a `glas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
+/// events, wrapping each genome in a lazy `glas::decoder::decode_spec` closure.
+fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
     std::thread::spawn(move || {
         let mut handle = handle;
         while let Some(evt) = handle.rx.blocking_recv() {
             let any = match evt {
-                gslas_ga::GaEvent::Progress(p) => {
+                glas_ga::GaEvent::Progress(p) => {
                     let genome = p.genome;
                     AnyEvent::Progress {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
                         lazy: LazyDecode(Box::new(move |spec| {
-                            cutting::gslas::decoder::decode_spec(spec, &genome)
+                            cutting::glas::decoder::decode_spec(spec, &genome)
                         })),
                     }
                 }
-                gslas_ga::GaEvent::Done(results) => AnyEvent::Done {
+                glas_ga::GaEvent::Done(results) => AnyEvent::Done {
                     results: results
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
                             let lazy = LazyDecode(Box::new(move |spec| {
-                                cutting::gslas::decoder::decode_spec(spec, &genome)
+                                cutting::glas::decoder::decode_spec(spec, &genome)
                             }));
                             (seed, obj, lazy)
                         })
@@ -274,7 +274,7 @@ fn make_any_handle(
     decoder: &str,
 ) -> AnyHandle {
     match decoder {
-        "gslas" => gslas_handle_to_any(gslas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
+        "glas" => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
         _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
@@ -299,6 +299,7 @@ fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<ProblemSpec
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_calc_with_sink(
     spec: &ProblemSpec,
     cfg: &GaConfig,
@@ -398,22 +399,22 @@ fn run_with_any_handle(
                     }
                     // else: lazy (and the genome captured inside) is dropped here
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
-                    if should_flush {
-                        if let Some(pending) = best_pending.take() {
-                            let sol = pending.lazy.decode(&spec);
-                            let msg = ProgressMessage::Progress {
-                                generation: pending.generation,
-                                sheets_used: pending.objective.0,
-                                mfg_cost: pending.objective.2 as u32,
-                                seed: pending.seed,
-                                solution: Some(sol),
-                                pieces: Some(spec.piespecs.clone()),
-                            };
-                            if sink.send(&msg).is_err() {
-                                break;
-                            }
-                            last_sent = Some(Instant::now());
+                    if should_flush
+                        && let Some(pending) = best_pending.take()
+                    {
+                        let sol = pending.lazy.decode(&spec);
+                        let msg = ProgressMessage::Progress {
+                            generation: pending.generation,
+                            sheets_used: pending.objective.0,
+                            mfg_cost: pending.objective.2 as u32,
+                            seed: pending.seed,
+                            solution: Some(sol),
+                            pieces: Some(spec.piespecs.clone()),
+                        };
+                        if sink.send(&msg).is_err() {
+                            break;
                         }
+                        last_sent = Some(Instant::now());
                     }
                 }
             }

@@ -10,5 +10,5 @@ pub mod parse;
 pub mod parse_json;
 pub mod render;
 pub mod slas;
-pub mod gslas;
+pub mod glas;
 pub mod transport;

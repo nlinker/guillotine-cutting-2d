@@ -11,12 +11,12 @@ use crate::{
     expand::expand_problem,
     ga::GaConfig,
     model::{Objective, Problem, ProblemSpec},
-    gslas::decoder::{Gene, Genome, decode},
+    glas::decoder::{Gene, Genome, decode},
 };
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-/// A gslas genome paired with its cached fitness value to avoid re-decoding during selection.
+/// A glas genome paired with its cached fitness value to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
 pub struct Individual {
     pub genome: Genome,
@@ -131,7 +131,7 @@ pub fn run_ga_mt(
 
 // ── crossover ─────────────────────────────────────────────────────────────────
 
-/// OX (Ordered Crossover) for two gslas genomes.
+/// OX (Ordered Crossover) for two glas genomes.
 ///
 /// The permutation key is `type_idx`; the gene payload (`rotate`, `selectors`,
 /// `inverses`) travels unchanged with its gene. A random segment `[lo, hi)` is
@@ -151,7 +151,7 @@ pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, G
     ox_at(p1, p2, lo, hi)
 }
 
-/// CX (Cycle Crossover) for two gslas genomes.
+/// CX (Cycle Crossover) for two glas genomes.
 ///
 /// Traces cycles via `type_idx`, same structure as the flat implementation.
 /// Even cycles keep their parent source; odd cycles swap. No RNG required.
@@ -199,7 +199,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 
 // ── mutation ──────────────────────────────────────────────────────────────────
 
-/// Mutate a gslas genome in-place. For each gene:
+/// Mutate a glas genome in-place. For each gene:
 /// - with probability `swap_p`: swap it with a random other gene (preserves `type_idx` permutation)
 /// - with probability `flip_p`: flip `rotate`
 /// - for each `selectors[k]` with probability `point_p`: nudge by ±`point_delta` (wrapping)

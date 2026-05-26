@@ -56,7 +56,7 @@ fn default_progress() -> usize {
     50
 }
 fn default_decoder() -> String {
-    "gslas".to_string()
+    "glas".to_string()
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
