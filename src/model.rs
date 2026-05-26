@@ -3,12 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Four-level lexicographic fitness (lower is better):
+/// Three-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. `spread_penalty` — same-size pieces spread across multiple sheets (0 = all confined)
-///   2. `mfg_cost` — manufacturability cost (rotations×10 + fence resets×3 + cuts×1)
-///   3. `staircase_area` (sum across all sheets)
-pub type Objective = (usize, u64, u64, u64);
+///   1. `leftover_area` — area of the largest single leftover rect on any non-last sheet
+///   2. `staircase_area` — sum of staircase-polygon areas across all used sheets
+pub type Objective = (usize, u64, u64);
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,12 +214,27 @@ impl Solution {
     /// Rust tuple `Ord` provides lexicographic comparison for free.
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return (0, 0, 0, 0);
+            return (0, 0, 0);
         }
         let sheets = self.sheets_used();
-        let spread = self.sheet_spread_penalty(problem);
+        let leftover = self.leftover_area();
         let staircase = self.staircase_area(problem);
-        (sheets, spread, self.mfg_cost as u64, staircase)
+        (sheets, leftover, staircase)
+    }
+
+    /// Area of the largest single leftover rectangle on any non-last sheet (lower = better).
+    ///
+    /// Measures wasted space on fully "committed" sheets: a large free rect there means
+    /// pieces could have been packed more tightly, leaving more room on the last sheet.
+    /// Returns 0 when only one sheet is used (no non-last sheets exist).
+    pub fn leftover_area(&self) -> u64 {
+        let last = self.sheets_used().saturating_sub(1);
+        self.leftovers
+            .iter()
+            .filter(|fr| fr.sheet_idx < last)
+            .map(|fr| fr.w as u64 * fr.h as u64)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Inter-sheet spread penalty: sum over each canonical piece size of

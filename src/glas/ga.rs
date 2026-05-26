@@ -675,7 +675,7 @@ mod tests {
             genome: vec![gg(type_idx, 1)],
             objective: obj,
         };
-        let pop = vec![ind(0, (0, 30, 0, 0)), ind(1, (0, 10, 0, 0)), ind(2, (0, 20, 0, 0))];
+        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
         assert_eq!((winner.objective.0, winner.objective.1), (0, 10));
@@ -687,7 +687,7 @@ mod tests {
             genome: vec![gg(type_idx, 1)],
             objective: obj,
         };
-        let pop = vec![ind(0, (0, 30, 0, 0)), ind(1, (0, 10, 0, 0)), ind(2, (0, 20, 0, 0))];
+        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
         assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 10));

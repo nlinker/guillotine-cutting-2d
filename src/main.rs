@@ -382,7 +382,7 @@ fn run_with_any_handle(
                     let msg = ProgressMessage::Progress {
                         generation,
                         sheets_used: objective.0,
-                        mfg_cost: objective.2 as u32,
+                        secondary_objective: objective.1,
                         seed,
                         solution: None,
                         pieces: None,
@@ -406,7 +406,7 @@ fn run_with_any_handle(
                         let msg = ProgressMessage::Progress {
                             generation: pending.generation,
                             sheets_used: pending.objective.0,
-                            mfg_cost: pending.objective.2 as u32,
+                            secondary_objective: pending.objective.1,
                             seed: pending.seed,
                             solution: Some(sol),
                             pieces: Some(spec.piespecs.clone()),
@@ -425,7 +425,7 @@ fn run_with_any_handle(
                     sink.send(&ProgressMessage::Progress {
                         generation: pending.generation,
                         sheets_used: pending.objective.0,
-                        mfg_cost: pending.objective.2 as u32,
+                        secondary_objective: pending.objective.1,
                         seed: pending.seed,
                         solution: Some(sol),
                         pieces: Some(spec.piespecs.clone()),
@@ -439,7 +439,6 @@ fn run_with_any_handle(
                 sink.send(&ProgressMessage::Done {
                     seed: best_seed,
                     sheets_used: best_obj.0,
-                    mfg_cost: best_obj.2 as u32,
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),

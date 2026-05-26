@@ -10,10 +10,10 @@ impl ProgressSink for StdoutSink {
             ProgressMessage::Progress {
                 generation,
                 sheets_used,
-                mfg_cost,
+                secondary_objective,
                 ..
             } => {
-                eprint!("\rgen={generation:<6} sheets={sheets_used}  mfg={mfg_cost:<10}");
+                eprint!("\rgen={generation:<6} sheets={sheets_used}  obj2={secondary_objective:<12}");
                 std::io::stderr().flush()
             }
             _ => {

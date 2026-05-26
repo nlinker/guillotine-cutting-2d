@@ -254,7 +254,7 @@ function initChart() {
           grid: { color: T.chartGrid },
         },
         y: {
-          title: { display: true, text: 'objective', color: T.chartText },
+          title: { display: true, text: 'leftover area', color: T.chartText },
           ticks: { color: T.chartText, callback: (v) => v.toLocaleString() },
           grid: { color: T.chartGrid },
         }
@@ -279,10 +279,8 @@ function buildRowColors(specs) {
 
 
 // == placements table =========================================================
-function buildPlacementsTable(solution, pieces, elapsed, mfgCost, sheets, seed) {
-  const fmtCost = mfgCost.toLocaleString('ru-RU');
-  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), `
-           + `mfg cost: ${fmtCost}, seed: ${seed}</p>`;
+function buildPlacementsTable(solution, pieces, elapsed, sheets, seed) {
+  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), seed: ${seed}</p>`;
   html += '<table><thead><tr>'
         + '<th>Sheet</th><th>Piece</th><th>W</th><th>H</th>'
         + '<th>X</th><th>Y</th><th>Rot</th>'
@@ -387,7 +385,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
 
   es.addEventListener('progress', (ev) => {
     const d = JSON.parse(ev.data);
-    addPoint(d.generation, d.mfg_cost);
+    addPoint(d.generation, d.secondary_objective);
   });
 
   es.addEventListener('done', (ev) => {
@@ -398,7 +396,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
-      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.mfg_cost, d.sheets_used, d.seed);
+      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.sheets_used, d.seed);
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('cancel').style.display = 'none';
