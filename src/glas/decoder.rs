@@ -1,35 +1,31 @@
-use smallvec::{SmallVec, smallvec};
+use smallvec::SmallVec;
 
 use crate::{
+    cut_tree::{Blueprint, CutForest},
     expand,
     glas::dim_index::DimIndex,
     model::{FreeRect, Placement, Problem, ProblemSpec, Solution},
-    slas::decoder::{
-        CutCtx, SplitAxis, find_placement, fits_in, guillotine_split, open_new_sheet, sheet_rect,
-    },
 };
-
-type FreeList = SmallVec<[(FreeRect, Option<CutCtx>); 16]>;
 
 /// Per-copy free-rect selectors: `selectors[k] % |free|` picks the target free rect
 /// at the start of the batch that begins when `k` pieces of this type are already placed.
 pub type Selectors = SmallVec<[u32; 16]>;
 
-/// Per-copy SLAS split flags: `inverses[k]` controls the guillotine split direction for
-/// the batch that starts when `k` pieces of this type are already placed.
-pub type Inverses = SmallVec<[bool; 16]>;
+/// Per-copy blueprint bytes: `blueprints[k]` (value 0–3) selects the corner-placement
+/// blueprint for the batch that starts when `k` pieces of this type are already placed.
+pub type Blueprints = SmallVec<[u8; 16]>;
 
 /// One gene per piece type: a permutation of `0..spec.piespecs.len()`.
 ///
 /// Unlike `slas::Gene` (one gene per physical piece), a single `Gene` here drives
 /// the placement of ALL copies of one piece type, batch by batch.
 ///
-/// Each batch selects a free rect (via `selectors[placed]`), packs as many pieces as
-/// possible into a rectangular **matrix** or a **matrix-minus-corner** arrangement
-/// (see [`matrix_pack`]), then applies a SLAS guillotine split on the composite
-/// bounding box.
+/// Each batch selects a free leaf (via `selectors[placed]`) and a corner-placement
+/// blueprint (via `blueprints[placed]`), packs as many pieces as possible into a
+/// rectangular **matrix** arrangement (see [`matrix_pack`]), then applies the chosen
+/// blueprint to split the free leaf.
 ///
-/// `selectors` and `inverses` each have exactly `count` elements — one per physical
+/// `selectors` and `blueprints` each have exactly `count` elements — one per physical
 /// copy — but only batch-start positions are consulted at decode time.
 /// Mid-batch entries are carried silently; this keeps the arrays symmetric and
 /// lets crossover treat every index identically without special-casing.
@@ -39,10 +35,10 @@ pub struct Gene {
     pub type_idx: usize,
     /// Prefer rotated orientation for every piece in this group.
     pub rotate: bool,
-    /// `selectors[k]`: free-rect selector used when `k` copies have been placed.
+    /// `selectors[k]`: free-leaf selector used when `k` copies have been placed.
     pub selectors: Selectors,
-    /// `inverses[k]`: SLAS split direction used when `k` copies have been placed.
-    pub inverses: Inverses,
+    /// `blueprints[k]`: corner-placement blueprint used when `k` copies have been placed.
+    pub blueprints: Blueprints,
 }
 
 pub type Genome = Vec<Gene>;
@@ -60,17 +56,13 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
 ///
 /// For each gene the decoder places all pieces of the given type one batch at a time:
 ///   1. Let `placed` = number of copies of this type already placed.
-///      Consult `selectors[placed]` and `inverses[placed]`.
-///   2. Find a free rect where at least one piece fits, scanning from
-///      `selectors[placed] % |free|`.
-///   3. Pack as many pieces as fit into a rectangular **matrix** or a
-///      **matrix-minus-corner** arrangement (see [`matrix_pack`]).
-///   4. Apply the standard SLAS guillotine split on the composite bounding box.
-///   5. If a minus-corner arrangement was chosen, return the unused bottom-right
-///      cell to the free list.
-///   6. Advance `placed` by the batch size and repeat until the group is exhausted.
-///
-/// Opening a new sheet when nothing fits mirrors `slas::decoder::decode`.
+///      Consult `selectors[placed]` and `blueprints[placed]`.
+///   2. Find a free leaf where at least one piece fits, preferring a snug fit first.
+///      Open a new sheet if nothing fits anywhere.
+///   3. Pack as many pieces as fit into the best full-matrix arrangement from
+///      the priority table (see [`matrix_pack`]).
+///   4. Apply the chosen blueprint to split the free leaf around the composite box.
+///   5. Advance `placed` by the batch size and repeat until the group is exhausted.
 pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solution {
     debug_assert_eq!(genome.len(), spec.piespecs.len());
 
@@ -88,38 +80,40 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
     };
 
     // Dimension index: maps expanded piece dimensions → type matches.
-    // Used by find_snug_placement to prefer free rects that exactly fill one dimension.
     let dim_idx = DimIndex::build(spec, problem);
 
     let mut next = offsets.clone(); // next[i] = next unassigned flat index for type i
-    let mut free: FreeList = smallvec![(sheet_rect(problem, 0), None)];
+    let mut forest = CutForest::new(problem.sheet.width, problem.sheet.height);
     let mut placements: Vec<Placement> = Vec::with_capacity(problem.pieces.len());
-    let mut sheets_open = 1usize;
-    let mfg_cost = 0u32; // TODO: adapt mfg_cost_increment for composite batch placements
+    let mfg_cost = 0u32; // TODO: compute via forest.to_cut_trees() once implemented
 
     for gene in genome {
         let count = spec.piespecs[gene.type_idx].count as usize;
         let end_idx = offsets[gene.type_idx] + count;
         debug_assert_eq!(gene.selectors.len(), count);
-        debug_assert_eq!(gene.inverses.len(), count);
+        debug_assert_eq!(gene.blueprints.len(), count);
 
         while next[gene.type_idx] < end_idx {
-            // placed = copies of this type already placed = index into selectors/inverses
+            // placed = copies of this type already placed = index into selectors/blueprints
             let placed = next[gene.type_idx] - offsets[gene.type_idx];
             let remaining = end_idx - next[gene.type_idx];
 
             let ps = gene.selectors[placed];
-            let inv = gene.inverses[placed];
+            let bp = Blueprint::from_u8(gene.blueprints[placed]);
 
             let piece = &problem.pieces[next[gene.type_idx]];
-            // Prefer a free rect that is a snug fit (one dimension matches exactly),
-            // then fall back to any fitting rect, then open a new sheet.
-            let found =
-                find_snug_placement(&free, piece, gene.type_idx, gene.rotate, ps, &dim_idx)
-                    .or_else(|| find_placement(&free, piece, gene.rotate, ps))
-                    .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, gene.rotate));
 
-            let Some((idx, pw, ph, rotated)) = found else {
+            // Prefer a snug-fit leaf (exact dimension match eliminates one cut),
+            // then any fitting leaf, then open a new sheet.
+            let found = forest
+                .find_snug_leaf(piece, gene.type_idx, gene.rotate, ps, &dim_idx)
+                .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
+                .or_else(|| {
+                    forest.open_new_sheet(problem.sheet.width, problem.sheet.height);
+                    forest.find_fitting_leaf(piece, gene.rotate, ps)
+                });
+
+            let Some((leaf_idx, pw, ph, rotated)) = found else {
                 debug_assert!(
                     false,
                     "piece {}×{} does not fit on empty {}×{} sheet",
@@ -128,65 +122,145 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                 break;
             };
 
-            let (fr, _) = free.remove(idx);
-            let mp = matrix_pack(fr.w, fr.h, pw, ph, remaining);
+            let (fr_w, fr_h, sheet_idx) = {
+                let node = &forest.nodes[leaf_idx];
+                (node.w, node.h, node.sheet_idx)
+            };
+            let mp = matrix_pack(fr_w, fr_h, pw, ph, remaining);
 
-            // Place pieces in row-major order; skip bottom-right cell for minus-corner.
+            // Apply blueprint: splits the leaf, returns batch origin.
+            let (batch_x, batch_y) = forest.apply_blueprint(leaf_idx, mp.cw, mp.ch, bp);
+
+            // Place pieces in row-major order within the batch box.
             for row in 0..mp.rows as usize {
                 for col in 0..mp.cols as usize {
                     let piece_offset = row * mp.cols as usize + col;
-                    let is_missing =
-                        mp.minus_corner && row == mp.rows as usize - 1 && col == mp.cols as usize - 1;
-                    if !is_missing {
-                        placements.push(Placement {
-                            sheet_idx: fr.sheet_idx,
-                            piece_idx: next[gene.type_idx] + piece_offset,
-                            x: fr.x + col as u32 * pw,
-                            y: fr.y + row as u32 * ph,
-                            rotated,
-                        });
-                    }
+                    placements.push(Placement {
+                        sheet_idx,
+                        piece_idx: next[gene.type_idx] + piece_offset,
+                        x: batch_x + col as u32 * pw,
+                        y: batch_y + row as u32 * ph,
+                        rotated,
+                    });
                 }
             }
             next[gene.type_idx] += mp.n;
-
-            // SLAS guillotine split on composite bounding box (mp.cw × mp.ch).
-            let lw = fr.w.saturating_sub(mp.cw);
-            let lh = fr.h.saturating_sub(mp.ch);
-            let splits = guillotine_split(&fr, mp.cw, mp.ch, inv);
-            let mut si = 0;
-            if lw > 0 {
-                free.push((splits[si], Some((SplitAxis::V, fr.x + mp.cw))));
-                si += 1;
-            }
-            if lh > 0 {
-                free.push((splits[si], Some((SplitAxis::H, fr.y + mp.ch))));
-            }
-            // Minus-corner: recover the unused bottom-right cell as a new free rect.
-            if mp.minus_corner {
-                free.push((
-                    FreeRect {
-                        sheet_idx: fr.sheet_idx,
-                        x: fr.x + (mp.cols - 1) * pw,
-                        y: fr.y + (mp.rows - 1) * ph,
-                        w: pw,
-                        h: ph,
-                    },
-                    None,
-                ));
-            }
         }
     }
 
-    let leftovers = free.into_iter().map(|(fr, _)| fr).collect();
-    Solution { placements, leftovers, mfg_cost }
+    let leftovers = forest
+        .free_leaves
+        .iter()
+        .map(|&idx| {
+            let node = &forest.nodes[idx];
+            FreeRect {
+                sheet_idx: node.sheet_idx,
+                x: node.x,
+                y: node.y,
+                w: node.w,
+                h: node.h,
+            }
+        })
+        .collect();
+
+    Solution {
+        placements,
+        leftovers,
+        mfg_cost,
+    }
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── matrix layout table ───────────────────────────────────────────────────────
+
+/// A full-matrix layout candidate: `cols` columns × `rows` rows = `cols * rows` pieces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MatrixLayout {
+    cols: u32,
+    rows: u32,
+}
+
+const fn ml(cols: u32, rows: u32) -> MatrixLayout {
+    MatrixLayout { cols, rows }
+}
+
+// Priority-ordered layout lists for each piece count n = 1..=12.
+// Within a count, wider arrangements (larger cols) come first, except where
+// the user's priority ordering explicitly differs (e.g. n=4: 4×1 before 2×2 before 1×4).
+static ML1: [MatrixLayout; 1] = [ml(1, 1)];
+static ML2: [MatrixLayout; 2] = [ml(2, 1), ml(1, 2)];
+static ML3: [MatrixLayout; 2] = [ml(3, 1), ml(1, 3)];
+static ML4: [MatrixLayout; 3] = [ml(4, 1), ml(2, 2), ml(1, 4)];
+static ML5: [MatrixLayout; 2] = [ml(5, 1), ml(1, 5)];
+static ML6: [MatrixLayout; 4] = [ml(6, 1), ml(3, 2), ml(2, 3), ml(1, 6)];
+static ML7: [MatrixLayout; 2] = [ml(7, 1), ml(1, 7)];
+static ML8: [MatrixLayout; 4] = [ml(8, 1), ml(4, 2), ml(2, 4), ml(1, 8)];
+static ML9: [MatrixLayout; 3] = [ml(9, 1), ml(3, 3), ml(1, 9)];
+static ML10: [MatrixLayout; 4] = [ml(10, 1), ml(5, 2), ml(2, 5), ml(1, 10)];
+static ML11: [MatrixLayout; 2] = [ml(11, 1), ml(1, 11)];
+static ML12: [MatrixLayout; 5] = [ml(12, 1), ml(6, 2), ml(4, 3), ml(3, 4), ml(2, 6)];
+
+static LAYOUTS: [&[MatrixLayout]; 13] = [
+    &[],   // n=0  (unused)
+    &ML1,  // n=1
+    &ML2,  // n=2
+    &ML3,  // n=3
+    &ML4,  // n=4
+    &ML5,  // n=5
+    &ML6,  // n=6
+    &ML7,  // n=7
+    &ML8,  // n=8
+    &ML9,  // n=9
+    &ML10, // n=10
+    &ML11, // n=11
+    &ML12, // n=12
+];
+
+/// Iterator over candidate layouts for a given piece count.
+///
+/// - For `n ≤ 12`: yields from the static priority table `LAYOUTS[n]`.
+/// - For `n ≥ 13`: yields only exact full matrices `M×N` where `M*N == n`,
+///   ordered by decreasing `cols` (widest first).
+enum CandidateIter {
+    Small(std::iter::Copied<std::slice::Iter<'static, MatrixLayout>>),
+    Large { n: usize, c: usize },
+}
+
+impl Iterator for CandidateIter {
+    type Item = MatrixLayout;
+
+    fn next(&mut self) -> Option<MatrixLayout> {
+        match self {
+            CandidateIter::Small(it) => it.next(),
+            CandidateIter::Large { n, c } => {
+                while *c >= 1 {
+                    let col = *c;
+                    *c -= 1;
+                    if *n % col == 0 {
+                        return Some(MatrixLayout {
+                            cols: col as u32,
+                            rows: (*n / col) as u32,
+                        });
+                    }
+                }
+                None
+            }
+        }
+    }
+}
+
+fn candidate_layouts(n: usize) -> CandidateIter {
+    if n <= 12 {
+        CandidateIter::Small(LAYOUTS[n].iter().copied())
+    } else {
+        CandidateIter::Large { n, c: n }
+    }
+}
+
+// ── MatrixPack ────────────────────────────────────────────────────────────────
 
 /// Result of [`matrix_pack`]: layout for one batch of same-type pieces.
 struct MatrixPack {
-    /// Pieces to place in this batch (≥ 1).
+    /// Pieces to place in this batch (≥ 1); always equals `cols × rows`.
     n: usize,
     /// Columns in the bounding box.
     cols: u32,
@@ -196,131 +270,40 @@ struct MatrixPack {
     cw: u32,
     /// Composite height = `rows × ph` (used for SLAS split).
     ch: u32,
-    /// `true` when the bottom-right cell is vacant (`n == cols × rows − 1`).
-    minus_corner: bool,
 }
 
-/// Choose the densest matrix or minus-corner arrangement for a single batch.
+/// Choose the best full-matrix arrangement for placing up to `remaining` pieces
+/// of size `pw × ph` inside a free rect of size `fr_w × fr_h`.
 ///
-/// Considers all `(cols, rows)` grid sizes that fit within the `fr_w × fr_h` free rect:
-/// - **Full matrix** (`cols × rows`): valid when `remaining ≥ cols × rows`.
-/// - **Minus-corner** (`cols × rows − 1`): valid when `remaining + 1 == cols × rows`
-///   and `cols ≥ 2`, `rows ≥ 2`.  Degenerate single-row/column cases are already
-///   covered by smaller full matrices.
+/// Layouts are tried in priority order from the [`LAYOUTS`] table (for n ≤ 12)
+/// or by descending column count (for n ≥ 13, exact divisor pairs only).
+/// The first layout that physically fits (`cols*pw ≤ fr_w` and `rows*ph ≤ fr_h`)
+/// and does not exceed `remaining` is selected.
 ///
-/// Selection priority (highest first):
-/// 1. More pieces placed.
-/// 2. Full matrix over minus-corner (equal count).
-/// 3. Wider arrangement (larger `cols`) over taller (equal count and type).
+/// Priority: place as many pieces as possible; within the same count, earlier
+/// entries in the priority table win (wider arrangements first by default).
 fn matrix_pack(fr_w: u32, fr_h: u32, pw: u32, ph: u32, remaining: usize) -> MatrixPack {
-    // Both ≥ 1 because find_placement already confirmed the piece fits.
     let max_cols = (fr_w / pw) as usize;
     let max_rows = (fr_h / ph) as usize;
+    // Maximum pieces that physically fit; also the upper bound on n to try.
+    let target = remaining.min(max_cols * max_rows);
 
-    let mut best: Option<MatrixPack> = None;
-
-    for rows in 1..=max_rows {
-        for cols in 1..=max_cols {
-            let full = cols * rows;
-
-            // Option A: full matrix — place exactly `full` pieces.
-            if remaining >= full {
-                let cand = MatrixPack {
-                    n: full,
-                    cols: cols as u32,
-                    rows: rows as u32,
-                    cw: cols as u32 * pw,
-                    ch: rows as u32 * ph,
-                    minus_corner: false,
+    for n in (1..=target).rev() {
+        for layout in candidate_layouts(n) {
+            if layout.cols as usize <= max_cols && layout.rows as usize <= max_rows {
+                return MatrixPack {
+                    n,
+                    cols: layout.cols,
+                    rows: layout.rows,
+                    cw: layout.cols * pw,
+                    ch: layout.rows * ph,
                 };
-                if matrix_is_better(&cand, best.as_ref()) {
-                    best = Some(cand);
-                }
-            }
-
-            // Option B: minus-corner — place `full − 1` pieces (skip bottom-right cell).
-            // Only meaningful for true 2-D grids (cols ≥ 2 and rows ≥ 2).
-            if cols >= 2 && rows >= 2 && remaining + 1 == full {
-                let cand = MatrixPack {
-                    n: remaining,
-                    cols: cols as u32,
-                    rows: rows as u32,
-                    cw: cols as u32 * pw,
-                    ch: rows as u32 * ph,
-                    minus_corner: true,
-                };
-                if matrix_is_better(&cand, best.as_ref()) {
-                    best = Some(cand);
-                }
             }
         }
     }
-
-    // Fallback: 1 × 1 (guaranteed to fit by find_placement).
-    best.unwrap_or(MatrixPack { n: 1, cols: 1, rows: 1, cw: pw, ch: ph, minus_corner: false })
-}
-
-/// Scan `free` starting at `selector % |free|` and return the first free rect that is a
-/// **snug fit** for piece type `type_idx`.
-///
-/// A free rect `fr` is snug when at least one of its dimensions exactly matches a dimension
-/// of the piece (in the orientation that the current `prefer_rotate` flag allows):
-/// - `by_width(fr.w)` contains `type_idx` in a permitted orientation, **or**
-/// - `by_height(fr.h)` contains `type_idx` in a permitted orientation.
-///
-/// Placing into a snug rect eliminates one of the two guillotine cuts, leaving a single
-/// strip leftover rather than two, and reducing free-list fragmentation over time.
-///
-/// Returns `None` if no snug-fitting rect exists; the caller should fall back to
-/// [`find_placement`].
-fn find_snug_placement(
-    free: &FreeList,
-    piece: &crate::model::Piece,
-    type_idx: usize,
-    prefer_rotate: bool,
-    selector: u32,
-    dim_idx: &DimIndex,
-) -> Option<(usize, u32, u32, bool)> {
-    let n = free.len();
-    if n == 0 {
-        return None;
-    }
-    let start = (selector as usize) % n;
-
-    // Closure: is `tm` a valid snug match given the current rotation preference?
-    let valid = |tm: &crate::glas::dim_index::TypeMatch| {
-        tm.type_idx == type_idx && (!tm.rotated || (prefer_rotate && piece.can_rotate))
-    };
-
-    for i in 0..n {
-        let fi = (start + i) % n;
-        let (fr, _) = &free[fi];
-        let snug = dim_idx.by_width(fr.w).iter().any(valid)
-            || dim_idx.by_height(fr.h).iter().any(valid);
-        if !snug {
-            continue;
-        }
-        if let Some((pw, ph, rotated)) = fits_in(fr, piece, prefer_rotate) {
-            return Some((fi, pw, ph, rotated));
-        }
-    }
-    None
-}
-
-/// `true` when `new` is strictly better than the current `best` pack.
-///
-/// Priority: 1) more pieces, 2) full matrix over minus-corner, 3) wider (`cols` larger).
-fn matrix_is_better(new: &MatrixPack, best: Option<&MatrixPack>) -> bool {
-    let Some(best) = best else { return true };
-    if new.n != best.n {
-        return new.n > best.n;
-    }
-    // Equal count: prefer full matrix over minus-corner.
-    if new.minus_corner != best.minus_corner {
-        return !new.minus_corner;
-    }
-    // Same count and type: prefer wider (more columns).
-    new.cols > best.cols
+    // Unreachable: target ≥ 1 and candidate_layouts(1) = [1×1] always fits because
+    // find_placement already confirmed the piece fits in this free rect.
+    unreachable!("1×1 always fits — find_placement confirmed a fit")
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -330,20 +313,20 @@ mod tests {
     use super::*;
     use crate::{expand::expand_problem, parse::parse_problem};
 
-    /// Build a default gene for `type_idx` with `count` selectors/inverses all zeroed.
+    /// Build a default gene for `type_idx` with `count` selectors/blueprints all zeroed.
     fn gg(type_idx: usize, count: usize) -> Gene {
         Gene {
             type_idx,
             rotate: false,
             selectors: std::iter::repeat(0u32).take(count).collect(),
-            inverses: std::iter::repeat(false).take(count).collect(),
+            blueprints: std::iter::repeat(0u8).take(count).collect(),
         }
     }
 
     #[test]
     fn two_identical_pieces_form_a_strip() {
         // Sheet 200×100, kerf=0. One type: 2 pieces 80×100.
-        // matrix_pack chooses (cols=2, rows=1) full: both pieces in one row.
+        // matrix_pack: target=2, n=2, LAYOUTS[2]=[2×1,1×2]. 2×1: cols=2≤2, rows=1≤1 → chosen.
         //   piece 0 at (0,0), piece 1 at (80,0); right leftover (160,0,40,100).
         let spec = parse_problem("200x100F:0:80x100/2").expect("parse");
         let problem = expand_problem(&spec);
@@ -353,14 +336,15 @@ mod tests {
         assert_eq!(sol.placements.len(), 2);
         let p0 = sol.placements.iter().find(|p| p.piece_idx == 0).unwrap();
         let p1 = sol.placements.iter().find(|p| p.piece_idx == 1).unwrap();
-        assert_eq!((p0.x, p0.y, p0.sheet_idx), (0,  0, 0));
+        assert_eq!((p0.x, p0.y, p0.sheet_idx), (0, 0, 0));
         assert_eq!((p1.x, p1.y, p1.sheet_idx), (80, 0, 0));
     }
 
     #[test]
     fn strip_overflows_to_next_rect() {
         // Sheet 100×100, kerf=0. One type: 3 pieces 60×40.
-        // max_cols=1, max_rows=2: first batch places (cols=1, rows=2) = 2 pieces vertically.
+        // max_cols=1, max_rows=2; target=min(3,2)=2. n=2: [2×1(no), 1×2(yes)] → 1×2.
+        // First batch places 2 pieces vertically: (0,0) and (0,40).
         // The 3rd piece finds nothing on sheet 0, goes to sheet 1.
         let spec = parse_problem("100x100F:0:60x40/3").expect("parse");
         let problem = expand_problem(&spec);
@@ -368,9 +352,18 @@ mod tests {
         let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 2);
         assert_eq!(sol.placements.len(), 3);
-        assert_eq!((sol.placements[0].x, sol.placements[0].y, sol.placements[0].sheet_idx), (0,  0, 0));
-        assert_eq!((sol.placements[1].x, sol.placements[1].y, sol.placements[1].sheet_idx), (0, 40, 0));
-        assert_eq!((sol.placements[2].x, sol.placements[2].y, sol.placements[2].sheet_idx), (0,  0, 1));
+        assert_eq!(
+            (sol.placements[0].x, sol.placements[0].y, sol.placements[0].sheet_idx),
+            (0, 0, 0)
+        );
+        assert_eq!(
+            (sol.placements[1].x, sol.placements[1].y, sol.placements[1].sheet_idx),
+            (0, 40, 0)
+        );
+        assert_eq!(
+            (sol.placements[2].x, sol.placements[2].y, sol.placements[2].sheet_idx),
+            (0, 0, 1)
+        );
     }
 
     #[test]
@@ -397,7 +390,7 @@ mod tests {
     #[test]
     fn matrix_2x2_full() {
         // Sheet 200×200, kerf=0. One type: 4 pieces 100×100.
-        // matrix_pack picks (cols=2, rows=2) full: all 4 pieces in one batch.
+        // target=4. n=4: LAYOUTS[4]=[4×1(no,4>2), 2×2(yes)] → 2×2.
         let spec = parse_problem("200x200F:0:100x100/4").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 4)];
@@ -405,79 +398,58 @@ mod tests {
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 4);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
-        assert_eq!((f(0).x, f(0).y), (0,   0));
+        assert_eq!((f(0).x, f(0).y), (0, 0));
         assert_eq!((f(1).x, f(1).y), (100, 0));
-        assert_eq!((f(2).x, f(2).y), (0,   100));
+        assert_eq!((f(2).x, f(2).y), (0, 100));
         assert_eq!((f(3).x, f(3).y), (100, 100));
     }
 
     #[test]
-    fn matrix_3x2_minus_corner() {
-        // Sheet 300×200, kerf=0. One type: 5 pieces 100×100.
-        // (3×2) minus-corner: row 0 = 3 pieces, row 1 = 2 (missing bottom-right at (200,100)).
-        // The unused cell (200,100,100,100) is returned to the free list.
-        let spec = parse_problem("300x200F:0:100x100/5").expect("parse");
+    fn five_pieces_use_two_batches_when_no_exact_layout_fits() {
+        // Sheet 300×400, kerf=0. One type: 5 pieces 100×100.
+        // max_cols=3, max_rows=4, target=5.
+        // n=5: LAYOUTS[5]=[5×1(need 5 cols,no), 1×5(need 5 rows,no)]. None fit.
+        // n=4: LAYOUTS[4]=[4×1(no), 2×2(2≤3,2≤4 yes)] → batch 1: 2×2 = 4 pieces.
+        //   lw=100, lh=200; SLAS lw≤lh → H-first: right=(200,0,100,200) + bottom=(0,200,300,200).
+        // n=1: batch 2 (placed=4, sel=0): free[0]=(200,0,100,200) → 1×1 → piece 4 at (200,0).
+        let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 5)];
         let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 5);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
-        // Row 0
-        assert_eq!((f(0).x, f(0).y), (0,   0));
+        // Batch 1: 2×2 grid at (0,0)
+        assert_eq!((f(0).x, f(0).y), (0, 0));
         assert_eq!((f(1).x, f(1).y), (100, 0));
-        assert_eq!((f(2).x, f(2).y), (200, 0));
-        // Row 1 — partial (missing bottom-right)
-        assert_eq!((f(3).x, f(3).y), (0,   100));
-        assert_eq!((f(4).x, f(4).y), (100, 100));
-        // Corner cell must appear in leftovers
-        assert!(
-            sol.leftovers.iter().any(|fr| fr.x == 200 && fr.y == 100 && fr.w == 100 && fr.h == 100),
-            "expected corner free rect at (200,100,100×100)"
-        );
-    }
-
-    #[test]
-    fn prefer_strip_over_minus_corner() {
-        // Sheet 300×200, kerf=0. One type: 3 pieces 100×100.
-        // (3,1) strip and (2,2)-minus-corner both give 3 pieces.
-        // Full strip (3,1) is preferred: all pieces in row 0.
-        let spec = parse_problem("300x200F:0:100x100/3").expect("parse");
-        let problem = expand_problem(&spec);
-        let genome = vec![gg(0, 3)];
-        let sol = decode(&problem, &spec, &genome);
-        assert_eq!(sol.sheets_used(), 1);
-        assert_eq!(sol.placements.len(), 3);
-        let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
-        assert_eq!((f(0).x, f(0).y), (0,   0));
-        assert_eq!((f(1).x, f(1).y), (100, 0));
-        assert_eq!((f(2).x, f(2).y), (200, 0));
-        // No corner leftover at (100,100) — that would signal minus-corner was chosen
-        assert!(
-            !sol.leftovers.iter().any(|fr| fr.x == 100 && fr.y == 100),
-            "strip should be chosen, not (2,2) minus-corner"
-        );
+        assert_eq!((f(2).x, f(2).y), (0, 100));
+        assert_eq!((f(3).x, f(3).y), (100, 100));
+        // Batch 2: 5th piece in the first available free rect (200,0,100,200)
+        assert_eq!((f(4).x, f(4).y), (200, 0));
     }
 
     #[test]
     fn snug_rect_preferred_over_selector() {
         // Sheet 600×300, kerf=0. Three types:
-        //   type 0: 1× 100×200f  — placed first; creates two free rects via SLAS split
+        //   type 0: 1× 100×200f  — placed first with Blueprint::TlV
         //   type 1: 1× 200×300f  — placed second using selector=1 (skips smaller rect)
         //   type 2: 1× 100×100f  — placed third with selector=1
         //
-        // After type 0 at (0,0): lw=500 > lh=100 → full-height right / narrow bottom.
-        //   free: [(100,0,500,300), (0,200,100,100)]
+        // TlV for type 0 (cw=100, ch=200, lw=500, lh=100):
+        //   batch at (0,0); free: (100,0,500,300) + (0,200,100,100)
         //
-        // After type 1 at (100,0) [selector=1 skips (0,200,100,100), fits in (100,0,500,300)]:
-        //   right leftover (300,0,300,300); free: [(0,200,100,100), (300,0,300,300)]
+        // type 1 selector=1 → start at free[1]=(0,200,100,100): 200×300 doesn't fit →
+        //   free[0]=(100,0,500,300): 200×300 fits. Placed with TlH (default blueprint=0):
+        //   lw=300, lh=0 → only right free: (300,0,300,300).
+        //   free: [(0,200,100,100), (300,0,300,300)]
         //
-        // type 2 selector=1 → find_placement would pick free[1]=(300,0,300,300) (fits, non-snug).
-        // find_snug_placement: free[1] w=300≠100, h=300≠100 → skip; free[0] w=100=pw → snug, fits.
+        // type 2 selector=1 → find_snug skips (300,0,300,300) (w≠100, h≠100),
+        //   picks (0,200,100,100) (w=100=pw) → snug, fits.
         // Expected: type 2 at (0,200), not (300,0).
         let spec = parse_problem("600x300F:0:100x200/1f,200x300/1f,100x100/1f").expect("parse");
         let problem = expand_problem(&spec);
         let mut genome = vec![gg(0, 1), gg(1, 1), gg(2, 1)];
+        genome[0].blueprints[0] = 1; // TlV: full-height right strip (100,0,500,300) + narrow bottom (0,200,100,100)
         genome[1].selectors[0] = 1; // steer type 1 past the small rect to the large one
         genome[2].selectors[0] = 1; // without snug: picks (300,0); with snug: picks (0,200)
         let sol = decode(&problem, &spec, &genome);
@@ -491,20 +463,36 @@ mod tests {
     }
 
     #[test]
-    fn prefer_wider_matrix_over_taller() {
-        // Sheet 300×400, kerf=0. One type: 5 pieces 100×100.
-        // Both (3,2)-minus-corner and (2,3)-minus-corner give 5 pieces.
-        // (3,2) is wider (cols=3 > cols=2) so it should be chosen.
-        let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
-        let problem = expand_problem(&spec);
-        let genome = vec![gg(0, 5)];
-        let sol = decode(&problem, &spec, &genome);
-        assert_eq!(sol.sheets_used(), 1);
-        assert_eq!(sol.placements.len(), 5);
-        let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
-        // (3,2) layout: pieces 0,1,2 in row 0; pieces 3,4 in row 1
-        assert_eq!((f(2).x, f(2).y), (200, 0),   "piece 2 at col 2 → (3,2) chosen over (2,3)");
-        assert_eq!((f(3).x, f(3).y), (0,   100), "piece 3 starts row 1");
-        assert_eq!((f(4).x, f(4).y), (100, 100), "piece 4 is row 1 col 1");
+    fn layout_table_counts_correct() {
+        // Every entry in LAYOUTS[n] must satisfy cols * rows == n.
+        for n in 1usize..=12 {
+            for &layout in LAYOUTS[n] {
+                assert_eq!(
+                    layout.cols as usize * layout.rows as usize,
+                    n,
+                    "LAYOUTS[{n}] has entry {}×{} whose product is {}",
+                    layout.cols,
+                    layout.rows,
+                    layout.cols * layout.rows,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn large_n_candidate_layouts_are_full_matrices() {
+        // For n ≥ 13, candidate_layouts yields only exact divisor pairs (no minus-corner).
+        for n in 13usize..=20 {
+            for layout in candidate_layouts(n) {
+                assert_eq!(
+                    layout.cols as usize * layout.rows as usize,
+                    n,
+                    "candidate_layouts({n}) contains {}×{} which is not exact (product {})",
+                    layout.cols,
+                    layout.rows,
+                    layout.cols * layout.rows,
+                );
+            }
+        }
     }
 }

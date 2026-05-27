@@ -54,13 +54,25 @@ impl DimIndex {
             let p = &problem.pieces[flat_offset]; // one representative per type
 
             // Normal orientation.
-            by_w.entry(p.width).or_default().push(TypeMatch { type_idx, rotated: false });
-            by_h.entry(p.height).or_default().push(TypeMatch { type_idx, rotated: false });
+            by_w.entry(p.width).or_default().push(TypeMatch {
+                type_idx,
+                rotated: false,
+            });
+            by_h.entry(p.height).or_default().push(TypeMatch {
+                type_idx,
+                rotated: false,
+            });
 
             // Rotated orientation — only when it differs (non-square rotatable piece).
             if p.can_rotate && p.width != p.height {
-                by_w.entry(p.height).or_default().push(TypeMatch { type_idx, rotated: true });
-                by_h.entry(p.width).or_default().push(TypeMatch { type_idx, rotated: true });
+                by_w.entry(p.height).or_default().push(TypeMatch {
+                    type_idx,
+                    rotated: true,
+                });
+                by_h.entry(p.width).or_default().push(TypeMatch {
+                    type_idx,
+                    rotated: true,
+                });
             }
 
             flat_offset += ps.count as usize;
@@ -100,8 +112,20 @@ mod tests {
         // 300×200 fixed → only one orientation in index.
         let (_, _, idx) = build("1000x1000F:0:300x200/2f");
         // width=300, height=200 should each map to type 0, rotated=false.
-        assert_eq!(idx.by_width(300), &[TypeMatch { type_idx: 0, rotated: false }]);
-        assert_eq!(idx.by_height(200), &[TypeMatch { type_idx: 0, rotated: false }]);
+        assert_eq!(
+            idx.by_width(300),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
+        assert_eq!(
+            idx.by_height(200),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
         // Reversed dims not indexed.
         assert!(idx.by_width(200).is_empty());
         assert!(idx.by_height(300).is_empty());
@@ -113,18 +137,54 @@ mod tests {
         // Canonical orientation: width=200, height=300 (rotated=false).
         // Rotated orientation:   width=300, height=200 (rotated=true).
         let (_, _, idx) = build("1000x1000R:0:300x200/2r");
-        assert_eq!(idx.by_width(200), &[TypeMatch { type_idx: 0, rotated: false }]);
-        assert_eq!(idx.by_height(300), &[TypeMatch { type_idx: 0, rotated: false }]);
-        assert_eq!(idx.by_width(300), &[TypeMatch { type_idx: 0, rotated: true }]);
-        assert_eq!(idx.by_height(200), &[TypeMatch { type_idx: 0, rotated: true }]);
+        assert_eq!(
+            idx.by_width(200),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
+        assert_eq!(
+            idx.by_height(300),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
+        assert_eq!(
+            idx.by_width(300),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: true
+            }]
+        );
+        assert_eq!(
+            idx.by_height(200),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: true
+            }]
+        );
     }
 
     #[test]
     fn square_rotatable_indexed_once() {
         // 200×200 rotatable → w==h so rotation is redundant; index once.
         let (_, _, idx) = build("1000x1000R:0:200x200/3r");
-        assert_eq!(idx.by_width(200), &[TypeMatch { type_idx: 0, rotated: false }]);
-        assert_eq!(idx.by_height(200), &[TypeMatch { type_idx: 0, rotated: false }]);
+        assert_eq!(
+            idx.by_width(200),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
+        assert_eq!(
+            idx.by_height(200),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
         // No duplicate entry.
         assert_eq!(idx.by_width(200).len(), 1);
     }
@@ -136,8 +196,14 @@ mod tests {
         let (_, _, idx) = build("1000x1000F:0:100x200/1f,100x300/1f");
         let matches = idx.by_width(100);
         assert_eq!(matches.len(), 2);
-        assert!(matches.contains(&TypeMatch { type_idx: 0, rotated: false }));
-        assert!(matches.contains(&TypeMatch { type_idx: 1, rotated: false }));
+        assert!(matches.contains(&TypeMatch {
+            type_idx: 0,
+            rotated: false
+        }));
+        assert!(matches.contains(&TypeMatch {
+            type_idx: 1,
+            rotated: false
+        }));
     }
 
     #[test]
@@ -152,8 +218,20 @@ mod tests {
         // kerf=10 → expanded piece is (300+10)×(200+10) = 310×210.
         let (_, _, idx) = build("1000x1000F:10:300x200/1f");
         // Expanded widths are indexed, not original.
-        assert_eq!(idx.by_width(310), &[TypeMatch { type_idx: 0, rotated: false }]);
-        assert_eq!(idx.by_height(210), &[TypeMatch { type_idx: 0, rotated: false }]);
+        assert_eq!(
+            idx.by_width(310),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
+        assert_eq!(
+            idx.by_height(210),
+            &[TypeMatch {
+                type_idx: 0,
+                rotated: false
+            }]
+        );
         assert!(idx.by_width(300).is_empty()); // raw (non-expanded) width not present
     }
 }

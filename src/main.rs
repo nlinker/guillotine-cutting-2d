@@ -7,8 +7,8 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     ga::{GaConfig, GaEvent, GaHandle, run_ga_mt},
-    glf::build_glf,
     glas::ga as glas_ga,
+    glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
@@ -174,8 +174,15 @@ struct PendingProgress {
 }
 
 enum AnyEvent {
-    Progress { seed: u64, generation: usize, objective: Objective, lazy: LazyDecode },
-    Done { results: Vec<(u64, Objective, LazyDecode)> },
+    Progress {
+        seed: u64,
+        generation: usize,
+        objective: Objective,
+        lazy: LazyDecode,
+    },
+    Done {
+        results: Vec<(u64, Objective, LazyDecode)>,
+    },
 }
 
 /// Decoder-agnostic handle. Dropping it signals the bridge thread (via the rx
@@ -198,9 +205,7 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| {
-                            cutting::slas::decoder::decode_spec(spec, &genome)
-                        })),
+                        lazy: LazyDecode(Box::new(move |spec| cutting::slas::decoder::decode_spec(spec, &genome))),
                     }
                 }
                 GaEvent::Done(results) => AnyEvent::Done {
@@ -208,9 +213,8 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy = LazyDecode(Box::new(move |spec| {
-                                cutting::slas::decoder::decode_spec(spec, &genome)
-                            }));
+                            let lazy =
+                                LazyDecode(Box::new(move |spec| cutting::slas::decoder::decode_spec(spec, &genome)));
                             (seed, obj, lazy)
                         })
                         .collect(),
@@ -239,9 +243,7 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| {
-                            cutting::glas::decoder::decode_spec(spec, &genome)
-                        })),
+                        lazy: LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome))),
                     }
                 }
                 glas_ga::GaEvent::Done(results) => AnyEvent::Done {
@@ -249,9 +251,8 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy = LazyDecode(Box::new(move |spec| {
-                                cutting::glas::decoder::decode_spec(spec, &genome)
-                            }));
+                            let lazy =
+                                LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome)));
                             (seed, obj, lazy)
                         })
                         .collect(),
@@ -283,7 +284,11 @@ fn make_any_handle(
 
 fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
     let v: serde_json::Value = serde_json::from_str(s)?;
-    let sol_val = if v.get("solution").is_some() { &v["solution"] } else { &v };
+    let sol_val = if v.get("solution").is_some() {
+        &v["solution"]
+    } else {
+        &v
+    };
     Ok(serde_json::from_value(sol_val.clone())?)
 }
 
@@ -338,8 +343,7 @@ fn run_calc_with_sink(
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
-                let mut sink =
-                    cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
+                let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
                 run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
@@ -375,7 +379,12 @@ fn run_with_any_handle(
     loop {
         match handle.rx.blocking_recv() {
             None => break,
-            Some(AnyEvent::Progress { seed, generation, objective, lazy }) => {
+            Some(AnyEvent::Progress {
+                seed,
+                generation,
+                objective,
+                lazy,
+            }) => {
                 if !throttled {
                     // Raw progress: no decode, no solution payload
                     drop(lazy);
@@ -391,17 +400,18 @@ fn run_with_any_handle(
                         break;
                     }
                 } else {
-                    let better =
-                        best_pending.as_ref().is_none_or(|b| objective < b.objective);
+                    let better = best_pending.as_ref().is_none_or(|b| objective < b.objective);
                     if better {
-                        best_pending =
-                            Some(PendingProgress { seed, generation, objective, lazy });
+                        best_pending = Some(PendingProgress {
+                            seed,
+                            generation,
+                            objective,
+                            lazy,
+                        });
                     }
                     // else: lazy (and the genome captured inside) is dropped here
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
-                    if should_flush
-                        && let Some(pending) = best_pending.take()
-                    {
+                    if should_flush && let Some(pending) = best_pending.take() {
                         let sol = pending.lazy.decode(&spec);
                         let msg = ProgressMessage::Progress {
                             generation: pending.generation,
@@ -461,10 +471,15 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let any = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds.to_vec(), progress_interval, decoder);
+    let any = make_any_handle(
+        Arc::clone(&spec),
+        Arc::clone(&cfg),
+        seeds.to_vec(),
+        progress_interval,
+        decoder,
+    );
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
-
 
 fn run_calc_render(
     spec: &ProblemSpec,
@@ -479,8 +494,7 @@ fn run_calc_render(
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();
-    let mut handle =
-        make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
+    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
     loop {
         match handle.rx.blocking_recv() {
             None => break,

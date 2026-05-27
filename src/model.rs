@@ -1,4 +1,3 @@
-
 use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
@@ -124,17 +123,33 @@ impl SolutionSpec {
                 (ps.width, ps.height)
             };
             let si = pl.sheet_idx;
-            if pl.x > m        { totals[si] += ph as u64; }
-            if pl.x + pw < rw  { totals[si] += ph as u64; }
-            if pl.y > m        { totals[si] += pw as u64; }
-            if pl.y + ph < bh  { totals[si] += pw as u64; }
+            if pl.x > m {
+                totals[si] += ph as u64;
+            }
+            if pl.x + pw < rw {
+                totals[si] += ph as u64;
+            }
+            if pl.y > m {
+                totals[si] += pw as u64;
+            }
+            if pl.y + ph < bh {
+                totals[si] += pw as u64;
+            }
         }
         for lr in &self.leftovers {
             let si = lr.sheet_idx;
-            if lr.x > m           { totals[si] += lr.h as u64; }
-            if lr.x + lr.w < rw   { totals[si] += lr.h as u64; }
-            if lr.y > m           { totals[si] += lr.w as u64; }
-            if lr.y + lr.h < bh   { totals[si] += lr.w as u64; }
+            if lr.x > m {
+                totals[si] += lr.h as u64;
+            }
+            if lr.x + lr.w < rw {
+                totals[si] += lr.h as u64;
+            }
+            if lr.y > m {
+                totals[si] += lr.w as u64;
+            }
+            if lr.y + lr.h < bh {
+                totals[si] += lr.w as u64;
+            }
         }
 
         let margin_perim = if m > 0 {
@@ -428,7 +443,10 @@ mod tests {
     #[test]
     fn cut_lengths_no_margin() {
         let spec = ProblemSpec {
-            sheet: Sheet { width: 100, height: 100 },
+            sheet: Sheet {
+                width: 100,
+                height: 100,
+            },
             kerf: 0,
             margin: 0,
             piespecs: vec![PieceSpec {
@@ -441,10 +459,34 @@ mod tests {
         };
         let sol = SolutionSpec {
             placements: vec![
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y:  0, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 50, y:  0, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y: 50, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 50, y: 50, rotated: false },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 50,
+                    y: 0,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 0,
+                    y: 50,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 50,
+                    y: 50,
+                    rotated: false,
+                },
             ],
             leftovers: vec![],
         };
@@ -457,7 +499,10 @@ mod tests {
     #[test]
     fn cut_lengths_with_margin() {
         let spec = ProblemSpec {
-            sheet: Sheet { width: 120, height: 120 },
+            sheet: Sheet {
+                width: 120,
+                height: 120,
+            },
             kerf: 0,
             margin: 10,
             piespecs: vec![PieceSpec {
@@ -470,10 +515,34 @@ mod tests {
         };
         let sol = SolutionSpec {
             placements: vec![
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 10, y: 10, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 10, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 10, y: 60, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 60, rotated: false },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 10,
+                    y: 10,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 60,
+                    y: 10,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 10,
+                    y: 60,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 60,
+                    y: 60,
+                    rotated: false,
+                },
             ],
             leftovers: vec![],
         };
@@ -490,7 +559,10 @@ mod tests {
     #[test]
     fn cut_lengths_with_kerf() {
         let spec = ProblemSpec {
-            sheet: Sheet { width: 120, height: 120 },
+            sheet: Sheet {
+                width: 120,
+                height: 120,
+            },
             kerf: 10,
             margin: 0,
             piespecs: vec![PieceSpec {
@@ -503,16 +575,64 @@ mod tests {
         };
         let sol = SolutionSpec {
             placements: vec![
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y:  0, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y:  0, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x:  0, y: 60, rotated: false },
-                PlacementSpec { sheet_idx: 0, piespec_idx: 0, x: 60, y: 60, rotated: false },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 60,
+                    y: 0,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 0,
+                    y: 60,
+                    rotated: false,
+                },
+                PlacementSpec {
+                    sheet_idx: 0,
+                    piespec_idx: 0,
+                    x: 60,
+                    y: 60,
+                    rotated: false,
+                },
             ],
             leftovers: vec![
-                FreeRect { sheet_idx: 0, x: 120, y:   0, w: 10, h: 60 },
-                FreeRect { sheet_idx: 0, x:   0, y: 120, w: 60, h: 10 },
-                FreeRect { sheet_idx: 0, x: 120, y:  60, w: 10, h: 60 },
-                FreeRect { sheet_idx: 0, x:  60, y: 120, w: 70, h: 10 },
+                FreeRect {
+                    sheet_idx: 0,
+                    x: 120,
+                    y: 0,
+                    w: 10,
+                    h: 60,
+                },
+                FreeRect {
+                    sheet_idx: 0,
+                    x: 0,
+                    y: 120,
+                    w: 60,
+                    h: 10,
+                },
+                FreeRect {
+                    sheet_idx: 0,
+                    x: 120,
+                    y: 60,
+                    w: 10,
+                    h: 60,
+                },
+                FreeRect {
+                    sheet_idx: 0,
+                    x: 60,
+                    y: 120,
+                    w: 70,
+                    h: 10,
+                },
             ],
         };
         assert_eq!(sol.cut_lengths(&spec), vec![445]);

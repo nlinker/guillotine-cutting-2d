@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     fmt,
     sync::{
         Arc, Mutex,
@@ -66,7 +66,6 @@ pub struct GaConfig {
     /// represent cut trees that the default `lw <= lh` heuristic cannot.
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
-
 }
 
 impl fmt::Display for GaConfig {
@@ -503,7 +502,6 @@ pub fn mutate<R: Rng>(
         }
     }
 }
-
 
 /// Returns the `n_elite` individuals with the lowest objective (lower is better),
 /// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.

@@ -1,4 +1,4 @@
-use crate::model::{Placement, Problem};
+use crate::model::{Piece, Placement, Problem};
 
 /// A node in the guillotine cut tree for one sheet.
 #[derive(Debug, Clone)]
@@ -282,6 +282,302 @@ fn walk(node: &CutNode, parent_axis: Option<Axis>, parent_pos: Option<u32>, cost
     }
 }
 
+// ── CutForest ─────────────────────────────────────────────────────────────────
+
+/// Orientation of a guillotine cut produced by a blueprint.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Orient {
+    H,
+    V,
+}
+
+/// Blueprint: one of four corner-placement scenarios for a batch inside a free leaf.
+///
+/// Given free leaf `(x, y, nw, nh)`, batch `(cw, ch)`, `lw = nw−cw`, `lh = nh−ch`:
+///
+/// | # | Name | Batch at    | Free leaves                                      |
+/// |---|------|-------------|--------------------------------------------------|
+/// | 0 | TlH  | (x, y)      | (x+cw, y, lw, ch)  +  (x, y+ch, nw, lh)         |
+/// | 1 | TlV  | (x, y)      | (x+cw, y, lw, nh)  +  (x, y+ch, cw, lh)         |
+/// | 2 | BlH  | (x, y+lh)   | (x, y, nw, lh)      +  (x+cw, y+lh, lw, ch)     |
+/// | 3 | TrV  | (x+lw, y)   | (x, y, lw, nh)      +  (x+lw, y+ch, cw, lh)     |
+///
+/// TlH corresponds to the SLAS `inv=false` split; TlV to `inv=true`.
+/// BlH and TrV are new corner placements.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Blueprint {
+    TlH = 0,
+    TlV = 1,
+    BlH = 2,
+    TrV = 3,
+}
+
+impl Blueprint {
+    pub const N: u8 = 4;
+
+    /// Convert any `u8` to a `Blueprint` (wraps modulo 4).
+    pub fn from_u8(v: u8) -> Self {
+        match v % 4 {
+            0 => Blueprint::TlH,
+            1 => Blueprint::TlV,
+            2 => Blueprint::BlH,
+            _ => Blueprint::TrV,
+        }
+    }
+}
+
+/// A node in the `CutForest` arena.
+#[derive(Debug, Clone)]
+pub struct ForestNode {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    pub sheet_idx: usize,
+    pub(crate) kind: ForestNodeKind,
+}
+
+/// Semantic state of a `ForestNode`.
+#[derive(Debug, Clone)]
+pub(crate) enum ForestNodeKind {
+    /// Available for future batch placement; kept in `CutForest::free_leaves`.
+    Free,
+    /// A batch has been placed here; no longer available.
+    Occupied,
+    /// Internal node created by a blueprint split.
+    #[allow(dead_code)]
+    Split { orient: Orient, left: usize, right: usize },
+}
+
+/// Arena-based guillotine cut forest — one forest per decode call.
+///
+/// Tracks free regions (leaves) across all open sheets.
+/// `free_leaves` is maintained incrementally: `apply_blueprint` removes the
+/// consumed leaf and adds up to two new free leaves produced by the split.
+pub struct CutForest {
+    /// All nodes allocated during this forest's lifetime (free, occupied, and split).
+    pub nodes: Vec<ForestNode>,
+    /// Root node index for each sheet (one root per call to `new` / `open_new_sheet`).
+    roots: Vec<usize>,
+    /// Indices into `nodes` for every currently-free leaf.
+    pub free_leaves: Vec<usize>,
+}
+
+impl CutForest {
+    /// Create a new forest with one free leaf `(0, 0, w, h)` on sheet 0.
+    pub fn new(w: u32, h: u32) -> Self {
+        let root = ForestNode {
+            x: 0,
+            y: 0,
+            w,
+            h,
+            sheet_idx: 0,
+            kind: ForestNodeKind::Free,
+        };
+        CutForest {
+            nodes: vec![root],
+            roots: vec![0],
+            free_leaves: vec![0],
+        }
+    }
+
+    /// Open a new sheet and add a full-size free leaf `(0, 0, w, h)` for it.
+    ///
+    /// Returns the new sheet index (`roots.len() - 1` before this call).
+    pub fn open_new_sheet(&mut self, w: u32, h: u32) -> usize {
+        let sheet_idx = self.roots.len();
+        let node_idx = self.nodes.len();
+        self.nodes.push(ForestNode {
+            x: 0,
+            y: 0,
+            w,
+            h,
+            sheet_idx,
+            kind: ForestNodeKind::Free,
+        });
+        self.roots.push(node_idx);
+        self.free_leaves.push(node_idx);
+        sheet_idx
+    }
+
+    /// Number of sheets currently open.
+    pub fn sheets_open(&self) -> usize {
+        self.roots.len()
+    }
+
+    /// Apply blueprint `bp` to the free leaf at `leaf_idx`, placing a batch of size `(cw, ch)`.
+    ///
+    /// Returns the batch origin `(batch_x, batch_y)`.
+    ///
+    /// The consumed leaf is removed from `free_leaves` and marked `Occupied`.
+    /// Up to two new `Free` nodes are appended to `nodes` and added to `free_leaves`.
+    ///
+    /// Panics in debug mode if `leaf_idx` is not in `free_leaves`, or `cw > w` / `ch > h`.
+    pub fn apply_blueprint(&mut self, leaf_idx: usize, cw: u32, ch: u32, bp: Blueprint) -> (u32, u32) {
+        let (x, y, nw, nh, sheet_idx) = {
+            let node = &self.nodes[leaf_idx];
+            debug_assert!(matches!(node.kind, ForestNodeKind::Free));
+            debug_assert!(
+                cw <= node.w && ch <= node.h,
+                "batch ({cw}×{ch}) exceeds leaf ({}×{})",
+                node.w,
+                node.h
+            );
+            (node.x, node.y, node.w, node.h, node.sheet_idx)
+        };
+        let lw = nw - cw;
+        let lh = nh - ch;
+
+        // Compute batch origin and up to two new free rectangles.
+        let (batch_x, batch_y, fr1, fr2) = match bp {
+            Blueprint::TlH => (
+                x,
+                y,
+                (lw > 0).then_some((x + cw, y, lw, ch)),
+                (lh > 0).then_some((x, y + ch, nw, lh)),
+            ),
+            Blueprint::TlV => (
+                x,
+                y,
+                (lw > 0).then_some((x + cw, y, lw, nh)),
+                (lh > 0).then_some((x, y + ch, cw, lh)),
+            ),
+            Blueprint::BlH => (
+                x,
+                y + lh,
+                (lh > 0).then_some((x, y, nw, lh)),
+                (lw > 0).then_some((x + cw, y + lh, lw, ch)),
+            ),
+            Blueprint::TrV => (
+                x + lw,
+                y,
+                (lw > 0).then_some((x, y, lw, nh)),
+                (lh > 0).then_some((x + lw, y + ch, cw, lh)),
+            ),
+        };
+
+        // Mark the consumed leaf as occupied and remove from the free list.
+        self.nodes[leaf_idx].kind = ForestNodeKind::Occupied;
+        let pos = self
+            .free_leaves
+            .iter()
+            .position(|&i| i == leaf_idx)
+            .expect("leaf_idx must be present in free_leaves");
+        self.free_leaves.swap_remove(pos);
+
+        // Append new free nodes.
+        for (fx, fy, fw, fh) in [fr1, fr2].into_iter().flatten() {
+            let new_idx = self.nodes.len();
+            self.nodes.push(ForestNode {
+                x: fx,
+                y: fy,
+                w: fw,
+                h: fh,
+                sheet_idx,
+                kind: ForestNodeKind::Free,
+            });
+            self.free_leaves.push(new_idx);
+        }
+
+        (batch_x, batch_y)
+    }
+
+    /// Scan free leaves starting at `selector % |free_leaves|` (wrapping) and return the first
+    /// that fits `piece`.
+    ///
+    /// Returns `(node_idx, placed_w, placed_h, rotated)` or `None`.
+    pub fn find_fitting_leaf(
+        &self,
+        piece: &Piece,
+        prefer_rotate: bool,
+        selector: u32,
+    ) -> Option<(usize, u32, u32, bool)> {
+        let n = self.free_leaves.len();
+        if n == 0 {
+            return None;
+        }
+        let start = (selector as usize) % n;
+        for i in 0..n {
+            let node_idx = self.free_leaves[(start + i) % n];
+            let node = &self.nodes[node_idx];
+            if let Some((pw, ph, rotated)) = piece_fits_in(node.w, node.h, piece, prefer_rotate) {
+                return Some((node_idx, pw, ph, rotated));
+            }
+        }
+        None
+    }
+
+    /// Scan free leaves for a **snug fit**: at least one dimension of the piece (in a permitted
+    /// orientation) exactly matches a dimension of the leaf.
+    ///
+    /// A snug fit eliminates one guillotine cut, leaving a single-strip leftover.
+    ///
+    /// Returns `(node_idx, placed_w, placed_h, rotated)` or `None`.
+    pub fn find_snug_leaf(
+        &self,
+        piece: &Piece,
+        type_idx: usize,
+        prefer_rotate: bool,
+        selector: u32,
+        dim_idx: &crate::glas::dim_index::DimIndex,
+    ) -> Option<(usize, u32, u32, bool)> {
+        let n = self.free_leaves.len();
+        if n == 0 {
+            return None;
+        }
+        let start = (selector as usize) % n;
+
+        let valid = |tm: &crate::glas::dim_index::TypeMatch| {
+            tm.type_idx == type_idx && (!tm.rotated || (prefer_rotate && piece.can_rotate))
+        };
+
+        for i in 0..n {
+            let node_idx = self.free_leaves[(start + i) % n];
+            let node = &self.nodes[node_idx];
+            let snug = dim_idx.by_width(node.w).iter().any(&valid) || dim_idx.by_height(node.h).iter().any(&valid);
+            if !snug {
+                continue;
+            }
+            if let Some((pw, ph, rotated)) = piece_fits_in(node.w, node.h, piece, prefer_rotate) {
+                return Some((node_idx, pw, ph, rotated));
+            }
+        }
+        None
+    }
+
+    /// Convert the forest to a flat `Vec<CutNode>` for use with `mfg_cost_from_trees`.
+    ///
+    /// **Not yet implemented** — returns an empty vec.
+    /// Will be closed once the tree-reconstruction logic is added.
+    pub fn to_cut_trees(&self) -> Vec<CutNode> {
+        // TODO: walk arena and reconstruct CutNode trees
+        Vec::new()
+    }
+}
+
+/// Check whether `piece` fits in a `w × h` region, trying preferred orientation first.
+/// Returns `(placed_w, placed_h, rotated)` or `None`.
+fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u32, bool)> {
+    let try_rotated = prefer_rotate && piece.can_rotate;
+    let (pw_a, ph_a) = if try_rotated {
+        (piece.height, piece.width)
+    } else {
+        (piece.width, piece.height)
+    };
+    if pw_a <= w && ph_a <= h {
+        return Some((pw_a, ph_a, try_rotated));
+    }
+    if piece.can_rotate {
+        let (pw_b, ph_b) = (ph_a, pw_a);
+        if pw_b <= w && ph_b <= h {
+            return Some((pw_b, ph_b, !try_rotated));
+        }
+    }
+    None
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,5 +623,107 @@ mod tests {
         let trees = build_cut_tree(&problem, &sol.placements).unwrap();
         assert_eq!(trees.len(), 1);
         assert!(matches!(trees[0], CutNode::VSplit { .. } | CutNode::HSplit { .. }));
+    }
+
+    // ── CutForest tests ───────────────────────────────────────────────────────
+
+    /// Helper: extract (x, y, w, h) of every free leaf in insertion order.
+    fn free_rects(forest: &CutForest) -> Vec<(u32, u32, u32, u32)> {
+        forest
+            .free_leaves
+            .iter()
+            .map(|&i| {
+                let n = &forest.nodes[i];
+                (n.x, n.y, n.w, n.h)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn forest_tl_h() {
+        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
+        // TlH: batch at (0,0); free: (100,0,100,100) + (0,100,200,200).
+        let mut forest = CutForest::new(200, 300);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlH);
+        assert_eq!((bx, by), (0, 0));
+        let rects = free_rects(&forest);
+        assert_eq!(rects.len(), 2);
+        assert!(rects.contains(&(100, 0, 100, 100)));
+        assert!(rects.contains(&(0, 100, 200, 200)));
+    }
+
+    #[test]
+    fn forest_tl_v() {
+        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
+        // TlV: batch at (0,0); free: (100,0,100,300) + (0,100,100,200).
+        let mut forest = CutForest::new(200, 300);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlV);
+        assert_eq!((bx, by), (0, 0));
+        let rects = free_rects(&forest);
+        assert_eq!(rects.len(), 2);
+        assert!(rects.contains(&(100, 0, 100, 300)));
+        assert!(rects.contains(&(0, 100, 100, 200)));
+    }
+
+    #[test]
+    fn forest_bl_h() {
+        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
+        // BlH: batch at (0,200); free: (0,0,200,200) + (100,200,100,100).
+        let mut forest = CutForest::new(200, 300);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::BlH);
+        assert_eq!((bx, by), (0, 200));
+        let rects = free_rects(&forest);
+        assert_eq!(rects.len(), 2);
+        assert!(rects.contains(&(0, 0, 200, 200)));
+        assert!(rects.contains(&(100, 200, 100, 100)));
+    }
+
+    #[test]
+    fn forest_tr_v() {
+        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
+        // TrV: batch at (100,0); free: (0,0,100,300) + (100,100,100,200).
+        let mut forest = CutForest::new(200, 300);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TrV);
+        assert_eq!((bx, by), (100, 0));
+        let rects = free_rects(&forest);
+        assert_eq!(rects.len(), 2);
+        assert!(rects.contains(&(0, 0, 100, 300)));
+        assert!(rects.contains(&(100, 100, 100, 200)));
+    }
+
+    #[test]
+    fn forest_exact_fit() {
+        // Sheet 100×100, batch 100×100: exact fit — no free leaves after.
+        let mut forest = CutForest::new(100, 100);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlH);
+        assert_eq!((bx, by), (0, 0));
+        assert!(forest.free_leaves.is_empty());
+    }
+
+    #[test]
+    fn forest_exact_w() {
+        // Sheet 100×200, batch 100×100: lw=0, lh=100.
+        // TlH: batch at (0,0), only bottom free: (0,100,100,100).
+        let mut forest = CutForest::new(100, 200);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlH);
+        assert_eq!((bx, by), (0, 0));
+        assert_eq!(free_rects(&forest), vec![(0, 100, 100, 100)]);
+    }
+
+    #[test]
+    fn forest_exact_h() {
+        // Sheet 200×100, batch 100×100: lw=100, lh=0.
+        // TlH: batch at (0,0), only right free: (100,0,100,100).
+        let mut forest = CutForest::new(200, 100);
+        let leaf = forest.free_leaves[0];
+        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlH);
+        assert_eq!((bx, by), (0, 0));
+        assert_eq!(free_rects(&forest), vec![(100, 0, 100, 100)]);
     }
 }

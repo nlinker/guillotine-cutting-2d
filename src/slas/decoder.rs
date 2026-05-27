@@ -8,7 +8,10 @@ use crate::{
 
 /// Cut axis used to track each free rect's parent split context for incremental mfg_cost.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SplitAxis { H, V }
+pub(crate) enum SplitAxis {
+    H,
+    V,
+}
 
 /// (axis, position) of the cut that produced a free rect.
 pub(crate) type CutCtx = (SplitAxis, u32);
@@ -97,7 +100,11 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
         }
     }
     let leftovers = free.into_iter().map(|(fr, _)| fr).collect();
-    Solution { placements, leftovers, mfg_cost }
+    Solution {
+        placements,
+        leftovers,
+        mfg_cost,
+    }
 }
 
 const W_R: u32 = 10;
@@ -134,9 +141,13 @@ fn setup_cost(parent: Option<CutCtx>, axis: SplitAxis, pos: u32) -> u32 {
     match parent {
         None => 0,
         Some((pa, pp)) => {
-            if pa != axis { W_R }
-            else if pp != pos { W_D }
-            else { 0 }
+            if pa != axis {
+                W_R
+            } else if pp != pos {
+                W_D
+            } else {
+                0
+            }
         }
     }
 }
@@ -324,10 +335,10 @@ mod tests {
         assert_eq!(p.len(), 5);
         let find = |idx: usize| p.iter().find(|pl| pl.piece_idx == idx).unwrap();
         let tuple = |pl: &Placement| (pl.sheet_idx, pl.x, pl.y, pl.rotated);
-        assert_eq!(tuple(find(0)), (0, 0, 0, false));   // P0  at (0,0) sheet 0
+        assert_eq!(tuple(find(0)), (0, 0, 0, false)); // P0  at (0,0) sheet 0
         assert_eq!(tuple(find(1)), (0, 125, 0, false)); // P1  at (125,0) sheet 0
-        assert_eq!(tuple(find(2)), (1, 0, 0, false));   // P2  at (0,0) sheet 1
-        assert_eq!(tuple(find(3)), (1, 0, 65, true));   // P3r at (0,65) sheet 1
+        assert_eq!(tuple(find(2)), (1, 0, 0, false)); // P2  at (0,0) sheet 1
+        assert_eq!(tuple(find(3)), (1, 0, 65, true)); // P3r at (0,65) sheet 1
         assert_eq!(tuple(find(4)), (0, 125, 85, true)); // P4r at (125,85) sheet 0
     }
 
