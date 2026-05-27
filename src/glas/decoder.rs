@@ -2,8 +2,11 @@ use smallvec::{SmallVec, smallvec};
 
 use crate::{
     expand,
+    glas::dim_index::DimIndex,
     model::{FreeRect, Placement, Problem, ProblemSpec, Solution},
-    slas::decoder::{CutCtx, SplitAxis, find_placement, guillotine_split, open_new_sheet, sheet_rect},
+    slas::decoder::{
+        CutCtx, SplitAxis, find_placement, fits_in, guillotine_split, open_new_sheet, sheet_rect,
+    },
 };
 
 type FreeList = SmallVec<[(FreeRect, Option<CutCtx>); 16]>;
@@ -84,6 +87,10 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
             .collect()
     };
 
+    // Dimension index: maps expanded piece dimensions → type matches.
+    // Used by find_snug_placement to prefer free rects that exactly fill one dimension.
+    let dim_idx = DimIndex::build(spec, problem);
+
     let mut next = offsets.clone(); // next[i] = next unassigned flat index for type i
     let mut free: FreeList = smallvec![(sheet_rect(problem, 0), None)];
     let mut placements: Vec<Placement> = Vec::with_capacity(problem.pieces.len());
@@ -105,8 +112,12 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
             let inv = gene.inverses[placed];
 
             let piece = &problem.pieces[next[gene.type_idx]];
-            let found = find_placement(&free, piece, gene.rotate, ps)
-                .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, gene.rotate));
+            // Prefer a free rect that is a snug fit (one dimension matches exactly),
+            // then fall back to any fitting rect, then open a new sheet.
+            let found =
+                find_snug_placement(&free, piece, gene.type_idx, gene.rotate, ps, &dim_idx)
+                    .or_else(|| find_placement(&free, piece, gene.rotate, ps))
+                    .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, gene.rotate));
 
             let Some((idx, pw, ph, rotated)) = found else {
                 debug_assert!(
@@ -247,6 +258,53 @@ fn matrix_pack(fr_w: u32, fr_h: u32, pw: u32, ph: u32, remaining: usize) -> Matr
 
     // Fallback: 1 × 1 (guaranteed to fit by find_placement).
     best.unwrap_or(MatrixPack { n: 1, cols: 1, rows: 1, cw: pw, ch: ph, minus_corner: false })
+}
+
+/// Scan `free` starting at `selector % |free|` and return the first free rect that is a
+/// **snug fit** for piece type `type_idx`.
+///
+/// A free rect `fr` is snug when at least one of its dimensions exactly matches a dimension
+/// of the piece (in the orientation that the current `prefer_rotate` flag allows):
+/// - `by_width(fr.w)` contains `type_idx` in a permitted orientation, **or**
+/// - `by_height(fr.h)` contains `type_idx` in a permitted orientation.
+///
+/// Placing into a snug rect eliminates one of the two guillotine cuts, leaving a single
+/// strip leftover rather than two, and reducing free-list fragmentation over time.
+///
+/// Returns `None` if no snug-fitting rect exists; the caller should fall back to
+/// [`find_placement`].
+fn find_snug_placement(
+    free: &FreeList,
+    piece: &crate::model::Piece,
+    type_idx: usize,
+    prefer_rotate: bool,
+    selector: u32,
+    dim_idx: &DimIndex,
+) -> Option<(usize, u32, u32, bool)> {
+    let n = free.len();
+    if n == 0 {
+        return None;
+    }
+    let start = (selector as usize) % n;
+
+    // Closure: is `tm` a valid snug match given the current rotation preference?
+    let valid = |tm: &crate::glas::dim_index::TypeMatch| {
+        tm.type_idx == type_idx && (!tm.rotated || (prefer_rotate && piece.can_rotate))
+    };
+
+    for i in 0..n {
+        let fi = (start + i) % n;
+        let (fr, _) = &free[fi];
+        let snug = dim_idx.by_width(fr.w).iter().any(valid)
+            || dim_idx.by_height(fr.h).iter().any(valid);
+        if !snug {
+            continue;
+        }
+        if let Some((pw, ph, rotated)) = fits_in(fr, piece, prefer_rotate) {
+            return Some((fi, pw, ph, rotated));
+        }
+    }
+    None
 }
 
 /// `true` when `new` is strictly better than the current `best` pack.
@@ -398,6 +456,37 @@ mod tests {
         assert!(
             !sol.leftovers.iter().any(|fr| fr.x == 100 && fr.y == 100),
             "strip should be chosen, not (2,2) minus-corner"
+        );
+    }
+
+    #[test]
+    fn snug_rect_preferred_over_selector() {
+        // Sheet 600×300, kerf=0. Three types:
+        //   type 0: 1× 100×200f  — placed first; creates two free rects via SLAS split
+        //   type 1: 1× 200×300f  — placed second using selector=1 (skips smaller rect)
+        //   type 2: 1× 100×100f  — placed third with selector=1
+        //
+        // After type 0 at (0,0): lw=500 > lh=100 → full-height right / narrow bottom.
+        //   free: [(100,0,500,300), (0,200,100,100)]
+        //
+        // After type 1 at (100,0) [selector=1 skips (0,200,100,100), fits in (100,0,500,300)]:
+        //   right leftover (300,0,300,300); free: [(0,200,100,100), (300,0,300,300)]
+        //
+        // type 2 selector=1 → find_placement would pick free[1]=(300,0,300,300) (fits, non-snug).
+        // find_snug_placement: free[1] w=300≠100, h=300≠100 → skip; free[0] w=100=pw → snug, fits.
+        // Expected: type 2 at (0,200), not (300,0).
+        let spec = parse_problem("600x300F:0:100x200/1f,200x300/1f,100x100/1f").expect("parse");
+        let problem = expand_problem(&spec);
+        let mut genome = vec![gg(0, 1), gg(1, 1), gg(2, 1)];
+        genome[1].selectors[0] = 1; // steer type 1 past the small rect to the large one
+        genome[2].selectors[0] = 1; // without snug: picks (300,0); with snug: picks (0,200)
+        let sol = decode(&problem, &spec, &genome);
+        assert_eq!(sol.sheets_used(), 1);
+        let p2 = sol.placements.iter().find(|p| p.piece_idx == 2).unwrap();
+        assert_eq!(
+            (p2.x, p2.y),
+            (0, 200),
+            "snug rect (0,200,100×100) must be preferred over selector-chosen (300,0,300×300)"
         );
     }
 
