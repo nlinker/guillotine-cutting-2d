@@ -119,7 +119,6 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
-        strip_delta: 0,
     }
 }
 

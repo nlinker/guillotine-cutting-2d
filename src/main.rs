@@ -231,7 +231,7 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
 
 /// Convert a `glas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
 /// events, wrapping each genome in a lazy `glas::decoder::decode_spec` closure.
-fn glas_handle_to_any(handle: glas_ga::GaHandle, strip_delta: u32) -> AnyHandle {
+fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
     std::thread::spawn(move || {
         let mut handle = handle;
@@ -244,7 +244,7 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle, strip_delta: u32) -> AnyHandle 
                         generation: p.generation,
                         objective: p.objective,
                         lazy: LazyDecode(Box::new(move |spec| {
-                            cutting::glas::decoder::decode_spec(spec, &genome, strip_delta)
+                            cutting::glas::decoder::decode_spec(spec, &genome)
                         })),
                     }
                 }
@@ -254,7 +254,7 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle, strip_delta: u32) -> AnyHandle 
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
                             let lazy = LazyDecode(Box::new(move |spec| {
-                                cutting::glas::decoder::decode_spec(spec, &genome, strip_delta)
+                                cutting::glas::decoder::decode_spec(spec, &genome)
                             }));
                             (seed, obj, lazy)
                         })
@@ -278,10 +278,7 @@ fn make_any_handle(
     decoder: &str,
 ) -> AnyHandle {
     match decoder {
-        "glas" => {
-            let strip_delta = cfg.strip_delta;
-            glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval), strip_delta)
-        }
+        "glas" => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
         _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
@@ -537,6 +534,5 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        strip_delta: 0,
     }
 }

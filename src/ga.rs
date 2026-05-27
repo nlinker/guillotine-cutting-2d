@@ -66,21 +66,13 @@ pub struct GaConfig {
     /// represent cut trees that the default `lw <= lh` heuristic cannot.
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
-
-    /// Width tolerance for the glas strip filler.
-    ///
-    /// `strip_fill` searches for the largest achievable strip width in
-    /// `[fr_w − strip_delta, fr_w]`.  Value `0` means "take the best achievable
-    /// fill with no minimum threshold" (the whole range `[0, fr_w]` is searched).
-    /// Typical value: 0 (unconstrained) or a small multiple of kerf width.
-    pub strip_delta: u32,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} strip_delta={}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -92,7 +84,6 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
-            self.strip_delta,
         )
     }
 }
@@ -110,7 +101,6 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            strip_delta: 0,
         }
     }
 }
@@ -747,7 +737,6 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            strip_delta: 0,
         }
     }
 

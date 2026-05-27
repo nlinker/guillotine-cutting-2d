@@ -27,7 +27,6 @@ fn ga_cfg() -> GaConfig {
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        strip_delta: 0,
     }
 }
 

@@ -247,13 +247,12 @@ pub fn init_population<R: Rng>(
     spec: &ProblemSpec,
     problem: &Problem,
     size: usize,
-    strip_delta: u32,
     rng: &mut R,
 ) -> Vec<Individual> {
     (0..size)
         .map(|_| {
             let genome = random_genome(spec, rng);
-            let sol = decode(problem, spec, &genome, strip_delta);
+            let sol = decode(problem, spec, &genome);
             Individual {
                 genome,
                 objective: sol.eval(problem),
@@ -294,7 +293,7 @@ fn run_ga_inner<R: Rng>(
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
 ) -> Individual {
-    let mut pop = init_population(spec, problem, config.pop_size, config.strip_delta, rng);
+    let mut pop = init_population(spec, problem, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
@@ -320,7 +319,7 @@ fn run_ga_inner<R: Rng>(
                 config.point_delta,
                 config.inverse_p,
             );
-            let sol1 = decode(problem, spec, &g1, config.strip_delta);
+            let sol1 = decode(problem, spec, &g1);
             next_pop.push(Individual {
                 genome: g1,
                 objective: sol1.eval(problem),
@@ -336,7 +335,7 @@ fn run_ga_inner<R: Rng>(
                     config.point_delta,
                     config.inverse_p,
                 );
-                let sol2 = decode(problem, spec, &g2, config.strip_delta);
+                let sol2 = decode(problem, spec, &g2);
                 next_pop.push(Individual {
                     genome: g2,
                     objective: sol2.eval(problem),
@@ -509,7 +508,6 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            strip_delta: 0,
         }
     }
 
@@ -716,7 +714,7 @@ mod tests {
         let problem = expand_problem(&spec);
         let n_types = spec.piespecs.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&spec, &problem, 20, 0, &mut rng);
+        let pop = init_population(&spec, &problem, 20, &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(ind.genome.len(), n_types);
@@ -728,8 +726,8 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2/3,4x3/2").unwrap();
         let problem = expand_problem(&spec);
-        let pop1 = init_population(&spec, &problem, 5, 0, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&spec, &problem, 5, 0, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop1 = init_population(&spec, &problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&spec, &problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 

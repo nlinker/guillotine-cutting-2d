@@ -46,9 +46,9 @@ pub type Genome = Vec<Gene>;
 
 
 /// High-level entry point: decode a group genome into a `SolutionSpec`.
-pub fn decode_spec(spec: &ProblemSpec, genome: &Genome, strip_delta: u32) -> crate::model::SolutionSpec {
+pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::SolutionSpec {
     let problem = expand::expand_problem(spec);
-    let sol = decode(&problem, spec, genome, strip_delta);
+    let sol = decode(&problem, spec, genome);
     expand::shrink_solution(&sol, spec)
 }
 
@@ -59,10 +59,10 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome, strip_delta: u32) -> cra
 ///      Consult `selectors[placed]` and `inverses[placed]`.
 ///   2. Find a free leaf where at least one piece fits, preferring a snug fit first.
 ///      Open a new sheet if nothing fits anywhere.
-///   3. Fill a strip of pieces (see [`strip_fill`]) maximising the composite-box width.
+///   3. Pack as many copies as fit side-by-side in the strip: `count = ⌊fr_w / pw⌋`.
 ///   4. Apply TlH (`inv=false`) or TlV (`inv=true`) to split the free leaf.
-///   5. Advance `next` counters for all types used in the strip and repeat.
-pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome, strip_delta: u32) -> Solution {
+///   5. Advance `next[gene.type_idx]` by `count` and repeat.
+pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solution {
     debug_assert_eq!(genome.len(), spec.piespecs.len());
 
     // flat index range for type i: problem.pieces[offsets[i] .. offsets[i] + count_i]
@@ -112,7 +112,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome, strip_delt
                     forest.find_fitting_leaf(piece, gene.rotate, ps)
                 });
 
-            let Some((leaf_idx, _pw, _ph, _rotated)) = found else {
+            let Some((leaf_idx, pw, ph, rotated)) = found else {
                 debug_assert!(
                     false,
                     "piece {}×{} does not fit on empty {}×{} sheet",
@@ -121,39 +121,31 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome, strip_delt
                 break;
             };
 
-            let (fr_w, fr_h, sheet_idx) = {
+            let (fr_w, sheet_idx) = {
                 let node = &forest.nodes[leaf_idx];
-                (node.w, node.h, node.sheet_idx)
+                (node.w, node.sheet_idx)
             };
 
-            let strip = strip_fill(
-                fr_w,
-                fr_h,
-                spec,
-                &next,
-                &offsets,
-                gene.type_idx,
-                gene.rotate,
-                strip_delta,
-            );
+            // Single-type strip: pack as many copies as fit side-by-side.
+            let remaining = end_idx - next[gene.type_idx];
+            let count = (fr_w / pw).min(remaining as u32) as usize;
+            let (cw, ch) = (pw * count as u32, ph);
 
             // Apply blueprint: splits the leaf, returns batch origin.
-            let (batch_x, batch_y) = forest.apply_blueprint(leaf_idx, strip.cw, strip.ch, bp);
+            let (batch_x, batch_y) = forest.apply_blueprint(leaf_idx, cw, ch, bp);
 
             // Place all pieces in the strip left-to-right.
             let mut x_cursor = batch_x;
-            for item in &strip.items {
-                for _ in 0..item.count {
-                    placements.push(Placement {
-                        sheet_idx,
-                        piece_idx: next[item.type_idx],
-                        x: x_cursor,
-                        y: batch_y,
-                        rotated: item.rotated,
-                    });
-                    x_cursor += item.pw;
-                    next[item.type_idx] += 1;
-                }
+            for _ in 0..count {
+                placements.push(Placement {
+                    sheet_idx,
+                    piece_idx: next[gene.type_idx],
+                    x: x_cursor,
+                    y: batch_y,
+                    rotated,
+                });
+                x_cursor += pw;
+                next[gene.type_idx] += 1;
             }
         }
     }
@@ -182,148 +174,6 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome, strip_delt
 
 
 
-/// One piece type's contribution to a strip.
-struct StripItem {
-    type_idx: usize,
-    pw: u32,
-    ph: u32,
-    rotated: bool,
-    count: usize,
-}
-
-/// Result of [`strip_fill`]: a single horizontal strip of mixed piece types.
-///
-/// `items` are sorted by `ph` descending (tallest first, leftmost in the row).
-/// `cw` = sum of `item.pw * item.count`; `ch` = max `item.ph`.
-struct StripResult {
-    items: Vec<StripItem>,
-    /// Composite width: total occupied width of the strip.
-    cw: u32,
-    /// Composite height: height of the tallest piece in the strip.
-    ch: u32,
-}
-
-/// Fill a free rect `(fr_w × fr_h)` with a horizontal strip of pieces drawn
-/// from all available piece types, maximising the total occupied width.
-///
-/// Only the primary type uses `prefer_rotate`; all others are tried in natural
-/// orientation first (then rotated if allowed by the piece spec).
-///
-/// `strip_delta` sets the minimum acceptable total width:
-/// the function searches for the highest reachable `cw ∈ [fr_w − strip_delta, fr_w]`.
-/// If nothing meets the threshold, the highest reachable width ≥ 1 is used instead
-/// (guaranteed because `find_fitting_leaf` already confirmed the primary piece fits).
-///
-/// Algorithm: bounded 0/1 knapsack DP.
-/// Complexity: O(Σ remaining_i × fr_w) — typically < 300 K operations.
-#[allow(clippy::too_many_arguments)]
-fn strip_fill(
-    fr_w: u32,
-    fr_h: u32,
-    spec: &ProblemSpec,
-    next: &[usize],
-    offsets: &[usize],
-    primary_type_idx: usize,
-    prefer_rotate: bool,
-    strip_delta: u32,
-) -> StripResult {
-    struct Candidate {
-        type_idx: usize,
-        pw: u32,
-        ph: u32,
-        rotated: bool,
-        remaining: usize,
-    }
-
-    let candidates: Vec<Candidate> = (0..spec.piespecs.len())
-        .filter_map(|i| {
-            let remaining = spec.piespecs[i].count as usize - (next[i] - offsets[i]);
-            if remaining == 0 {
-                return None;
-            }
-            let ps = &spec.piespecs[i];
-            let prefer_rot = i == primary_type_idx && prefer_rotate;
-            // Build a temporary Piece to reuse piece_fits_in from cut_tree.
-            let piece = crate::model::Piece {
-                name: String::new(),
-                width: ps.width,
-                height: ps.height,
-                can_rotate: ps.can_rotate,
-            };
-            let (pw, ph, rotated) = crate::cut_tree::piece_fits_in(fr_w, fr_h, &piece, prefer_rot)?;
-            Some(Candidate {
-                type_idx: i,
-                pw,
-                ph,
-                rotated,
-                remaining,
-            })
-        })
-        .collect();
-
-    let cap = fr_w as usize;
-    let mut reachable = vec![false; cap + 1];
-    let mut from: Vec<Option<(usize, u32)>> = vec![None; cap + 1]; // (type_idx, pw)
-    reachable[0] = true;
-
-    for c in &candidates {
-        for _copy in 0..c.remaining {
-            let pw = c.pw as usize;
-            if pw > cap {
-                continue;
-            }
-            for w in (0..=(cap - pw)).rev() {
-                if reachable[w] && !reachable[w + pw] {
-                    reachable[w + pw] = true;
-                    from[w + pw] = Some((c.type_idx, c.pw));
-                }
-            }
-        }
-    }
-
-    let lo = fr_w.saturating_sub(strip_delta) as usize;
-    let best_w = (lo..=cap)
-        .rev()
-        .find(|&w| reachable[w])
-        .or_else(|| (1..lo).rev().find(|&w| reachable[w]))
-        .expect("primary piece always fits, so w ≥ 1 is always reachable");
-
-    let mut counts: std::collections::HashMap<usize, (u32, u32, bool, usize)> =
-        std::collections::HashMap::new(); // type_idx → (pw, ph, rotated, count)
-    let mut w = best_w;
-    while w > 0 {
-        let (t_idx, pw) = from[w].expect("backtrack must follow a valid path");
-        let entry = counts.entry(t_idx).or_insert_with(|| {
-            let c = candidates
-                .iter()
-                .find(|c| c.type_idx == t_idx)
-                .expect("backtrack always follows a candidate that was added to `candidates`");
-            (c.pw, c.ph, c.rotated, 0)
-        });
-        entry.3 += 1;
-        w -= pw as usize;
-    }
-
-    let mut items: Vec<StripItem> = counts
-        .into_iter()
-        .map(|(type_idx, (pw, ph, rotated, count))| StripItem {
-            type_idx,
-            pw,
-            ph,
-            rotated,
-            count,
-        })
-        .collect();
-    // Sort tallest first, then widest, then by type_idx — fully deterministic.
-    items.sort_unstable_by(|a, b| b.ph.cmp(&a.ph).then(b.pw.cmp(&a.pw)).then(a.type_idx.cmp(&b.type_idx)));
-
-    let cw = best_w as u32;
-    let ch = items.iter().map(|i| i.ph).max().unwrap_or(0);
-    StripResult { items, cw, ch }
-}
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,7 +198,7 @@ mod tests {
         let spec = parse_problem("200x100F:0:80x100/2").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 2)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 2);
         let p0 = sol.placements.iter().find(|p| p.piece_idx == 0).unwrap();
@@ -368,7 +218,7 @@ mod tests {
         let spec = parse_problem("100x100F:0:60x40/3").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 3)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 2);
         assert_eq!(sol.placements.len(), 3);
         assert_eq!(
@@ -396,7 +246,7 @@ mod tests {
         let problem = expand_problem(&spec);
         let mut genome = vec![gg(1, 1), gg(0, 2)];
         genome[1].selectors[0] = 1; // steer first batch of type_0 to right leftover
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 2);
         let b = sol.placements.iter().find(|p| p.piece_idx == 2).unwrap(); // type_1
         assert_eq!((b.x, b.y, b.sheet_idx), (0, 0, 0));
@@ -416,7 +266,7 @@ mod tests {
         let spec = parse_problem("200x200F:0:100x100/4").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 4)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 4);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
@@ -436,7 +286,7 @@ mod tests {
         let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 5)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 5);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
@@ -505,16 +355,16 @@ mod tests {
     #[test]
     fn strip_mixes_two_types() {
         // Sheet 350×100, kerf=0. Type A: 150×100/1. Type B: 100×80/2.
-        // Genome: [A, B]. After A is consumed in batch 1, B takes over.
-        // Batch 1 (primary=A): candidates = A(pw=150,ph=100,rem=1), B(pw=100,ph=80,rem=2).
-        //   DP: reachable={0,100,150,200,250,300,350}.
-        //   best_w=350 (150+100+100). cw=350, ch=max(100,80)=100.
-        //   TlH exact fit (cw=fr_w, ch=fr_h → lw=0, lh=0). No free rects remain.
-        //   Pieces placed: A at x=0, B at x=150, B at x=250. y=0.
+        // Genome: [A, B]. Each type gets its own batch.
+        // Batch 1 (A): fr_w=350, pw=150, remaining=1 → count=1, cw=150, ch=100.
+        //   TlH: right=(150,0,200,100). A at (0,0).
+        // Batch 2 (B): fr=(150,0,200,100), pw=100, remaining=2 → count=2, cw=200, ch=80.
+        //   TlH: bottom=(150,80,200,20). B at (150,0), B at (250,0).
+        // All pieces on sheet 0.
         let spec = parse_problem("350x100F:0:150x100/1f,100x80/2f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 1), gg(1, 2)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 3);
         // Type A (piece 0) must be in the strip.
@@ -527,15 +377,14 @@ mod tests {
     #[test]
     fn strip_respects_height_constraint() {
         // Sheet 400×300, kerf=0. Three types:
-        //   type 0 (filler): 400×200/1f — pw=400=fr_w, so strip_fill selects only this.
+        //   type 0 (filler): 400×200/1f — strip count=floor(400/400)=1.
         //                                  TlH creates bottom=(0,200,400,100).
-        //   type 1 (A):      200×100/1f — fits in the 100-high bottom rect.
-        //                                  strip_fill excludes type 2: ph=200 > fr_h=100. ✓
-        //   type 2 (B):      200×200/1f — no rect on sheet 0 has h≥200; goes to sheet 1.
+        //   type 1 (A):      200×100/1f — fits in the 100-high bottom; count=floor(400/200)=2, rem=1→1.
+        //   type 2 (B):      200×200/1f — ph=200 > all remaining fr_h=100; goes to sheet 1.
         let spec = parse_problem("400x300F:0:400x200/1f,200x100/1f,200x200/1f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![gg(0, 1), gg(1, 1), gg(2, 1)];
-        let sol = decode(&problem, &spec, &genome, 0);
+        let sol = decode(&problem, &spec, &genome);
         // B (piece_idx=2) cannot fit in the leftover rects (all h≤100); opens sheet 1.
         let pb = sol.placements.iter().find(|p| p.piece_idx == 2).unwrap();
         assert_eq!(
