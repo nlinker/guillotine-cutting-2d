@@ -282,7 +282,7 @@ fn walk(node: &CutNode, parent_axis: Option<Axis>, parent_pos: Option<u32>, cost
     }
 }
 
-// ── CutForest ─────────────────────────────────────────────────────────────────
+
 
 /// Orientation of a guillotine cut produced by a blueprint.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -291,37 +291,32 @@ pub enum Orient {
     V,
 }
 
-/// Blueprint: one of four corner-placement scenarios for a batch inside a free leaf.
+/// Blueprint: one of two corner-placement scenarios for a batch inside a free leaf.
 ///
+/// The composite box is always placed at the **top-left** corner `(x, y)` of the leaf.
 /// Given free leaf `(x, y, nw, nh)`, batch `(cw, ch)`, `lw = nw−cw`, `lh = nh−ch`:
 ///
-/// | # | Name | Batch at    | Free leaves                                      |
-/// |---|------|-------------|--------------------------------------------------|
-/// | 0 | TlH  | (x, y)      | (x+cw, y, lw, ch)  +  (x, y+ch, nw, lh)         |
-/// | 1 | TlV  | (x, y)      | (x+cw, y, lw, nh)  +  (x, y+ch, cw, lh)         |
-/// | 2 | BlH  | (x, y+lh)   | (x, y, nw, lh)      +  (x+cw, y+lh, lw, ch)     |
-/// | 3 | TrV  | (x+lw, y)   | (x, y, lw, nh)      +  (x+lw, y+ch, cw, lh)     |
+/// | # | Name | Cut  | Free leaves                                      |
+/// |---|------|------|--------------------------------------------------|
+/// | 0 | TlH  | H    | (x+cw, y, lw, ch)  +  (x, y+ch, nw, lh)         |
+/// | 1 | TlV  | V    | (x+cw, y, lw, nh)  +  (x, y+ch, cw, lh)         |
 ///
 /// TlH corresponds to the SLAS `inv=false` split; TlV to `inv=true`.
-/// BlH and TrV are new corner placements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Blueprint {
     TlH = 0,
     TlV = 1,
-    BlH = 2,
-    TrV = 3,
 }
 
 impl Blueprint {
-    pub const N: u8 = 4;
+    pub const N: u8 = 2;
 
-    /// Convert any `u8` to a `Blueprint` (wraps modulo 4).
+    /// Convert any `u8` to a `Blueprint` (wraps modulo 2).
     pub fn from_u8(v: u8) -> Self {
-        match v % 4 {
-            0 => Blueprint::TlH,
-            1 => Blueprint::TlV,
-            2 => Blueprint::BlH,
-            _ => Blueprint::TrV,
+        if v.is_multiple_of(2) {
+            Blueprint::TlH
+        } else {
+            Blueprint::TlV
         }
     }
 }
@@ -429,32 +424,18 @@ impl CutForest {
         let lh = nh - ch;
 
         // Compute batch origin and up to two new free rectangles.
-        let (batch_x, batch_y, fr1, fr2) = match bp {
+        // Batch is always at the top-left corner (x, y).
+        let (fr1, fr2) = match bp {
             Blueprint::TlH => (
-                x,
-                y,
                 (lw > 0).then_some((x + cw, y, lw, ch)),
                 (lh > 0).then_some((x, y + ch, nw, lh)),
             ),
             Blueprint::TlV => (
-                x,
-                y,
                 (lw > 0).then_some((x + cw, y, lw, nh)),
                 (lh > 0).then_some((x, y + ch, cw, lh)),
             ),
-            Blueprint::BlH => (
-                x,
-                y + lh,
-                (lh > 0).then_some((x, y, nw, lh)),
-                (lw > 0).then_some((x + cw, y + lh, lw, ch)),
-            ),
-            Blueprint::TrV => (
-                x + lw,
-                y,
-                (lw > 0).then_some((x, y, lw, nh)),
-                (lh > 0).then_some((x + lw, y + ch, cw, lh)),
-            ),
         };
+        let (batch_x, batch_y) = (x, y);
 
         // Mark the consumed leaf as occupied and remove from the free list.
         self.nodes[leaf_idx].kind = ForestNodeKind::Occupied;
@@ -557,7 +538,7 @@ impl CutForest {
 
 /// Check whether `piece` fits in a `w × h` region, trying preferred orientation first.
 /// Returns `(placed_w, placed_h, rotated)` or `None`.
-fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u32, bool)> {
+pub(crate) fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) -> Option<(u32, u32, bool)> {
     let try_rotated = prefer_rotate && piece.can_rotate;
     let (pw_a, ph_a) = if try_rotated {
         (piece.height, piece.width)
@@ -576,7 +557,7 @@ fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) -> Option<(
     None
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
+
 
 #[cfg(test)]
 mod tests {
@@ -625,7 +606,7 @@ mod tests {
         assert!(matches!(trees[0], CutNode::VSplit { .. } | CutNode::HSplit { .. }));
     }
 
-    // ── CutForest tests ───────────────────────────────────────────────────────
+
 
     /// Helper: extract (x, y, w, h) of every free leaf in insertion order.
     fn free_rects(forest: &CutForest) -> Vec<(u32, u32, u32, u32)> {
@@ -665,34 +646,6 @@ mod tests {
         assert_eq!(rects.len(), 2);
         assert!(rects.contains(&(100, 0, 100, 300)));
         assert!(rects.contains(&(0, 100, 100, 200)));
-    }
-
-    #[test]
-    fn forest_bl_h() {
-        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
-        // BlH: batch at (0,200); free: (0,0,200,200) + (100,200,100,100).
-        let mut forest = CutForest::new(200, 300);
-        let leaf = forest.free_leaves[0];
-        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::BlH);
-        assert_eq!((bx, by), (0, 200));
-        let rects = free_rects(&forest);
-        assert_eq!(rects.len(), 2);
-        assert!(rects.contains(&(0, 0, 200, 200)));
-        assert!(rects.contains(&(100, 200, 100, 100)));
-    }
-
-    #[test]
-    fn forest_tr_v() {
-        // Sheet 200×300, batch 100×100.  lw=100, lh=200.
-        // TrV: batch at (100,0); free: (0,0,100,300) + (100,100,100,200).
-        let mut forest = CutForest::new(200, 300);
-        let leaf = forest.free_leaves[0];
-        let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TrV);
-        assert_eq!((bx, by), (100, 0));
-        let rects = free_rects(&forest);
-        assert_eq!(rects.len(), 2);
-        assert!(rects.contains(&(0, 0, 100, 300)));
-        assert!(rects.contains(&(100, 100, 100, 200)));
     }
 
     #[test]

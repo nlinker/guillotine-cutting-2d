@@ -154,7 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// ── decoder-agnostic event pipeline ──────────────────────────────────────────
+
 
 /// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
 struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
@@ -231,7 +231,7 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
 
 /// Convert a `glas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
 /// events, wrapping each genome in a lazy `glas::decoder::decode_spec` closure.
-fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
+fn glas_handle_to_any(handle: glas_ga::GaHandle, strip_delta: u32) -> AnyHandle {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
     std::thread::spawn(move || {
         let mut handle = handle;
@@ -243,7 +243,9 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome))),
+                        lazy: LazyDecode(Box::new(move |spec| {
+                            cutting::glas::decoder::decode_spec(spec, &genome, strip_delta)
+                        })),
                     }
                 }
                 glas_ga::GaEvent::Done(results) => AnyEvent::Done {
@@ -251,8 +253,9 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy =
-                                LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome)));
+                            let lazy = LazyDecode(Box::new(move |spec| {
+                                cutting::glas::decoder::decode_spec(spec, &genome, strip_delta)
+                            }));
                             (seed, obj, lazy)
                         })
                         .collect(),
@@ -275,12 +278,15 @@ fn make_any_handle(
     decoder: &str,
 ) -> AnyHandle {
     match decoder {
-        "glas" => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
+        "glas" => {
+            let strip_delta = cfg.strip_delta;
+            glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval), strip_delta)
+        }
         _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
 
-// ── public entry points ───────────────────────────────────────────────────────
+
 
 fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
     let v: serde_json::Value = serde_json::from_str(s)?;
@@ -531,5 +537,6 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
+        strip_delta: 0,
     }
 }

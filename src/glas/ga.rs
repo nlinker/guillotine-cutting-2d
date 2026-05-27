@@ -14,7 +14,7 @@ use crate::{
     model::{Objective, Problem, ProblemSpec},
 };
 
-// ── types ─────────────────────────────────────────────────────────────────────
+
 
 /// A glas genome paired with its cached fitness value to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
@@ -80,7 +80,7 @@ impl Clone for GaContext {
     }
 }
 
-// ── entry points ──────────────────────────────────────────────────────────────
+
 
 /// Runs the GA for `config.n_generations` and returns the best `Individual` found.
 pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
@@ -124,12 +124,12 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
     handle
 }
 
-// ── crossover ─────────────────────────────────────────────────────────────────
+
 
 /// OX (Ordered Crossover) for two glas genomes.
 ///
 /// The permutation key is `type_idx`; the gene payload (`rotate`, `selectors`,
-/// `blueprints`) travels unchanged with its gene. A random segment `[lo, hi)` is
+/// `inverses`) travels unchanged with its gene. A random segment `[lo, hi)` is
 /// copied from each donor into the corresponding child; remaining positions are
 /// filled from the other parent in order starting at `hi` (wrapping), skipping
 /// already-present `type_idx` values.
@@ -192,13 +192,13 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
     (c1, c2)
 }
 
-// ── mutation ──────────────────────────────────────────────────────────────────
+
 
 /// Mutate a glas genome in-place. For each gene:
 /// - with probability `swap_p`: swap it with a random other gene (preserves `type_idx` permutation)
 /// - with probability `flip_p`: flip `rotate`
 /// - for each `selectors[k]` with probability `point_p`: nudge by ±`point_delta` (wrapping)
-/// - for each `blueprints[k]` with probability `blueprint_p`: rotate the blueprint value by 1–3
+/// - for each `inverses[k]` with probability `inverse_p`: flip the boolean (TlH↔TlV)
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     rng: &mut R,
@@ -206,7 +206,7 @@ pub fn mutate<R: Rng>(
     flip_p: f64,
     point_p: f64,
     point_delta: (u32, u32),
-    blueprint_p: f64,
+    inverse_p: f64,
 ) {
     let n = genome.len();
     if n < 2 {
@@ -233,23 +233,27 @@ pub fn mutate<R: Rng>(
             }
         }
         for k in 0..count {
-            if rng_01(rng) < blueprint_p {
-                // Rotate by 1, 2, or 3 — always a different blueprint.
-                let shift = 1 + (rng.next_u64() % 3) as u8;
-                genome[i].blueprints[k] = (genome[i].blueprints[k] + shift) % 4;
+            if rng_01(rng) < inverse_p {
+                genome[i].inverses[k] = !genome[i].inverses[k];
             }
         }
     }
 }
 
-// ── population ────────────────────────────────────────────────────────────────
+
 
 /// Generates `size` random individuals for the given spec.
-pub fn init_population<R: Rng>(spec: &ProblemSpec, problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
+pub fn init_population<R: Rng>(
+    spec: &ProblemSpec,
+    problem: &Problem,
+    size: usize,
+    strip_delta: u32,
+    rng: &mut R,
+) -> Vec<Individual> {
     (0..size)
         .map(|_| {
             let genome = random_genome(spec, rng);
-            let sol = decode(problem, spec, &genome);
+            let sol = decode(problem, spec, &genome, strip_delta);
             Individual {
                 genome,
                 objective: sol.eval(problem),
@@ -280,7 +284,7 @@ pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rn
     best
 }
 
-// ── private helpers ───────────────────────────────────────────────────────────
+
 
 fn run_ga_inner<R: Rng>(
     spec: &ProblemSpec,
@@ -290,7 +294,7 @@ fn run_ga_inner<R: Rng>(
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
 ) -> Individual {
-    let mut pop = init_population(spec, problem, config.pop_size, rng);
+    let mut pop = init_population(spec, problem, config.pop_size, config.strip_delta, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
     for step in 0..config.n_generations {
@@ -314,9 +318,9 @@ fn run_ga_inner<R: Rng>(
                 config.flip_p,
                 config.point_p,
                 config.point_delta,
-                config.inverse_p, // used as blueprint_p
+                config.inverse_p,
             );
-            let sol1 = decode(problem, spec, &g1);
+            let sol1 = decode(problem, spec, &g1, config.strip_delta);
             next_pop.push(Individual {
                 genome: g1,
                 objective: sol1.eval(problem),
@@ -332,7 +336,7 @@ fn run_ga_inner<R: Rng>(
                     config.point_delta,
                     config.inverse_p,
                 );
-                let sol2 = decode(problem, spec, &g2);
+                let sol2 = decode(problem, spec, &g2, config.strip_delta);
                 next_pop.push(Individual {
                     genome: g2,
                     objective: sol2.eval(problem),
@@ -437,7 +441,7 @@ fn random_genome<R: Rng>(spec: &ProblemSpec, rng: &mut R) -> Genome {
                 type_idx,
                 rotate: rng.next_u64() & 1 != 0,
                 selectors: (0..count).map(|_| rng.next_u64() as u32).collect(),
-                blueprints: (0..count).map(|_| (rng.next_u64() % 4) as u8).collect(),
+                inverses: (0..count).map(|_| rng.next_u64() & 1 != 0).collect(),
             }
         })
         .collect()
@@ -463,7 +467,7 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
     (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
-// ── tests ─────────────────────────────────────────────────────────────────────
+
 
 #[cfg(test)]
 mod tests {
@@ -473,13 +477,13 @@ mod tests {
     use super::*;
     use crate::{expand::expand_problem, ga::GaConfig, parse::parse_problem};
 
-    /// Build a gene for `type_idx` with `count` selectors/blueprints all zeroed.
+    /// Build a gene for `type_idx` with `count` selectors/inverses all zeroed/false.
     fn gg(type_idx: usize, count: usize) -> Gene {
         Gene {
             type_idx,
             rotate: false,
             selectors: std::iter::repeat(0u32).take(count).collect(),
-            blueprints: std::iter::repeat(0u8).take(count).collect(),
+            inverses: std::iter::repeat(false).take(count).collect(),
         }
     }
 
@@ -505,10 +509,11 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            strip_delta: 0,
         }
     }
 
-    // ── mutate ────────────────────────────────────────────────────────────────
+
 
     #[test]
     fn mutate_preserves_permutation() {
@@ -558,8 +563,8 @@ mod tests {
     }
 
     #[test]
-    fn mutate_randomizes_all_blueprints() {
-        // With blueprint_p=1.0, every blueprint value must change (shift is never 0).
+    fn mutate_flips_all_inverses() {
+        // With inverse_p=1.0, every inverse value (initially false) must be flipped to true.
         let orig: Genome = (0..4).map(|i| gg(i, 2)).collect();
         let mut genome = orig.clone();
         mutate(
@@ -571,12 +576,11 @@ mod tests {
             (1, 3),
             1.0,
         );
-        let all_changed = orig
-            .iter()
-            .zip(&genome)
-            .flat_map(|(og, ng)| og.blueprints.iter().zip(ng.blueprints.iter()).map(|(o, n)| o != n))
-            .all(|changed| changed);
-        assert!(all_changed, "every blueprint must have changed with blueprint_p=1.0");
+        let all_flipped = genome.iter().flat_map(|g| g.inverses.iter()).all(|&v| v);
+        assert!(
+            all_flipped,
+            "every inverse must have been flipped to true with inverse_p=1.0"
+        );
     }
 
     #[test]
@@ -625,7 +629,7 @@ mod tests {
         assert_eq!(g1, g2);
     }
 
-    // ── OX crossover ──────────────────────────────────────────────────────────
+
 
     #[test]
     fn ox_at_known() {
@@ -654,7 +658,7 @@ mod tests {
 
     #[test]
     fn ox_gene_payload_travels_with_type_idx() {
-        // Verify that when gene type_idx=2 lands in the child, its selectors/blueprints are preserved.
+        // Verify that when gene type_idx=2 lands in the child, its selectors/inverses are preserved.
         let mut p1: Genome = (0..5).map(|i| gg(i, 2)).collect();
         let mut p2: Genome = (0..5).map(|i| gg(i, 2)).collect();
         // Give type 2 in p1 a distinctive selector value.
@@ -680,7 +684,7 @@ mod tests {
         assert_eq!(c2a, c2b);
     }
 
-    // ── CX crossover ──────────────────────────────────────────────────────────
+
 
     #[test]
     fn cx_known() {
@@ -704,7 +708,7 @@ mod tests {
         assert_eq!(sorted_type_ids(&c2), (0..n).collect::<Vec<_>>());
     }
 
-    // ── population & GA ───────────────────────────────────────────────────────
+
 
     #[test]
     fn init_population_size_and_valid_permutations() {
@@ -712,7 +716,7 @@ mod tests {
         let problem = expand_problem(&spec);
         let n_types = spec.piespecs.len();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&spec, &problem, 20, &mut rng);
+        let pop = init_population(&spec, &problem, 20, 0, &mut rng);
         assert_eq!(pop.len(), 20);
         for ind in &pop {
             assert_eq!(ind.genome.len(), n_types);
@@ -724,8 +728,8 @@ mod tests {
     fn init_population_is_deterministic() {
         let spec = parse_problem("10x10R:0:3x2/3,4x3/2").unwrap();
         let problem = expand_problem(&spec);
-        let pop1 = init_population(&spec, &problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&spec, &problem, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop1 = init_population(&spec, &problem, 5, 0, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let pop2 = init_population(&spec, &problem, 5, 0, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
     }
 
