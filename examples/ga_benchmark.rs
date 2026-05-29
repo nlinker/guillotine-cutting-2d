@@ -142,6 +142,8 @@ fn main() {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            long_dim_ratio: 0.29,
+            large_area_ratio: 0.034,
         },
     }];
 

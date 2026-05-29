@@ -154,8 +154,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-
-
 /// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
 struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
 
@@ -243,9 +241,7 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| {
-                            cutting::glas::decoder::decode_spec(spec, &genome)
-                        })),
+                        lazy: LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome))),
                     }
                 }
                 glas_ga::GaEvent::Done(results) => AnyEvent::Done {
@@ -253,9 +249,8 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy = LazyDecode(Box::new(move |spec| {
-                                cutting::glas::decoder::decode_spec(spec, &genome)
-                            }));
+                            let lazy =
+                                LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome)));
                             (seed, obj, lazy)
                         })
                         .collect(),
@@ -282,8 +277,6 @@ fn make_any_handle(
         _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
-
-
 
 fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
     let v: serde_json::Value = serde_json::from_str(s)?;
@@ -534,5 +527,7 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
+        long_dim_ratio: 0.29,
+        large_area_ratio: 0.034,
     }
 }

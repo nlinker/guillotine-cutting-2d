@@ -66,13 +66,22 @@ pub struct GaConfig {
     /// represent cut trees that the default `lw <= lh` heuristic cannot.
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
+
+    /// Minimum dominant dimension (fraction of sheet's max side) to classify a piece type
+    /// as "medium" or "large". Piece types with max(w,h) < sheet_max * long_dim_ratio
+    /// go into the "small" class and are placed last by the glas decoder.
+    pub long_dim_ratio: f64,
+
+    /// Minimum area fraction (relative to sheet area) for a long piece to be "large".
+    /// Long pieces with area < sheet_area * large_area_ratio go into the "medium" class.
+    pub large_area_ratio: f64,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim={:.2} large_area={:.3}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -84,6 +93,8 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
+            self.long_dim_ratio,
+            self.large_area_ratio,
         )
     }
 }
@@ -101,6 +112,8 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            long_dim_ratio: 0.29,
+            large_area_ratio: 0.034,
         }
     }
 }
@@ -198,7 +211,7 @@ fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
 /// Use `cutting::decode` to convert to a type-indexed `SolutionSpec`.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
     let pool = Mutex::new(None);
-    run_ga_inner(problem, config, rng, &pool, None)
+    run_ga_inner(problem, config, &pool, None, rng)
 }
 
 /// Inner GA loop shared by `run_ga` and `run_ga_mt`.
@@ -210,9 +223,9 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
 fn run_ga_inner<R: Rng>(
     problem: &Problem,
     config: &GaConfig,
-    rng: &mut R,
     migration_pool: &Mutex<Option<Individual>>,
     ctx: Option<&GaContext>,
+    rng: &mut R,
 ) -> Individual {
     let mut pop = init_population(problem, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
@@ -233,12 +246,12 @@ fn run_ga_inner<R: Rng>(
 
             mutate(
                 &mut g1,
-                rng,
                 config.swap_p,
                 config.flip_p,
                 config.point_p,
                 config.point_delta,
                 config.inverse_p,
+                rng,
             );
             let sol1 = decode(problem, &g1);
             next_pop.push(Individual {
@@ -249,12 +262,12 @@ fn run_ga_inner<R: Rng>(
             if next_pop.len() < config.pop_size {
                 mutate(
                     &mut g2,
-                    rng,
                     config.swap_p,
                     config.flip_p,
                     config.point_p,
                     config.point_delta,
                     config.inverse_p,
+                    rng,
                 );
                 let sol2 = decode(problem, &g2);
                 next_pop.push(Individual {
@@ -333,7 +346,7 @@ pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>,
                     let thread_ctx = GaContext { seed, ..ctx.clone() };
                     s.spawn(move || {
                         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                        let individual = run_ga_inner(p, c, &mut rng, pool_ref, Some(&thread_ctx));
+                        let individual = run_ga_inner(p, c, pool_ref, Some(&thread_ctx), &mut rng);
                         (seed, individual)
                     })
                 })
@@ -469,12 +482,12 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
 /// - with probability `inverse_p`: flip `inverse` (reverses SLAS split direction)
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
-    rng: &mut R,
     swap_p: f64,
     flip_p: f64,
     point_p: f64,
     point_delta: (u32, u32),
     inverse_p: f64,
+    rng: &mut R,
 ) {
     let n = genome.len();
     if n < 2 {
@@ -598,12 +611,12 @@ mod tests {
         let mut genome: Genome = (0..n).map(g).collect();
         mutate(
             &mut genome,
-            &mut Xoshiro256StarStar::seed_from_u64(1),
             1.0,
             1.0,
             1.0,
             (1, 3),
             1.0,
+            &mut Xoshiro256StarStar::seed_from_u64(1),
         );
         assert_eq!(sorted_ids(&genome), (0..n).collect::<Vec<_>>());
     }
@@ -614,12 +627,12 @@ mod tests {
         let mut genome = orig.clone();
         mutate(
             &mut genome,
-            &mut Xoshiro256StarStar::seed_from_u64(2),
             0.0,
             0.0,
             0.0,
             (1, 3),
             0.0,
+            &mut Xoshiro256StarStar::seed_from_u64(2),
         );
         assert_eq!(genome, orig);
     }
@@ -630,12 +643,12 @@ mod tests {
         let mut genome: Genome = (0..n).map(g).collect();
         mutate(
             &mut genome,
-            &mut Xoshiro256StarStar::seed_from_u64(3),
             0.0,
             1.0,
             0.0,
             (1, 3),
             0.0,
+            &mut Xoshiro256StarStar::seed_from_u64(3),
         );
         assert!(genome.iter().all(|g| g.rotate));
     }
@@ -646,12 +659,12 @@ mod tests {
         let mut genome: Genome = (0..n).map(g).collect();
         mutate(
             &mut genome,
-            &mut Xoshiro256StarStar::seed_from_u64(3),
             0.0,
             0.0,
             0.0,
             (1, 3),
             1.0,
+            &mut Xoshiro256StarStar::seed_from_u64(3),
         );
         assert!(genome.iter().all(|g| g.inverse));
     }
@@ -663,21 +676,21 @@ mod tests {
         let mut g2 = orig.clone();
         mutate(
             &mut g1,
-            &mut Xoshiro256StarStar::seed_from_u64(42),
             0.3,
             0.2,
             0.2,
             (1, 3),
             0.1,
+            &mut Xoshiro256StarStar::seed_from_u64(42),
         );
         mutate(
             &mut g2,
-            &mut Xoshiro256StarStar::seed_from_u64(42),
             0.3,
             0.2,
             0.2,
             (1, 3),
             0.1,
+            &mut Xoshiro256StarStar::seed_from_u64(42),
         );
         assert_eq!(g1, g2);
     }
@@ -737,6 +750,8 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
+            long_dim_ratio: 0.29,
+            large_area_ratio: 0.034,
         }
     }
 

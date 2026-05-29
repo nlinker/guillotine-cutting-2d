@@ -119,6 +119,8 @@ fn cfgi(
         point_p,
         point_delta: (1, 3),
         inverse_p,
+        long_dim_ratio: 0.29,
+        large_area_ratio: 0.034,
     }
 }
 
