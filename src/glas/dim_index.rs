@@ -92,8 +92,6 @@ impl DimIndex {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

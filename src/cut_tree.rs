@@ -282,8 +282,6 @@ fn walk(node: &CutNode, parent_axis: Option<Axis>, parent_pos: Option<u32>, cost
     }
 }
 
-
-
 /// Orientation of a guillotine cut produced by a blueprint.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Orient {
@@ -557,8 +555,6 @@ pub(crate) fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) 
     None
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -605,8 +601,6 @@ mod tests {
         assert_eq!(trees.len(), 1);
         assert!(matches!(trees[0], CutNode::VSplit { .. } | CutNode::HSplit { .. }));
     }
-
-
 
     /// Helper: extract (x, y, w, h) of every free leaf in insertion order.
     fn free_rects(forest: &CutForest) -> Vec<(u32, u32, u32, u32)> {
