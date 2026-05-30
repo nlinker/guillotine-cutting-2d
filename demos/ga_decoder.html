@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Guillotine Decoder Visualizer</title>
+  <title>GLAS Decoder Visualizer</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,41 +15,129 @@
       color: #1a1a18;
     }
 
+    /* Per-palette gene-type text colours — light mode */
+    .pal-0 .gtype { color: #3C3489; }
+    .pal-1 .gtype { color: #085041; }
+    .pal-2 .gtype { color: #712B13; }
+    .pal-3 .gtype { color: #0C447C; }
+    .pal-4 .gtype { color: #633806; }
+    .pal-5 .gtype { color: #72243E; }
+    .pal-6 .gtype { color: #27500A; }
+    .pal-7 .gtype { color: #501313; }
+
     @media (prefers-color-scheme: dark) {
-      body                  { background: #1a1a18; color: #e8e6df; }
-      .gene-card            { background: #1a1a18; border-color: #3d3d3a; }
-      .gene-card.active     { background: #FAEEDA; border-color: #EF9F27; }
-      .sheet-canvas         { border-color: #3d3d3a; }
-      .explain              { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
-      .explain strong       { color: #e8e6df; }
-      .ctrl button          { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .ctrl button:hover    { background: #232320; }
-      .ctrl button.primary  { background: #e8e6df; color: #1a1a18; }
-      .kbd                  { background: #232320; border-color: #3d3d3a; color: #6b6965; }
-      .sc                   { color: #6b6965; }
-      .pdot                 { background: #3d3d3a; }
-      .panel-title          { color: #6b6965; }
-      .free-list            { color: #b4b2a9; }
-      .sheet-label          { color: #6b6965; }
-      .legend               { color: #b4b2a9; }
-      .settings-group       { background: #232320; border-color: #2e2e2b; }
-      .settings label       { color: #b4b2a9; }
-      .settings input       { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .scale-info           { background: #232320; border-color: #2e2e2b; color: #6b6965; }
-      .ginfo                { color: #6b6965; }
+      body               { background: #1a1a18; color: #e8e6df; }
+
+      /* Gene cards */
+      .gene-card         { background: #232320; border-color: #3d3d3a; }
+      .gene-card.active  { background: #2d1a00; border-color: #EF9F27; }
+      .gene-card.done    { opacity: .4; }
+      .gene-card .ginfo  { color: #7a7874; }
+      .gene-card .gprog  { color: #ffb840; }
+
+      /* Per-palette text — bright/readable on dark bg */
+      .pal-0 .gtype { color: #a8a3ff; }
+      .pal-1 .gtype { color: #3ecf97; }
+      .pal-2 .gtype { color: #ff8a68; }
+      .pal-3 .gtype { color: #60b8ff; }
+      .pal-4 .gtype { color: #ffbe50; }
+      .pal-5 .gtype { color: #ff82b0; }
+      .pal-6 .gtype { color: #8ed638; }
+      .pal-7 .gtype { color: #ff7a7a; }
+      /* Active card has light bg — restore dark text */
+      .gene-card.active .pal-0 .gtype,
+      .gene-card.active .gtype { color: #1a1a18; }
+
+      /* Class blocks */
+      .cls-block         { background: #232320; border-color: #3d3d3a; }
+      .cls-block.cls-0   { border-color: #D85A3066; }
+      .cls-block.cls-1   { border-color: #EF9F2766; }
+      .cls-block.cls-2   { border-color: #378ADD66; }
+      .cls-label.cls-0   { color: #e07050; }
+      .cls-label.cls-1   { color: #ffbe50; }
+      .cls-label.cls-2   { color: #60b8ff; }
+      .cls-empty         { color: #4a4a46; }
+
+      /* Explain + tags */
+      .explain           { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
+      .explain strong    { color: #e8e6df; }
+      .t-find  { background: #0a1e30; color: #60b8ff; }
+      .t-snug  { background: #071a12; color: #3ecf97; }
+      .t-place { background: #16133a; color: #a8a3ff; }
+      .t-new   { background: #2a1500; color: #ffbe50; }
+      .t-done  { background: #071a12; color: #3ecf97; }
+      .t-init  { background: #232320; color: #c4c2b8; }
+
+      /* Sheet canvas border */
+      .sheet-canvas      { border-color: #3d3d3a; }
+      .sheet-label       { color: #7a7874; }
+
+      /* Controls */
+      .ctrl button         { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover   { background: #2e2e2b; }
+      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .ctrl button:disabled { opacity: .3; }
+      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
+      .sc  { color: #7a7874; }
+
+      /* Progress dots */
+      .pdot { background: #3d3d3a; }
+
+      /* Panel titles */
+      .panel-title { color: #7a7874; }
+
+      /* Free rect list */
+      .free-list        { color: #c4c2b8; }
+      .free-item        { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
+      .free-item.snug   { background: #091a10; border-left-color: #1D9E75; color: #d8d6cf; }
+      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; color: #e0dcd0; }
+
+      /* Legend */
+      .legend { color: #c4c2b8; }
+
+      /* Settings */
+      .settings label  { color: #b4b2a9; }
+      .settings-group  { background: #232320; border-color: #2e2e2b; }
+      .settings input  { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .scale-info      { background: #232320; border-color: #2e2e2b; color: #7a7874; }
+
+      /* Right-panel hint */
+      #right .legend + div { color: #7a7874 !important; }
     }
 
     #layout  { display: flex; gap: 12px; align-items: flex-start; }
     #left    { flex: 1; min-width: 0; }
-    #right   { width: 200px; flex-shrink: 0; }
+    #right   { width: 210px; flex-shrink: 0; }
 
-    /* Genome row */
-    .genome-row { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 10px; }
-    .gene-card  { display: flex; flex-direction: column; align-items: center; border: 1.5px solid #d3d1c7; border-radius: 6px; padding: 3px 5px; cursor: default; transition: border-color .2s, transform .15s; background: #ffffff; min-width: 38px; }
-    .gene-card.active  { border-color: #EF9F27; background: #FAEEDA; }
-    .gene-card.placed  { opacity: .45; }
-    .gene-card .gid    { font-size: 11px; font-weight: 600; }
-    .gene-card .ginfo  { font-size: 9px; color: #888780; margin-top: 1px; line-height: 1.3; text-align: center; }
+    /* Genome row — three class sections side by side */
+    .genome-wrap   { margin-bottom: 10px; }
+    .genome-classes { display: flex; gap: 0; align-items: stretch; }
+    .cls-block     { display: flex; flex-direction: column; gap: 4px; padding: 4px 6px; border: 0.5px solid #e8e6df; border-radius: 6px; min-width: 40px; }
+    .cls-block + .cls-block { margin-left: 6px; }
+    .cls-label     { font-size: 9px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #888780; margin-bottom: 2px; }
+    .cls-genes     { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; min-height: 40px; }
+    .cls-empty     { font-size: 10px; color: #c0bdb4; align-self: center; }
+
+    /* Class color coding */
+    .cls-block.cls-0 { border-color: #D85A3055; }
+    .cls-block.cls-1 { border-color: #EF9F2755; }
+    .cls-block.cls-2 { border-color: #378ADD55; }
+    .cls-label.cls-0 { color: #D85A30; }
+    .cls-label.cls-1 { color: #EF9F27; }
+    .cls-label.cls-2 { color: #378ADD; }
+
+    /* Gene card */
+    .gene-card  {
+      display: flex; flex-direction: column; align-items: center;
+      border: 1.5px solid #d3d1c7; border-radius: 6px; padding: 3px 5px;
+      cursor: default; transition: border-color .2s, transform .15s;
+      background: #ffffff; min-width: 42px;
+    }
+    .gene-card.active { border-color: #EF9F27; background: #FAEEDA; }
+    .gene-card.done   { opacity: .45; }
+    .gene-card .gtype { font-size: 11px; font-weight: 600; }
+    .gene-card .ginfo { font-size: 9px; color: #888780; margin-top: 1px; line-height: 1.3; text-align: center; }
+    .gene-card .gprog { font-size: 9px; color: #EF9F27; font-weight: 600; }
 
     /* Sheets */
     .sheets-wrap     { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -57,15 +145,15 @@
     .sheet-label     { font-size: 10px; color: #888780; }
     .sheet-canvas    { display: block; border: 0.5px solid #d3d1c7; border-radius: 4px; }
 
-    /* Explain — fixed height so buttons never shift */
-    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; height: 68px; overflow: hidden; margin: 8px 0; }
+    /* Explain */
+    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; min-height: 52px; margin: 8px 0; }
     .explain strong { color: #1a1a18; }
 
     /* Tags */
     .tag     { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
     .t-find  { background: #E6F1FB; color: #0C447C; }
-    .t-place { background: #E1F5EE; color: #085041; }
-    .t-split { background: #EEEDFE; color: #3C3489; }
+    .t-snug  { background: #E1F5EE; color: #085041; }
+    .t-place { background: #EEEDFE; color: #3C3489; }
     .t-new   { background: #FAEEDA; color: #633806; }
     .t-done  { background: #E1F5EE; color: #085041; }
     .t-init  { background: #F1EFE8; color: #444441; }
@@ -85,7 +173,7 @@
     .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
     .sc  { font-size: 11px; color: #888780; margin-left: auto; }
 
-    /* Progress dots — fixed height so buttons never shift */
+    /* Progress dots */
     .progress { display: flex; gap: 3px; margin: 6px 0; flex-wrap: wrap; min-height: 16px; align-items: center; }
     .pdot      { width: 7px; height: 7px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; }
     .pdot.done { background: #1D9E75; }
@@ -95,9 +183,10 @@
     .panel-title { font-size: 10px; font-weight: 500; color: #888780; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
 
     /* Free rect list */
-    .free-list { font-size: 11px; color: #444441; line-height: 1.7; max-height: 180px; overflow-y: auto; }
-    .free-item { padding: 2px 5px; border-radius: 3px; border-left: 3px solid #378ADD; margin-bottom: 2px; background: #E6F1FB22; }
-    .free-item.highlight { background: #FAEEDA; border-color: #EF9F27; }
+    .free-list  { font-size: 11px; color: #444441; line-height: 1.7; max-height: 200px; overflow-y: auto; }
+    .free-item  { padding: 2px 5px; border-radius: 3px; border-left: 3px solid #378ADD; margin-bottom: 2px; background: #E6F1FB22; }
+    .free-item.snug    { background: #E1F5EE55; border-color: #1D9E75; }
+    .free-item.chosen  { background: #FAEEDA; border-color: #EF9F27; }
 
     /* Settings */
     .settings       { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
@@ -115,12 +204,12 @@
     <input id="sw" type="number" value="30" min="4" max="200"/>&#x00D7;
     <input id="sh" type="number" value="24" min="4" max="200"/>
     <label>Kerf:</label>
-    <input id="kerf" type="number" value="1" min="0" max="20"/>
+    <input id="kerf" type="number" value="0" min="0" max="20"/>
   </div>
   <div class="settings-group">
-    <label>Genes:</label>
-    <input id="ngenes" type="number" value="8" min="2" max="24"/>
-    <label>Sheets per row:</label>
+    <label>Types:</label>
+    <input id="ntypes" type="number" value="5" min="2" max="16"/>
+    <label>Sheets/row:</label>
     <input id="sheets-per-row" type="number" value="2" min="1" max="6"/>
     <span class="scale-info" id="scale-info">1 unit = 32 px</span>
   </div>
@@ -128,16 +217,16 @@
   <button onclick="problemGlf15()">GLF 15</button>
 </div>
 
-<div id="genome-area">
-  <div class="panel-title">Genome (placement order)</div>
-  <div class="genome-row" id="genome-row"></div>
+<div class="genome-wrap">
+  <div class="panel-title">Genome — Large · Medium · Small classes (one gene = one piece type)</div>
+  <div class="genome-classes" id="genome-classes"></div>
 </div>
 
 <div id="layout">
   <div id="left">
     <div class="panel-title">Sheets</div>
-    <div class="sheets-wrap" id="sheets-wrap"></div>
-    <div class="explain" id="explain">Press Decode to run the algorithm step by step.</div>
+    <div class="sheets-wrap" id="sheets-wrap" style="display:grid"></div>
+    <div class="explain" id="explain">Press Decode to run step by step.</div>
     <div class="progress" id="progress-row"></div>
     <div class="ctrl">
       <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
@@ -150,18 +239,22 @@
     <div class="panel-title">Free rectangles</div>
     <div class="free-list" id="free-list">&mdash;</div>
     <div class="legend" style="margin-top:10px">
-      <div class="leg"><div class="swatch" style="background:#378ADD44;border:1.5px solid #378ADD"></div>Free</div>
-      <div class="leg"><div class="swatch" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Current candidate</div>
-      <div class="leg"><div class="swatch" style="background:#1D9E7555;border:1.5px solid #1D9E75"></div>Placed piece</div>
-      <div class="leg"><div class="swatch" style="background:#E24B4A33;border:1.5px dashed #E24B4A"></div>Does not fit</div>
+      <div class="leg"><div class="swatch" style="background:#1D9E7540;border:1.5px solid #1D9E75"></div>Snug candidate</div>
+      <div class="leg"><div class="swatch" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Chosen rect</div>
+      <div class="leg"><div class="swatch" style="background:#EEEDFE99;border:1.5px solid #7F77DD"></div>Placed (batch)</div>
+      <div class="leg"><div class="swatch" style="background:#378ADD18;border:1.5px dashed #378ADD66"></div>Free rect</div>
     </div>
-    <div class="legend" style="margin-top:8px;font-size:10px;color:#888780">
-      Gene card: ↻ rotate &nbsp; <span style="color:#D85A30">⊻</span> inverse split
+    <div style="margin-top:8px;font-size:10px;color:#888780">
+      Gene: <strong>W×H ×N</strong> = type dims &amp; count<br/>
+      <strong>[L/M/S]</strong> = Large / Medium / Small<br/>
+      Batch places <em>floor(fr_w / pw)</em> pieces side-by-side.<br/>
+      <span style="color:#1D9E75">●</span> snug = exact dim match (saves one cut).
     </div>
   </div>
 </div>
 
 <script>
+// ── colour palette ─────────────────────────────────────────────────
 const PALETTES = [
   {fill:'#EEEDFE99',stroke:'#7F77DD',text:'#3C3489'},
   {fill:'#E1F5EE99',stroke:'#1D9E75',text:'#085041'},
@@ -174,101 +267,362 @@ const PALETTES = [
 ];
 const pal     = i => PALETTES[i % PALETTES.length];
 const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
-const range   = n => Array.from({length:n},(_,i)=>i);
 const clone   = x => JSON.parse(JSON.stringify(x));
+const CLASS_NAMES = ['Large','Medium','Small'];
+const CLASS_INITIALS = ['L','M','S'];
 
 let problem = null, genome = null, steps = null, stepIdx = -1, autoRunning = false;
 let SCALE = 32;
 
-// ── scale ─────────────────────────────────────────────────────────
+// ── scale ──────────────────────────────────────────────────────────
 function computeScale() {
-  const sheetsPerRow = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
-  const sw = parseInt(document.getElementById('sw').value)||12;
-  const leftPanelWidth = document.getElementById('left').offsetWidth || 500;
-  const availableForSheets = leftPanelWidth - (sheetsPerRow - 1) * 10;
-  const sheetPixelWidth = Math.floor(availableForSheets / sheetsPerRow);
-  const scale = Math.max(4, Math.floor(sheetPixelWidth / sw));
+  const spr = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sw  = parseInt(document.getElementById('sw').value)||12;
+  const lw  = document.getElementById('left').offsetWidth || 500;
+  const avail = lw - (spr-1)*10;
+  const scale = Math.max(4, Math.floor(avail / spr / sw));
   document.getElementById('scale-info').textContent = `1 unit = ${scale} px`;
   return scale;
 }
 
-// ── problem generation ────────────────────────────────────────────
-function randomProblem() {
-  const sw     = parseInt(document.getElementById('sw').value)||30;
-  const sh     = parseInt(document.getElementById('sh').value)||24;
-  const kerf   = parseInt(document.getElementById('kerf').value)||0;
-  const nGenes = Math.max(2, parseInt(document.getElementById('ngenes').value)||8);
-  const pieces = [];
-  for (let i=0; i<nGenes; i++) {
-    const maxW = Math.max(2, Math.floor(sw * 0.7));
-    const maxH = Math.max(2, Math.floor(sh * 0.7));
-    const w = Math.max(1, 1 + Math.floor(Math.random() * maxW));
-    const h = Math.max(1, 1 + Math.floor(Math.random() * maxH));
-    pieces.push({id:i, width:w, height:h, can_rotate: Math.random()>0.3});
+// ── classification ─────────────────────────────────────────────────
+function classifyType(ps, sw, sh, ldRatio=0.29, laRatio=0.034) {
+  const maxDim  = Math.max(ps.width, ps.height);
+  const sheetMax = Math.max(sw, sh);
+  const area     = ps.width * ps.height;
+  const sheetArea = sw * sh;
+  if (maxDim >= sheetMax * ldRatio) {
+    return area >= sheetArea * laRatio ? 0 : 1;
   }
-  problem = {sheet:{width:sw, height:sh}, pieces, kerf};
-  const idxs = shuffle(range(pieces.length));
-  genome = idxs.map(i => ({
-    piece_idx: i,
-    rotate: Math.random() > 0.5,
-    point_selector: Math.floor(Math.random() * 4),
-    inverse: false,
-  }));
+  return 2;
+}
+
+// ── dim index (snug fit lookup) ────────────────────────────────────
+function buildDimIndex(piespecs, kerf) {
+  const byW = new Map(), byH = new Map();
+  for (let ti = 0; ti < piespecs.length; ti++) {
+    const ps  = piespecs[ti];
+    const pw  = ps.width  + kerf;
+    const ph  = ps.height + kerf;
+    const addW = (w, rot) => { if (!byW.has(w)) byW.set(w,[]); byW.get(w).push({ti, rot}); };
+    const addH = (h, rot) => { if (!byH.has(h)) byH.set(h,[]); byH.get(h).push({ti, rot}); };
+    addW(pw, false); addH(ph, false);
+    if (ps.can_rotate && pw !== ph) { addW(ph, true); addH(pw, true); }
+  }
+  return {byW, byH};
+}
+
+// ── piece fit ─────────────────────────────────────────────────────
+// Returns {pw_exp, ph_exp, rotated} in expanded (kerf-padded) coords, or null.
+function fitsPiece(fr_w, fr_h, ps, prefer_rotate, kerf) {
+  const tryRot = prefer_rotate && ps.can_rotate;
+  const [wa, ha] = tryRot ? [ps.height+kerf, ps.width+kerf] : [ps.width+kerf, ps.height+kerf];
+  if (wa <= fr_w && ha <= fr_h) return {pw_exp:wa, ph_exp:ha, rotated:tryRot};
+  if (ps.can_rotate) {
+    const [wb, hb] = [ha, wa];
+    if (wb <= fr_w && hb <= fr_h) return {pw_exp:wb, ph_exp:hb, rotated:!tryRot};
+  }
+  return null;
+}
+
+// ── find snug leaf ─────────────────────────────────────────────────
+// Returns {idx, pw_exp, ph_exp, rotated, isSnug:true} or null.
+function findSnugLeaf(free, ps, ti, prefer_rotate, selector, dimIdx, kerf) {
+  const n = free.length;
+  if (!n) return null;
+  const start = selector % n;
+  const {byW, byH} = dimIdx;
+  const valid = (tm, preferRot) => tm.ti === ti && (!tm.rot || (preferRot && ps.can_rotate));
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n;
+    const fr  = free[idx];
+    const snug = (byW.get(fr.w)||[]).some(m=>valid(m,prefer_rotate)) ||
+                 (byH.get(fr.h)||[]).some(m=>valid(m,prefer_rotate));
+    if (!snug) continue;
+    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
+    if (fit) return {idx, ...fit, isSnug:true};
+  }
+  return null;
+}
+
+// ── find fitting leaf ──────────────────────────────────────────────
+function findFittingLeaf(free, ps, prefer_rotate, selector, kerf) {
+  const n = free.length;
+  if (!n) return null;
+  const start = selector % n;
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n;
+    const fr  = free[idx];
+    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
+    if (fit) return {idx, ...fit, isSnug:false};
+  }
+  return null;
+}
+
+// ── snug candidates list (for visualisation) ──────────────────────
+function snugCandidates(free, ps, ti, prefer_rotate, dimIdx, kerf) {
+  const {byW, byH} = dimIdx;
+  const valid = (tm) => tm.ti === ti && (!tm.rot || (prefer_rotate && ps.can_rotate));
+  return free
+    .map((fr, idx) => ({idx, snug:
+      (byW.get(fr.w)||[]).some(valid) || (byH.get(fr.h)||[]).some(valid)}))
+    .filter(x => x.snug)
+    .map(x => x.idx);
+}
+
+// ── apply blueprint ────────────────────────────────────────────────
+// Returns up to 2 new free rects; cw/ch are in expanded (kerf-padded) coords.
+function applyBlueprint(fr, cw, ch, bp) {
+  const lw = fr.w - cw, lh = fr.h - ch;
+  const out = [];
+  if (bp === 'TlH') {
+    if (lw > 0) out.push({sheet_idx:fr.sheet_idx, x:fr.x+cw, y:fr.y,    w:lw, h:ch});
+    if (lh > 0) out.push({sheet_idx:fr.sheet_idx, x:fr.x,    y:fr.y+ch, w:fr.w, h:lh});
+  } else { // TlV
+    if (lw > 0) out.push({sheet_idx:fr.sheet_idx, x:fr.x+cw, y:fr.y,    w:lw, h:fr.h});
+    if (lh > 0) out.push({sheet_idx:fr.sheet_idx, x:fr.x,    y:fr.y+ch, w:cw, h:lh});
+  }
+  return out;
+}
+
+// ── flat gene list (preserves class+position info) ─────────────────
+function flatGenes(genome) {
+  const list = [];
+  for (let ci = 0; ci < genome.length; ci++)
+    for (let gi = 0; gi < genome[ci].length; gi++)
+      list.push({ci, gi, gene: genome[ci][gi]});
+  return list;
+}
+
+// ── build steps ────────────────────────────────────────────────────
+function buildSteps(problem, genome) {
+  const {sheet, piespecs, kerf} = problem;
+  const dimIdx = buildDimIndex(piespecs, kerf);
+  const flat   = flatGenes(genome);
+
+  let free = [{sheet_idx:0, x:0, y:0, w:sheet.width, h:sheet.height}];
+  let sheets_open = 1;
+  const placed_counts = piespecs.map(() => 0);
+  const all_placements = [];
+  const steps = [];
+
+  const mkState = () => ({
+    free: clone(free),
+    placements: clone(all_placements),
+    placed_counts: [...placed_counts],
+  });
+
+  steps.push({...mkState(), type:'init', geneIdx:-1, snugIdxs:[], chosenIdx:-1,
+    text:`<span class="tag t-init">Init</span>Sheet <strong>${sheet.width}&times;${sheet.height}</strong>, kerf <strong>${kerf}</strong>. `+
+         `<strong>${flat.length}</strong> type-gene(s) across 3 classes. One free rect: the whole sheet.`});
+
+  for (let fi = 0; fi < flat.length; fi++) {
+    const {ci, gene} = flat[fi];
+    const ti = gene.type_idx;
+    const ps = piespecs[ti];
+
+    while (placed_counts[ti] < ps.count) {
+      const placed = placed_counts[ti];
+      const sel    = (gene.selectors && gene.selectors[placed]) || 0;
+      const inv    = (gene.inverses  && gene.inverses[placed])  || false;
+      const bp     = inv ? 'TlV' : 'TlH';
+
+      // Candidates for snug highlight
+      const snugIdxs = snugCandidates(free, ps, ti, gene.rotate, dimIdx, kerf);
+
+      // Find rect
+      let found = findSnugLeaf(free, ps, ti, gene.rotate, sel, dimIdx, kerf)
+               || findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+
+      if (!found) {
+        // Open new sheet
+        free.push({sheet_idx:sheets_open, x:0, y:0, w:sheet.width, h:sheet.height});
+        sheets_open++;
+        found = findFittingLeaf(free, ps, gene.rotate, 0, kerf);
+        steps.push({...mkState(), type:'new_sheet', geneIdx:fi, snugIdxs:[], chosenIdx:free.length-1,
+          text:`<span class="tag t-new">New sheet</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
+               `batch ${placed+1}/${ps.count}: no rect fits. Opening sheet <strong>${sheets_open-1}</strong>.`});
+      } else {
+        const label = found.isSnug
+          ? `<span class="tag t-snug">Snug</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
+            `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>] exact dim match (no wasted cut). sel=${sel}.`
+          : `<span class="tag t-find">Fit</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
+            `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>] fits (no snug). sel=${sel}.`;
+        steps.push({...mkState(), type:'search', geneIdx:fi, snugIdxs, chosenIdx:found.idx,
+          text: label});
+      }
+
+      // Place batch
+      const fr  = free[found.idx];
+      const cnt = Math.min(Math.floor(fr.w / found.pw_exp), ps.count - placed);
+      const cw  = found.pw_exp * cnt;
+      const ch  = found.ph_exp;
+
+      // Compute display dimensions (without kerf)
+      const pw_disp = found.rotated ? ps.height : ps.width;
+      const ph_disp = found.rotated ? ps.width  : ps.height;
+
+      const newFrees = applyBlueprint(fr, cw, ch, bp);
+      const batchPlacements = [];
+      for (let k = 0; k < cnt; k++) {
+        batchPlacements.push({
+          type_idx: ti, ci,
+          x: fr.x + k * found.pw_exp, y: fr.y,
+          pw: pw_disp, ph: ph_disp,
+          pw_exp: found.pw_exp, ph_exp: found.ph_exp,
+          rotated: found.rotated,
+          sheet_idx: fr.sheet_idx,
+          copy: placed + k,
+        });
+      }
+      free.splice(found.idx, 1);
+      free.push(...newFrees);
+      all_placements.push(...batchPlacements);
+      placed_counts[ti] += cnt;
+
+      steps.push({...mkState(), type:'place', geneIdx:fi, snugIdxs:[], chosenIdx:-1,
+        batchPlacements: clone(batchPlacements), newFreeCount: newFrees.length, bp,
+        text:`<span class="tag t-place">Place</span><strong>${cnt}&times;${ps.width}&times;${ps.height}</strong>`+
+             `${found.rotated?' (rotated)':''} strip at (${fr.x},${fr.y}). `+
+             `Blueprint: <strong>${bp}</strong>. ${newFrees.length} new free rect(s).`});
+    }
+  }
+
+  const totalArea = sheet.width * sheet.height * sheets_open;
+  const usedArea  = all_placements.reduce((s,p) => s+p.pw*p.ph, 0);
+  steps.push({...mkState(), type:'done', geneIdx:-1, snugIdxs:[], chosenIdx:-1,
+    text:`<span class="tag t-done">Done</span>All pieces placed on <strong>${sheets_open}</strong> sheet(s). `+
+         `Utilisation: <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>.`});
+
+  return steps;
+}
+
+// ── random problem ─────────────────────────────────────────────────
+function randomProblem() {
+  const sw   = parseInt(document.getElementById('sw').value)||30;
+  const sh   = parseInt(document.getElementById('sh').value)||24;
+  const kerf = parseInt(document.getElementById('kerf').value)||0;
+  const nTypes = Math.max(2, parseInt(document.getElementById('ntypes').value)||5);
+
+  const piespecs = [];
+  for (let i = 0; i < nTypes; i++) {
+    const w = Math.max(2, 1 + Math.floor(Math.random() * sw * 0.65));
+    const h = Math.max(2, 1 + Math.floor(Math.random() * sh * 0.65));
+    const count = 1 + Math.floor(Math.random() * 4);
+    piespecs.push({width:w, height:h, count, can_rotate: Math.random()>0.3});
+  }
+  problem = {sheet:{width:sw, height:sh}, piespecs, kerf};
+  genome  = buildRandomGenome(piespecs, sw, sh);
   renderGenome();
   initDecoder();
 }
 
-// GLF exact solution for width=15, height=35, kerf=0 (from glf_sweep SPEC_STR)
-// genome produced by encode_spec for that solution
+function buildRandomGenome(piespecs, sw, sh) {
+  const classes = [[],[],[]];
+  for (let ti = 0; ti < piespecs.length; ti++)
+    classes[classifyType(piespecs[ti], sw, sh)].push(ti);
+
+  return classes.map(cls => {
+    cls.sort((a,b) => {
+      const av = piespecs[a].width * piespecs[a].height * piespecs[a].count;
+      const bv = piespecs[b].width * piespecs[b].height * piespecs[b].count;
+      return bv - av;
+    });
+    return cls.map(ti => {
+      const ps = piespecs[ti];
+      return {
+        type_idx: ti,
+        rotate: Math.random() > 0.5,
+        selectors: Array.from({length:ps.count}, () => Math.floor(Math.random()*4)),
+        inverses:  Array.from({length:ps.count}, () => false),
+      };
+    });
+  });
+}
+
+// ── GLF 15 demo ────────────────────────────────────────────────────
+// Sheet 15×35, kerf=0. 5 piece types classified: types 0-1 → Large, 2-4 → Small.
 function problemGlf15() {
-  document.getElementById('sw').value    = 15;
-  document.getElementById('sh').value    = 35;
-  document.getElementById('kerf').value  = 0;
+  document.getElementById('sw').value   = 15;
+  document.getElementById('sh').value   = 35;
+  document.getElementById('kerf').value = 0;
   problem = {
-    sheet: {width: 15, height: 35},
+    sheet: {width:15, height:35},
     kerf: 0,
-    pieces: [
-      {id:0,  width:12, height:3,  can_rotate:false},
-      {id:1,  width:12, height:3,  can_rotate:false},
-      {id:2,  width:3,  height:12, can_rotate:false},
-      {id:3,  width:3,  height:12, can_rotate:false},
-      {id:4,  width:4,  height:8,  can_rotate:true},
-      {id:5,  width:4,  height:8,  can_rotate:true},
-      {id:6,  width:4,  height:8,  can_rotate:true},
-      {id:7,  width:4,  height:8,  can_rotate:true},
-      {id:8,  width:5,  height:7,  can_rotate:true},
-      {id:9,  width:5,  height:7,  can_rotate:true},
-      {id:10, width:5,  height:7,  can_rotate:true},
-      {id:11, width:5,  height:7,  can_rotate:true},
-      {id:12, width:4,  height:6,  can_rotate:true},
-      {id:13, width:4,  height:6,  can_rotate:true},
-      {id:14, width:4,  height:6,  can_rotate:true},
-      {id:15, width:4,  height:6,  can_rotate:true},
+    piespecs: [
+      {width:12, height:3,  count:2, can_rotate:false}, // type 0 — Large
+      {width:3,  height:12, count:2, can_rotate:false}, // type 1 — Large
+      {width:4,  height:8,  count:4, can_rotate:true},  // type 2 — Small
+      {width:5,  height:7,  count:4, can_rotate:true},  // type 3 — Small
+      {width:4,  height:6,  count:4, can_rotate:true},  // type 4 — Small
     ],
   };
+  // Genome: Large=[0,1], Medium=[], Small=[2,3,4].
+  // Selectors and inverses zeroed → canonical TlH placement.
   genome = [
-    {piece_idx:2,  rotate:false, point_selector:0,  inverse:true},
-    {piece_idx:0,  rotate:false, point_selector:0,  inverse:false},
-    {piece_idx:1,  rotate:false, point_selector:1,  inverse:false},
-    {piece_idx:5,  rotate:false, point_selector:1,  inverse:false},
-    {piece_idx:6,  rotate:true,  point_selector:1,  inverse:false},
-    {piece_idx:7,  rotate:true,  point_selector:2,  inverse:false},
-    {piece_idx:8,  rotate:false, point_selector:0,  inverse:false},
-    {piece_idx:9,  rotate:false, point_selector:0,  inverse:false},
-    {piece_idx:10, rotate:false, point_selector:0,  inverse:false},
-    {piece_idx:4,  rotate:false, point_selector:1,  inverse:false},
-    {piece_idx:3,  rotate:false, point_selector:0,  inverse:false},
-    {piece_idx:11, rotate:true,  point_selector:2,  inverse:false},
-    {piece_idx:12, rotate:true,  point_selector:7,  inverse:false},
-    {piece_idx:13, rotate:true,  point_selector:7,  inverse:false},
-    {piece_idx:14, rotate:true,  point_selector:10, inverse:false},
-    {piece_idx:15, rotate:true,  point_selector:10, inverse:false},
+    [
+      {type_idx:0, rotate:false, selectors:[0,0],       inverses:[false,false]},
+      {type_idx:1, rotate:false, selectors:[0,0],       inverses:[false,false]},
+    ],
+    [], // no medium types in this problem
+    [
+      {type_idx:2, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
+      {type_idx:3, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
+      {type_idx:4, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
+    ],
   ];
   renderGenome();
   initDecoder();
 }
 
-// initDecoder: always replays the current problem/genome without re-rolling
+// ── render genome row ──────────────────────────────────────────────
+function renderGenome() {
+  const wrap = document.getElementById('genome-classes');
+  wrap.innerHTML = '';
+  const flat = flatGenes(genome);
+  // Build a flat index: gene → flat index
+  const geneToFlat = new Map();
+  for (let fi = 0; fi < flat.length; fi++)
+    geneToFlat.set(`${flat[fi].ci}-${flat[fi].gi}`, fi);
+
+  genome.forEach((cls, ci) => {
+    const block = document.createElement('div');
+    block.className = `cls-block cls-${ci}`;
+
+    const lbl = document.createElement('div');
+    lbl.className = `cls-label cls-${ci}`;
+    lbl.textContent = CLASS_NAMES[ci];
+    block.appendChild(lbl);
+
+    const genesDiv = document.createElement('div');
+    genesDiv.className = 'cls-genes';
+
+    if (cls.length === 0) {
+      const emp = document.createElement('span');
+      emp.className = 'cls-empty'; emp.textContent = '—';
+      genesDiv.appendChild(emp);
+    } else {
+      cls.forEach((gene, gi) => {
+        const fi  = geneToFlat.get(`${ci}-${gi}`);
+        const ps  = problem.piespecs[gene.type_idx];
+        const p   = pal(gene.type_idx);
+        const card = document.createElement('div');
+        card.className = `gene-card pal-${gene.type_idx % 8}`;
+        card.id = `gc-${fi}`;
+        card.style.borderColor = p.stroke;
+        card.innerHTML =
+          `<div class="gtype">${ps.width}×${ps.height}</div>`+
+          `<div class="ginfo">×${ps.count} [${CLASS_INITIALS[ci]}]${gene.rotate?' ↻':''}</div>`+
+          `<div class="gprog" id="gp-${fi}"></div>`;
+        genesDiv.appendChild(card);
+      });
+    }
+    block.appendChild(genesDiv);
+    wrap.appendChild(block);
+  });
+}
+
+// ── initDecoder ────────────────────────────────────────────────────
 function initDecoder() {
   if (!problem) randomProblem();
   SCALE = computeScale();
@@ -279,140 +633,69 @@ function initDecoder() {
   renderStep(0);
 }
 
-// ── decoder simulation ────────────────────────────────────────────
-function buildSteps(problem, genome) {
-  const steps = [];
-  const {sheet, pieces, kerf} = problem;
-  let free = [{sheet_idx:0, x:0, y:0, width:sheet.width, height:sheet.height}];
-  let sheets_open = 1;
-  const placements = [];
-
-  steps.push({type:'init', free:clone(free), placements:clone(placements), geneIdx:-1,
-    text:`<span class="tag t-init">Start</span>Genome has <strong>${genome.length} genes</strong>. Sheet <strong>${sheet.width}&times;${sheet.height}</strong>, kerf <strong>${kerf}</strong>. One free rect: the whole sheet.`});
-
-  for (let gi=0; gi<genome.length; gi++) {
-    const gene  = genome[gi];
-    const piece = pieces[gene.piece_idx];
-
-    steps.push({type:'find', free:clone(free), placements:clone(placements), geneIdx:gi, scanHighlight:-1,
-      text:`<span class="tag t-find">Search</span>Gene <strong>${gi}</strong>: piece <strong>${piece.width}&times;${piece.height}</strong>${piece.can_rotate?', rotatable':''}. point_selector=<strong>${gene.point_selector}</strong> &rarr; start at rect[<strong>${gene.point_selector % free.length}</strong>].`});
-
-    const start = gene.point_selector % free.length;
-    let found = null;
-    for (let i=0; i<free.length; i++) {
-      const idx = (start + i) % free.length;
-      const fr  = free[idx];
-      const fit = fitsIn(fr, piece, gene.rotate);
-      steps.push({type: fit ? 'found' : 'scan', free:clone(free), placements:clone(placements),
-        geneIdx:gi, scanHighlight:idx, fitOk:!!fit,
-        text: fit
-          ? `<span class="tag t-place">Fits</span>Rect[<strong>${idx}</strong>] (${fr.width}&times;${fr.height} on sheet ${fr.sheet_idx}) &mdash; piece <strong>${piece.width}&times;${piece.height}</strong>${fit.rotated?' (rotated)':''} fits!`
-          : `<span class="tag t-find">Scan</span>Rect[<strong>${idx}</strong>] (${fr.width}&times;${fr.height}) &mdash; piece <strong>${piece.width}&times;${piece.height}</strong> does not fit. Continuing.`});
-      if (fit) { found = {idx, ...fit}; break; }
-    }
-
-    if (!found) {
-      const newFr = {sheet_idx:sheets_open, x:0, y:0, width:sheet.width, height:sheet.height};
-      const fit   = fitsIn(newFr, piece, gene.rotate);
-      free.push(newFr);
-      const idx = free.length - 1;
-      sheets_open++;
-      found = {idx, ...fit};
-      steps.push({type:'new_sheet', free:clone(free), placements:clone(placements),
-        geneIdx:gi, scanHighlight:idx, fitOk:true,
-        text:`<span class="tag t-new">New sheet</span>Piece did not fit anywhere. Opening sheet <strong>${sheets_open-1}</strong>.`});
-    }
-
-    const fr = free[found.idx];
-    const placement = {sheet_idx:fr.sheet_idx, piece_id:piece.id, x:fr.x, y:fr.y,
-      pw:found.pw, ph:found.ph, rotated:found.rotated, piece_idx:gene.piece_idx};
-    free.splice(found.idx, 1);
-    const inv = !!gene.inverse;
-    const splits = guillotineSplit(fr, found.pw, found.ph, kerf, inv);
-    free.push(...splits);
-    placements.push(placement);
-
-    const lw = fr.width - found.pw, lh = fr.height - found.ph;
-    const slasH = lw <= lh;
-    const actualH = slasH !== inv;
-    const splitText = inv
-      ? `<span class="tag t-split">Guillotine</span>Piece placed. SLAS would pick <strong>${slasH?'horizontal':'vertical'}</strong>, <strong>inverse=true</strong> &rarr; <strong>${actualH?'horizontal':'vertical'}</strong> cut. <strong>${splits.length}</strong> new free rect(s).`
-      : `<span class="tag t-split">Guillotine</span>Piece placed. SLAS: ${
-          slasH
-            ? `right leftover (${lw}) &le; bottom (${lh}) &rarr; horizontal cut`
-            : `bottom leftover (${lh}) &lt; right (${lw}) &rarr; vertical cut`
-        }. <strong>${splits.length}</strong> new free rect(s).`;
-    steps.push({type:'split', free:clone(free), placements:clone(placements),
-      geneIdx:gi, lastPlacement:placement, newSplits:splits, text:splitText});
-  }
-
-  const totalArea = problem.sheet.width * problem.sheet.height * sheets_open;
-  const usedArea  = placements.reduce((s,p)=>s+p.pw*p.ph, 0);
-  steps.push({type:'done', free:clone(free), placements:clone(placements), geneIdx:-1,
-    text:`<span class="tag t-done">Done</span>All <strong>${genome.length}</strong> pieces placed on <strong>${sheets_open}</strong> sheet(s). Area used: <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>.`});
-
-  return steps;
-}
-
-function fitsIn(fr, piece, prefer_rotate) {
-  const try_rot = prefer_rotate && piece.can_rotate;
-  const [wa,ha] = try_rot ? [piece.height,piece.width] : [piece.width,piece.height];
-  if (wa<=fr.width && ha<=fr.height) return {pw:wa,ph:ha,rotated:try_rot};
-  if (piece.can_rotate) {
-    const [wb,hb]=[ha,wa];
-    if (wb<=fr.width && hb<=fr.height) return {pw:wb,ph:hb,rotated:!try_rot};
-  }
-  return null;
-}
-
-function guillotineSplit(fr, pw, ph, kerf, inverse) {
-  const lw=fr.width-pw, lh=fr.height-ph, out=[];
-  if ((lw<=lh) !== !!inverse) {
-    if (lw>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x+pw+kerf,y:fr.y,        width:lw-kerf,   height:ph});
-    if (lh>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x,        y:fr.y+ph+kerf, width:fr.width, height:lh-kerf});
-  } else {
-    if (lw>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x+pw+kerf,y:fr.y,        width:lw-kerf,   height:fr.height});
-    if (lh>kerf) out.push({sheet_idx:fr.sheet_idx,x:fr.x,        y:fr.y+ph+kerf, width:pw,       height:lh-kerf});
-  }
-  return out;
-}
-
-// ── rendering ─────────────────────────────────────────────────────
+// ── renderStep ─────────────────────────────────────────────────────
 function renderStep(idx) {
   const s = steps[idx]; stepIdx = idx;
+  const flat = flatGenes(genome);
 
-  document.querySelectorAll('.gene-card').forEach((card,gi)=>{
-    card.classList.toggle('active',  gi===s.geneIdx);
-    card.classList.toggle('placed',  gi<s.geneIdx || (gi===s.geneIdx && (s.type==='split'||s.type==='done')));
+  // Update gene cards
+  flat.forEach(({ci, gi, gene}, fi) => {
+    const card = document.getElementById(`gc-${fi}`);
+    if (!card) return;
+    const isActive = fi === s.geneIdx;
+    const isDone   = (fi < s.geneIdx) ||
+                     (fi === s.geneIdx && (s.type==='place'||s.type==='done') &&
+                      s.placed_counts[gene.type_idx] >= problem.piespecs[gene.type_idx].count);
+    card.classList.toggle('active', isActive);
+    card.classList.toggle('done',   isDone && !isActive);
+    const prog = document.getElementById(`gp-${fi}`);
+    if (prog) {
+      const cnt  = s.placed_counts[gene.type_idx];
+      const total = problem.piespecs[gene.type_idx].count;
+      prog.textContent = (cnt > 0 && cnt < total) ? `${cnt}/${total}` : '';
+    }
   });
 
-  const sheetsWrap   = document.getElementById('sheets-wrap');
-  const sheetsPerRow = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
-  const sheetCount   = Math.max(1, ...s.free.map(f=>f.sheet_idx+1), ...s.placements.map(p=>p.sheet_idx+1));
+  // Sheets
+  const sheetsWrap = document.getElementById('sheets-wrap');
+  const spr = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sheetCount = Math.max(1,
+    ...s.free.map(f=>f.sheet_idx+1),
+    ...s.placements.map(p=>p.sheet_idx+1));
   const W = problem.sheet.width  * SCALE;
   const H = problem.sheet.height * SCALE;
 
   sheetsWrap.innerHTML = '';
-  sheetsWrap.style.display = 'grid';
-  sheetsWrap.style.gridTemplateColumns = `repeat(${sheetsPerRow}, ${W}px)`;
+  sheetsWrap.style.gridTemplateColumns = `repeat(${spr}, ${W}px)`;
   sheetsWrap.style.gap = '10px';
 
-  for (let si=0; si<sheetCount; si++) {
-    const container = document.createElement('div'); container.className='sheet-container';
-    const lbl = document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Sheet '+si;
-    const cv  = document.createElement('canvas'); cv.className='sheet-canvas';
+  for (let si = 0; si < sheetCount; si++) {
+    const wrap = document.createElement('div'); wrap.className='sheet-container';
+    const lbl  = document.createElement('div'); lbl.className='sheet-label'; lbl.textContent='Sheet '+si;
+    const cv   = document.createElement('canvas'); cv.className='sheet-canvas';
     cv.width=W; cv.height=H; cv.style.width=W+'px'; cv.style.height=H+'px';
     drawSheet(cv.getContext('2d'), si, s, W, H);
-    container.appendChild(lbl); container.appendChild(cv); sheetsWrap.appendChild(container);
+    wrap.appendChild(lbl); wrap.appendChild(cv);
+    sheetsWrap.appendChild(wrap);
   }
 
   document.getElementById('explain').innerHTML = s.text;
 
+  // Free rect list
   const fl = document.getElementById('free-list');
-  fl.innerHTML = s.free.length
-    ? s.free.map((fr,i)=>`<div class="free-item${i===s.scanHighlight?' highlight':''}">Rect[${i}] sheet ${fr.sheet_idx}: ${fr.x},${fr.y} &rarr; ${fr.width}&times;${fr.height}</div>`).join('')
-    : '<span style="color:#888780">No free rects</span>';
+  if (s.free.length === 0) {
+    fl.innerHTML = '<span style="color:#888780">No free rects</span>';
+  } else {
+    fl.innerHTML = s.free.map((fr,i) => {
+      const isChosen = i === s.chosenIdx;
+      const isSnug   = s.snugIdxs && s.snugIdxs.includes(i);
+      const cls = isChosen ? 'free-item chosen' : isSnug ? 'free-item snug' : 'free-item';
+      return `<div class="${cls}">[${i}] sh${fr.sheet_idx}: ${fr.x},${fr.y} → ${fr.w}&times;${fr.h}`+
+             `${isSnug?' <span style="color:#1D9E75">snug</span>':''}${isChosen?' <span style="color:#EF9F27">✓</span>':''}</div>`;
+    }).join('');
+  }
 
+  // Progress dots
   const pr = document.getElementById('progress-row'); pr.innerHTML='';
   steps.forEach((_,i)=>{
     const d=document.createElement('div');
@@ -425,46 +708,50 @@ function renderStep(idx) {
   document.getElementById('btn-auto').disabled = false;
 }
 
+// ── drawSheet ──────────────────────────────────────────────────────
 function drawSheet(ctx, si, s, W, H) {
   ctx.fillStyle='#faf9f7'; ctx.fillRect(0,0,W,H);
 
-  s.placements.filter(p=>p.sheet_idx===si).forEach(p=>{
-    const pc=pal(p.piece_idx);
+  // Placed pieces
+  s.placements.filter(p=>p.sheet_idx===si).forEach(p => {
+    const isBatch = s.batchPlacements && s.batchPlacements.some(b=>b.x===p.x&&b.y===p.y&&b.type_idx===p.type_idx);
+    const pc = pal(p.type_idx);
     const x=p.x*SCALE, y=p.y*SCALE, w=p.pw*SCALE, h=p.ph*SCALE;
-    const isLast=s.lastPlacement&&p.piece_id===s.lastPlacement.piece_id;
-    ctx.fillStyle=isLast?pc.stroke+'55':pc.fill; ctx.strokeStyle=pc.stroke; ctx.lineWidth=isLast?2:1;
+    ctx.fillStyle   = isBatch ? pc.stroke+'44' : pc.fill;
+    ctx.strokeStyle = pc.stroke;
+    ctx.lineWidth   = isBatch ? 2.5 : 1;
     ctx.setLineDash([]);
     roundRect(ctx,x,y,w,h,Math.min(4,SCALE/4)); ctx.fill(); ctx.stroke();
-    const fontSize=Math.max(7,Math.min(11,w/4,h/2));
-    ctx.fillStyle=pc.text; ctx.font=`bold ${fontSize}px sans-serif`;
+    const fs=Math.max(7,Math.min(11,w/5,h/2));
+    ctx.fillStyle=pc.text; ctx.font=`bold ${fs}px sans-serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    if(w>fontSize*2&&h>fontSize*1.5){
-      ctx.fillText(`${problem.pieces[p.piece_idx].width}\u00d7${problem.pieces[p.piece_idx].height}`,x+w/2,y+h/2);
-      if(p.rotated&&h>fontSize*3){ctx.font=`${Math.max(7,fontSize-2)}px sans-serif`;ctx.fillStyle=pc.text+'99';ctx.fillText('\u21bb',x+w/2,y+h/2+fontSize+1);}
+    if (w>fs*2&&h>fs*1.5) {
+      ctx.fillText(`${p.pw}×${p.ph}`,x+w/2,y+h/2);
+      if (p.rotated&&h>fs*3){ctx.font=`${Math.max(6,fs-2)}px sans-serif`;ctx.fillStyle=pc.text+'99';ctx.fillText('↻',x+w/2,y+h/2+fs+1);}
     }
   });
 
-  s.free.filter(fr=>fr.sheet_idx===si).forEach((fr)=>{
-    const isHL=s.scanHighlight!==undefined&&s.scanHighlight!==-1&&s.free[s.scanHighlight]===fr;
-    const x=fr.x*SCALE, y=fr.y*SCALE, w=fr.width*SCALE, h=fr.height*SCALE;
-    ctx.fillStyle=isHL?'#EF9F2730':'#378ADD18';
-    ctx.strokeStyle=isHL?'#EF9F27':'#378ADD66';
-    ctx.lineWidth=isHL?2:1; ctx.setLineDash([3,3]);
+  // Free rects
+  s.free.filter(fr=>fr.sheet_idx===si).forEach((fr,i) => {
+    const isChosen = i === s.chosenIdx;
+    const isSnug   = s.snugIdxs && s.snugIdxs.includes(s.free.indexOf(fr));
+    const fIdx     = s.free.indexOf(fr);
+    const snugMatch= s.snugIdxs && s.snugIdxs.includes(fIdx);
+    const x=fr.x*SCALE, y=fr.y*SCALE, w=fr.w*SCALE, h=fr.h*SCALE;
+    ctx.fillStyle   = isChosen ? '#EF9F2730' : snugMatch ? '#1D9E7520' : '#378ADD10';
+    ctx.strokeStyle = isChosen ? '#EF9F27'   : snugMatch ? '#1D9E75'   : '#378ADD55';
+    ctx.lineWidth   = (isChosen||snugMatch) ? 1.5 : 1;
+    ctx.setLineDash(isChosen ? [] : [3,3]);
     roundRect(ctx,x,y,w,h,2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-    if(Math.min(w,h)>20){
+    if (Math.min(w,h) > 18) {
       const fz=Math.max(7,Math.min(9,w/5));
-      ctx.fillStyle='#378ADD99'; ctx.font=`${fz}px sans-serif`;
+      ctx.fillStyle='#378ADD88'; ctx.font=`${fz}px sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(`${fr.width}\u00d7${fr.height}`,x+w/2,y+h/2);
+      ctx.fillText(`${fr.w}×${fr.h}`,x+w/2,y+h/2);
     }
   });
 
-  if(s.type==='scan'&&s.scanHighlight!==-1&&s.free[s.scanHighlight]?.sheet_idx===si){
-    const fr=s.free[s.scanHighlight];
-    const x=fr.x*SCALE,y=fr.y*SCALE,w=fr.width*SCALE,h=fr.height*SCALE;
-    ctx.strokeStyle='#E24B4A'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
-    roundRect(ctx,x,y,w,h,2); ctx.stroke(); ctx.setLineDash([]);
-  }
+  // Sheet border
   ctx.strokeStyle='#d3d1c7'; ctx.lineWidth=1; ctx.setLineDash([]); ctx.strokeRect(0,0,W,H);
 }
 
@@ -472,21 +759,11 @@ function roundRect(ctx,x,y,w,h,r){
   r=Math.min(r,w/2,h/2);
   ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
   ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
-  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
-  ctx.closePath();
+  ctx.lineTo(x+r,y+h);   ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r);     ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
 }
 
-function renderGenome() {
-  const row=document.getElementById('genome-row'); row.innerHTML='';
-  genome.forEach((gene,gi)=>{
-    const piece=problem.pieces[gene.piece_idx], p=pal(gene.piece_idx);
-    const card=document.createElement('div'); card.className='gene-card'; card.style.borderColor=p.stroke; card.id='gc-'+gi;
-    card.innerHTML=`<div class="gid" style="color:${p.text}">${piece.width}\u00d7${piece.height}</div><div class="ginfo">${gene.rotate?'\u21bb ':' '}ps=${gene.point_selector}${gene.inverse?' <span style="color:#D85A30">\u22bb</span>':''}</div>`;
-    row.appendChild(card);
-  });
-}
-
-// ── navigation ────────────────────────────────────────────────────
+// ── navigation ─────────────────────────────────────────────────────
 function goNext(){ if(stepIdx<steps.length-1) renderStep(stepIdx+1); }
 function goPrev(){ if(stepIdx>0)              renderStep(stepIdx-1); }
 
@@ -499,8 +776,7 @@ async function toggleAuto(){
   autoRunning=true;
   document.getElementById('btn-auto').innerHTML='&#x23F8; Pause<span class="kbd">Space</span>';
   while(autoRunning&&stepIdx<steps.length-1){
-    goNext();
-    await new Promise(r=>setTimeout(r,700));
+    goNext(); await new Promise(r=>setTimeout(r,650));
   }
   autoRunning=false;
   document.getElementById('btn-auto').innerHTML='&#x25B7; Auto<span class="kbd">Space</span>';
@@ -514,14 +790,10 @@ document.addEventListener('keydown', ev=>{
 });
 
 document.getElementById('sheets-per-row').addEventListener('input', ()=>{
-  if(problem && steps){ SCALE=computeScale(); renderStep(stepIdx); }
+  if(problem&&steps){ SCALE=computeScale(); renderStep(stepIdx); }
 });
 
-// Init — generate once, then decode
-setTimeout(()=>{
-  problemGlf15();
-  initDecoder();
-}, 50);
+setTimeout(()=>{ problemGlf15(); }, 50);
 </script>
 </body>
 </html>
