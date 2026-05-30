@@ -486,44 +486,6 @@ impl CutForest {
         None
     }
 
-    /// Scan free leaves for a **snug fit**: at least one dimension of the piece (in a permitted
-    /// orientation) exactly matches a dimension of the leaf.
-    ///
-    /// A snug fit eliminates one guillotine cut, leaving a single-strip leftover.
-    ///
-    /// Returns `(node_idx, placed_w, placed_h, rotated)` or `None`.
-    pub fn find_snug_leaf(
-        &self,
-        piece: &Piece,
-        type_idx: usize,
-        prefer_rotate: bool,
-        selector: u32,
-        dim_idx: &crate::glas::dim_index::DimIndex,
-    ) -> Option<(usize, u32, u32, bool)> {
-        let n = self.free_leaves.len();
-        if n == 0 {
-            return None;
-        }
-        let start = (selector as usize) % n;
-
-        let valid = |tm: &crate::glas::dim_index::TypeMatch| {
-            tm.type_idx == type_idx && (!tm.rotated || (prefer_rotate && piece.can_rotate))
-        };
-
-        for i in 0..n {
-            let node_idx = self.free_leaves[(start + i) % n];
-            let node = &self.nodes[node_idx];
-            let snug = dim_idx.by_width(node.w).iter().any(&valid) || dim_idx.by_height(node.h).iter().any(&valid);
-            if !snug {
-                continue;
-            }
-            if let Some((pw, ph, rotated)) = piece_fits_in(node.w, node.h, piece, prefer_rotate) {
-                return Some((node_idx, pw, ph, rotated));
-            }
-        }
-        None
-    }
-
     /// Convert the forest to a flat `Vec<CutNode>` for use with `mfg_cost_from_trees`.
     ///
     /// **Not yet implemented** — returns an empty vec.

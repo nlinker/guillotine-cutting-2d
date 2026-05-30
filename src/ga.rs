@@ -75,6 +75,7 @@ pub struct GaConfig {
     /// Minimum area fraction (relative to sheet area) for a long piece to be "large".
     /// Long pieces with area < sheet_area * large_area_ratio go into the "medium" class.
     pub large_area_ratio: f64,
+
 }
 
 impl fmt::Display for GaConfig {

@@ -3,7 +3,6 @@ use smallvec::SmallVec;
 use crate::{
     cut_tree::{Blueprint, CutForest},
     expand,
-    glas::dim_index::DimIndex,
     model::{FreeRect, Placement, Problem, ProblemSpec, Solution},
 };
 
@@ -58,8 +57,7 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
 /// For each gene the decoder places all pieces of the given type one batch at a time:
 ///   1. Let `placed` = number of copies of this type already placed.
 ///      Consult `selectors[placed]` and `inverses[placed]`.
-///   2. Find a free leaf where at least one piece fits, preferring a snug fit first.
-///      Open a new sheet if nothing fits anywhere.
+///   2. Find a fitting free leaf; open a new sheet if nothing fits anywhere.
 ///   3. Pack as many copies as fit side-by-side in the strip: `count = ⌊fr_w / pw⌋`.
 ///   4. Apply TlH (`inv=false`) or TlV (`inv=true`) to split the free leaf.
 ///   5. Advance `next[gene.type_idx]` by `count` and repeat.
@@ -78,9 +76,6 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
             })
             .collect()
     };
-
-    // Dimension index: maps expanded piece dimensions → type matches.
-    let dim_idx = DimIndex::build(spec, problem);
 
     let mut next = offsets.clone(); // next[i] = next unassigned flat index for type i
     let mut forest = CutForest::new(problem.sheet.width, problem.sheet.height);
@@ -104,11 +99,8 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
 
                 let piece = &problem.pieces[next[gene.type_idx]];
 
-                // Prefer a snug-fit leaf (exact dimension match eliminates one cut),
-                // then any fitting leaf, then open a new sheet.
                 let found = forest
-                    .find_snug_leaf(piece, gene.type_idx, gene.rotate, ps, &dim_idx)
-                    .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
+                    .find_fitting_leaf(piece, gene.rotate, ps)
                     .or_else(|| {
                         forest.open_new_sheet(problem.sheet.width, problem.sheet.height);
                         forest.find_fitting_leaf(piece, gene.rotate, ps)
@@ -123,30 +115,38 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                     break;
                 };
 
-                let (fr_w, sheet_idx) = {
+                let (fr_w, fr_h, sheet_idx) = {
                     let node = &forest.nodes[leaf_idx];
-                    (node.w, node.sheet_idx)
+                    (node.w, node.h, node.sheet_idx)
                 };
 
-                // Single-type strip: pack as many copies as fit side-by-side.
+                // Choose strip orientation: horizontal (left-to-right) or vertical
+                // (top-to-bottom), whichever fits more copies in one batch.
                 let remaining = end_idx - next[gene.type_idx];
-                let count = (fr_w / pw).min(remaining as u32) as usize;
-                let (cw, ch) = (pw * count as u32, ph);
+                let count_h = (fr_w / pw).min(remaining as u32) as usize;
+                let count_v = (fr_h / ph).min(remaining as u32) as usize;
+                let vertical = count_v > count_h;
+                let (count, cw, ch) = if vertical {
+                    (count_v, pw, ph * count_v as u32)
+                } else {
+                    (count_h, pw * count_h as u32, ph)
+                };
 
                 // Apply blueprint: splits the leaf, returns batch origin.
                 let (batch_x, batch_y) = forest.apply_blueprint(leaf_idx, cw, ch, bp);
 
-                // Place all pieces in the strip left-to-right.
-                let mut x_cursor = batch_x;
+                // Place all pieces in the strip (left-to-right or top-to-bottom).
+                let mut cursor = if vertical { batch_y } else { batch_x };
                 for _ in 0..count {
+                    let (x, y) = if vertical { (batch_x, cursor) } else { (cursor, batch_y) };
                     placements.push(Placement {
                         sheet_idx,
                         piece_idx: next[gene.type_idx],
-                        x: x_cursor,
-                        y: batch_y,
+                        x,
+                        y,
                         rotated,
                     });
-                    x_cursor += pw;
+                    cursor += if vertical { ph } else { pw };
                     next[gene.type_idx] += 1;
                 }
             }
@@ -211,11 +211,12 @@ mod tests {
     #[test]
     fn strip_overflows_to_next_rect() {
         // Sheet 100×100, kerf=0. One type: 3 pieces 60×40.
-        // Batch 1: fr_w=100, pw=60 → only 1 piece fits (60<100 but 120>100). cw=60, ch=40.
-        //   TlH: right=(60,0,40,40) + bottom=(0,40,100,60). piece 0 at (0,0).
-        // Batch 2: selector=0 → free[0]=(60,0,40,40): pw=60>40, skip.
-        //   free[1]=(0,40,100,60): pw=60≤100, ph=40≤60, fits. piece 1 at (0,40).
-        // Batch 3: remaining rects all too small. Opens sheet 1. piece 2 at (0,0).
+        // count_h=floor(100/60)=1, count_v=floor(100/40)=2 → vertical strip wins.
+        // Batch 1: cw=60, ch=80 (2 pieces). TlH: right=(60,0,40,80) + bottom=(0,80,100,20).
+        //   piece 0 at (0,0), piece 1 at (0,40).
+        // Batch 2: selector=0 → free[0]=(60,0,40,80): pw=60>40 ✗.
+        //   free[1]=(0,80,100,20): ph=40>20 ✗. Neither fits → opens sheet 1.
+        //   piece 2 at (0,0).
         let spec = parse_problem("100x100F:0:60x40/3").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 3)]];
@@ -278,12 +279,13 @@ mod tests {
     }
 
     #[test]
-    fn five_pieces_three_plus_two_batches() {
+    fn five_pieces_vertical_then_horizontal() {
         // Sheet 300×400, kerf=0. One type: 5 pieces 100×100.
-        // Batch 1: fr_w=300, pw=100, remaining=5 → 3 pieces (cw=300). TlH: bottom=(0,100,300,300).
-        //   p0=(0,0), p1=(100,0), p2=(200,0).
-        // Batch 2: fr=(0,100,300,300), remaining=2 → 2 pieces (cw=200). TlH: right=(200,100,100,200)+bottom=(0,200,300,200).
-        //   p3=(0,100), p4=(100,100).
+        // Batch 1: fr (0,0,300×400). count_h=3, count_v=4 → vertical strip (4 pieces).
+        //   cw=100, ch=400. TlH: right=(100,0,200,400). bottom=none (lh=0).
+        //   p0=(0,0), p1=(0,100), p2=(0,200), p3=(0,300).
+        // Batch 2: fr=(100,0,200×400), remaining=1. count_h=min(2,1)=1, count_v=min(4,1)=1 → horizontal.
+        //   cw=100, ch=100. TlH: right=(200,0,100,100), bottom=(100,100,200,300). p4=(100,0).
         let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 5)]];
@@ -292,65 +294,10 @@ mod tests {
         assert_eq!(sol.placements.len(), 5);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
         assert_eq!((f(0).x, f(0).y), (0, 0));
-        assert_eq!((f(1).x, f(1).y), (100, 0));
-        assert_eq!((f(2).x, f(2).y), (200, 0));
-        assert_eq!((f(3).x, f(3).y), (0, 100));
-        assert_eq!((f(4).x, f(4).y), (100, 100));
-    }
-
-    #[test]
-    fn snug_rect_preferred_over_selector() {
-        // Verify that find_snug_leaf prefers an exact-fit rect over the selector-chosen one.
-        //
-        // Manual setup (no decode involved): apply TlV(200×200) to a 500×300 sheet,
-        // which produces two free leaves:
-        //   free[0] = (200, 0, 300, 300) — NOT snug for a 100×100 piece (neither dim = 100)
-        //   free[1] = (0, 200, 200, 100) — SNUG  for a 100×100 piece (h = 100 = ph)
-        //
-        // selector=0 → find_fitting_leaf returns free[0] (first fitting rect, non-snug).
-        // find_snug_leaf with selector=0 must skip free[0] and return free[1] (snug).
-        use crate::{
-            cut_tree::{Blueprint, CutForest},
-            glas::dim_index::DimIndex,
-            model::Piece,
-        };
-
-        let spec = parse_problem("500x300F:0:100x100/1f").expect("parse");
-        let problem = expand_problem(&spec);
-        let dim_idx = DimIndex::build(&spec, &problem);
-
-        let mut forest = CutForest::new(500, 300);
-        let root = forest.free_leaves[0];
-        // TlV(200×200): right=(200,0,300,300) + bottom=(0,200,200,100).
-        forest.apply_blueprint(root, 200, 200, Blueprint::TlV);
-        // free_leaves: [idx_right=(200,0,300,300), idx_snug=(0,200,200,100)]
-
-        let piece = Piece {
-            name: String::new(),
-            width: 100,
-            height: 100,
-            can_rotate: false,
-        };
-
-        // Without snug preference, selector=0 picks free[0] = (200,0,300,300).
-        let (fit_idx, _, _, _) = forest
-            .find_fitting_leaf(&piece, false, 0)
-            .expect("must find a fitting leaf");
-        assert_eq!(
-            (forest.nodes[fit_idx].x, forest.nodes[fit_idx].y),
-            (200, 0),
-            "find_fitting_leaf(sel=0) must return the first fitting rect at (200,0)"
-        );
-
-        // With snug preference, selector=0 is overridden — snug rect (0,200) wins.
-        let (snug_idx, _, _, _) = forest
-            .find_snug_leaf(&piece, 0, false, 0, &dim_idx)
-            .expect("must find a snug leaf");
-        assert_eq!(
-            (forest.nodes[snug_idx].x, forest.nodes[snug_idx].y),
-            (0, 200),
-            "find_snug_leaf must prefer (0,200,200×100) over selector-chosen (200,0,300×300)"
-        );
+        assert_eq!((f(1).x, f(1).y), (0, 100));
+        assert_eq!((f(2).x, f(2).y), (0, 200));
+        assert_eq!((f(3).x, f(3).y), (0, 300));
+        assert_eq!((f(4).x, f(4).y), (100, 0));
     }
 
     #[test]

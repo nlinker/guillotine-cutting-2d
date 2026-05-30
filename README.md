@@ -37,12 +37,15 @@ and this combinatorics makes the problem hard:
 - Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over
   all guillotine-cut subsets. Supports piece rotation.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
-  crossover, swap/flip/point-selector mutation. Configured via `GaConfig`.
-- Deterministic **Decoder**: given a genome and a problem, produces a `Solution`
-  via the Shorter Leftover Axis (SLAS) guillotine heuristic (see [docs/slas.md](docs/slas.md)).
-- Explicit **Genome** data structure — ordered list of `Gene` values, one per piece. Defines placement order,
-  rotation preference, and which free rectangle to try first (`point_selector`).
-  Suitable as an individual in a genetic algorithm.
+  crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`.
+- Two **Decoders** (`--decoder slas|glas`):
+  - **SLAS** — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic (see [docs/slas.md](docs/slas.md)).
+  - **GLAS** (default) — one gene per piece *type*; pieces grouped into Large / Medium / Small classes
+    so large pieces are always placed first. Each batch chooses horizontal or vertical strip
+    (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
+- **Genome** (GLAS): `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
+  inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
+  independently within each class.
 - Problem instance **Generator** — creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
@@ -115,8 +118,8 @@ cargo run --release --example glf_sweep
 ```rust
 use std::sync::Arc;
 use cutting::{
-    decoder::decode_spec,
-    ga::{GaConfig, GaEvent, run_ga_mt},
+    ga::GaConfig,
+    glas::{decoder::decode_spec, ga::{GaEvent, run_ga_mt}},
     parse::parse_problem,
 };
 
@@ -124,11 +127,7 @@ fn main() {
     let spec = Arc::new(
         parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap()
     );
-    let cfg = Arc::new(GaConfig {
-        pop_size: 200, n_generations: 1000, n_elite: 5, tournament_k: 5,
-        crossover_p: 0.80, swap_p: 0.15, flip_p: 0.05,
-        point_p: 0.10, point_delta: (1, 3),
-    });
+    let cfg = Arc::new(GaConfig { pop_size: 200, n_generations: 1000, ..GaConfig::default() });
 
     // Run 8 independent GA islands (one per seed) in parallel; 0 = no progress events
     let seeds: Vec<u64> = (0..8).collect();
@@ -193,12 +192,12 @@ Interactive visualizations (open in browser, no server needed):
 
 (**NOTE**: it is AI-generated from the Rust code and might not be accurate enough)
 
-| Demo                                                                                                    | What it shows                                         |
-|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
-| [Guillotine Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_decoder.html)             | genome → sheet placements step by step                |
-| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                | OX and CX operators animated                          |
-| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)              | swap / flip / point-selector mutation animated        |
-| [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
+| Demo                                                                                                       | What it shows                                         |
+|------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| [GLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/glas_decoder.html)                   | GLAS genome → sheet placements step by step           |
+| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                  | OX and CX operators animated                          |
+| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)                 | swap / flip / point-selector mutation animated        |
+| [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html)   | random problem generation with known optimal solution |
 
 ## References
 

@@ -62,7 +62,6 @@
       .explain           { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
       .explain strong    { color: #e8e6df; }
       .t-find  { background: #0a1e30; color: #60b8ff; }
-      .t-snug  { background: #071a12; color: #3ecf97; }
       .t-place { background: #16133a; color: #a8a3ff; }
       .t-new   { background: #2a1500; color: #ffbe50; }
       .t-done  { background: #071a12; color: #3ecf97; }
@@ -89,7 +88,6 @@
       /* Free rect list */
       .free-list        { color: #c4c2b8; }
       .free-item        { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
-      .free-item.snug   { background: #091a10; border-left-color: #1D9E75; color: #d8d6cf; }
       .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; color: #e0dcd0; }
 
       /* Legend */
@@ -152,7 +150,6 @@
     /* Tags */
     .tag     { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
     .t-find  { background: #E6F1FB; color: #0C447C; }
-    .t-snug  { background: #E1F5EE; color: #085041; }
     .t-place { background: #EEEDFE; color: #3C3489; }
     .t-new   { background: #FAEEDA; color: #633806; }
     .t-done  { background: #E1F5EE; color: #085041; }
@@ -185,7 +182,6 @@
     /* Free rect list */
     .free-list  { font-size: 11px; color: #444441; line-height: 1.7; max-height: 200px; overflow-y: auto; }
     .free-item  { padding: 2px 5px; border-radius: 3px; border-left: 3px solid #378ADD; margin-bottom: 2px; background: #E6F1FB22; }
-    .free-item.snug    { background: #E1F5EE55; border-color: #1D9E75; }
     .free-item.chosen  { background: #FAEEDA; border-color: #EF9F27; }
 
     /* Settings */
@@ -239,7 +235,6 @@
     <div class="panel-title">Free rectangles</div>
     <div class="free-list" id="free-list">&mdash;</div>
     <div class="legend" style="margin-top:10px">
-      <div class="leg"><div class="swatch" style="background:#1D9E7540;border:1.5px solid #1D9E75"></div>Snug candidate</div>
       <div class="leg"><div class="swatch" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Chosen rect</div>
       <div class="leg"><div class="swatch" style="background:#EEEDFE99;border:1.5px solid #7F77DD"></div>Placed (batch)</div>
       <div class="leg"><div class="swatch" style="background:#378ADD18;border:1.5px dashed #378ADD66"></div>Free rect</div>
@@ -247,8 +242,7 @@
     <div style="margin-top:8px;font-size:10px;color:#888780">
       Gene: <strong>W×H ×N</strong> = type dims &amp; count<br/>
       <strong>[L/M/S]</strong> = Large / Medium / Small<br/>
-      Batch places <em>floor(fr_w / pw)</em> pieces side-by-side.<br/>
-      <span style="color:#1D9E75">●</span> snug = exact dim match (saves one cut).
+      Batch: horizontal strip if <em>floor(fr_w/pw) ≥ floor(fr_h/ph)</em>, else vertical.
     </div>
   </div>
 </div>
@@ -297,21 +291,6 @@ function classifyType(ps, sw, sh, ldRatio=0.29, laRatio=0.034) {
   return 2;
 }
 
-// ── dim index (snug fit lookup) ────────────────────────────────────
-function buildDimIndex(piespecs, kerf) {
-  const byW = new Map(), byH = new Map();
-  for (let ti = 0; ti < piespecs.length; ti++) {
-    const ps  = piespecs[ti];
-    const pw  = ps.width  + kerf;
-    const ph  = ps.height + kerf;
-    const addW = (w, rot) => { if (!byW.has(w)) byW.set(w,[]); byW.get(w).push({ti, rot}); };
-    const addH = (h, rot) => { if (!byH.has(h)) byH.set(h,[]); byH.get(h).push({ti, rot}); };
-    addW(pw, false); addH(ph, false);
-    if (ps.can_rotate && pw !== ph) { addW(ph, true); addH(pw, true); }
-  }
-  return {byW, byH};
-}
-
 // ── piece fit ─────────────────────────────────────────────────────
 // Returns {pw_exp, ph_exp, rotated} in expanded (kerf-padded) coords, or null.
 function fitsPiece(fr_w, fr_h, ps, prefer_rotate, kerf) {
@@ -325,26 +304,6 @@ function fitsPiece(fr_w, fr_h, ps, prefer_rotate, kerf) {
   return null;
 }
 
-// ── find snug leaf ─────────────────────────────────────────────────
-// Returns {idx, pw_exp, ph_exp, rotated, isSnug:true} or null.
-function findSnugLeaf(free, ps, ti, prefer_rotate, selector, dimIdx, kerf) {
-  const n = free.length;
-  if (!n) return null;
-  const start = selector % n;
-  const {byW, byH} = dimIdx;
-  const valid = (tm, preferRot) => tm.ti === ti && (!tm.rot || (preferRot && ps.can_rotate));
-  for (let i = 0; i < n; i++) {
-    const idx = (start + i) % n;
-    const fr  = free[idx];
-    const snug = (byW.get(fr.w)||[]).some(m=>valid(m,prefer_rotate)) ||
-                 (byH.get(fr.h)||[]).some(m=>valid(m,prefer_rotate));
-    if (!snug) continue;
-    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
-    if (fit) return {idx, ...fit, isSnug:true};
-  }
-  return null;
-}
-
 // ── find fitting leaf ──────────────────────────────────────────────
 function findFittingLeaf(free, ps, prefer_rotate, selector, kerf) {
   const n = free.length;
@@ -354,20 +313,9 @@ function findFittingLeaf(free, ps, prefer_rotate, selector, kerf) {
     const idx = (start + i) % n;
     const fr  = free[idx];
     const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
-    if (fit) return {idx, ...fit, isSnug:false};
+    if (fit) return {idx, ...fit};
   }
   return null;
-}
-
-// ── snug candidates list (for visualisation) ──────────────────────
-function snugCandidates(free, ps, ti, prefer_rotate, dimIdx, kerf) {
-  const {byW, byH} = dimIdx;
-  const valid = (tm) => tm.ti === ti && (!tm.rot || (prefer_rotate && ps.can_rotate));
-  return free
-    .map((fr, idx) => ({idx, snug:
-      (byW.get(fr.w)||[]).some(valid) || (byH.get(fr.h)||[]).some(valid)}))
-    .filter(x => x.snug)
-    .map(x => x.idx);
 }
 
 // ── apply blueprint ────────────────────────────────────────────────
@@ -397,8 +345,7 @@ function flatGenes(genome) {
 // ── build steps ────────────────────────────────────────────────────
 function buildSteps(problem, genome) {
   const {sheet, piespecs, kerf} = problem;
-  const dimIdx = buildDimIndex(piespecs, kerf);
-  const flat   = flatGenes(genome);
+  const flat = flatGenes(genome);
 
   let free = [{sheet_idx:0, x:0, y:0, w:sheet.width, h:sheet.height}];
   let sheets_open = 1;
@@ -412,7 +359,7 @@ function buildSteps(problem, genome) {
     placed_counts: [...placed_counts],
   });
 
-  steps.push({...mkState(), type:'init', geneIdx:-1, snugIdxs:[], chosenIdx:-1,
+  steps.push({...mkState(), type:'init', chosenIdx:-1,
     text:`<span class="tag t-init">Init</span>Sheet <strong>${sheet.width}&times;${sheet.height}</strong>, kerf <strong>${kerf}</strong>. `+
          `<strong>${flat.length}</strong> type-gene(s) across 3 classes. One free rect: the whole sheet.`});
 
@@ -427,36 +374,33 @@ function buildSteps(problem, genome) {
       const inv    = (gene.inverses  && gene.inverses[placed])  || false;
       const bp     = inv ? 'TlV' : 'TlH';
 
-      // Candidates for snug highlight
-      const snugIdxs = snugCandidates(free, ps, ti, gene.rotate, dimIdx, kerf);
-
       // Find rect
-      let found = findSnugLeaf(free, ps, ti, gene.rotate, sel, dimIdx, kerf)
-               || findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+      const snugIdxs = [];
+      let found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
 
       if (!found) {
         // Open new sheet
         free.push({sheet_idx:sheets_open, x:0, y:0, w:sheet.width, h:sheet.height});
         sheets_open++;
         found = findFittingLeaf(free, ps, gene.rotate, 0, kerf);
-        steps.push({...mkState(), type:'new_sheet', geneIdx:fi, snugIdxs:[], chosenIdx:free.length-1,
+        steps.push({...mkState(), type:'new_sheet', geneIdx:fi, chosenIdx:free.length-1,
           text:`<span class="tag t-new">New sheet</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
                `batch ${placed+1}/${ps.count}: no rect fits. Opening sheet <strong>${sheets_open-1}</strong>.`});
       } else {
-        const label = found.isSnug
-          ? `<span class="tag t-snug">Snug</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
-            `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>] exact dim match (no wasted cut). sel=${sel}.`
-          : `<span class="tag t-find">Fit</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
-            `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>] fits (no snug). sel=${sel}.`;
-        steps.push({...mkState(), type:'search', geneIdx:fi, snugIdxs, chosenIdx:found.idx,
-          text: label});
+        steps.push({...mkState(), type:'search', geneIdx:fi, chosenIdx:found.idx,
+          text:`<span class="tag t-find">Fit</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
+               `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>]. sel=${sel}.`});
       }
 
-      // Place batch
+      // Place batch — choose horizontal or vertical strip (whichever fits more pieces)
       const fr  = free[found.idx];
-      const cnt = Math.min(Math.floor(fr.w / found.pw_exp), ps.count - placed);
-      const cw  = found.pw_exp * cnt;
-      const ch  = found.ph_exp;
+      const remaining = ps.count - placed;
+      const cnt_h = Math.min(Math.floor(fr.w / found.pw_exp), remaining);
+      const cnt_v = Math.min(Math.floor(fr.h / found.ph_exp), remaining);
+      const vertical = cnt_v > cnt_h;
+      const cnt = vertical ? cnt_v : cnt_h;
+      const cw  = vertical ? found.pw_exp               : found.pw_exp * cnt;
+      const ch  = vertical ? found.ph_exp * cnt         : found.ph_exp;
 
       // Compute display dimensions (without kerf)
       const pw_disp = found.rotated ? ps.height : ps.width;
@@ -467,7 +411,8 @@ function buildSteps(problem, genome) {
       for (let k = 0; k < cnt; k++) {
         batchPlacements.push({
           type_idx: ti, ci,
-          x: fr.x + k * found.pw_exp, y: fr.y,
+          x: fr.x + (vertical ? 0 : k * found.pw_exp),
+          y: fr.y + (vertical ? k * found.ph_exp : 0),
           pw: pw_disp, ph: ph_disp,
           pw_exp: found.pw_exp, ph_exp: found.ph_exp,
           rotated: found.rotated,
@@ -480,17 +425,18 @@ function buildSteps(problem, genome) {
       all_placements.push(...batchPlacements);
       placed_counts[ti] += cnt;
 
-      steps.push({...mkState(), type:'place', geneIdx:fi, snugIdxs:[], chosenIdx:-1,
+      const dir = vertical ? '&#x2193; col' : '&#x2192; row';
+      steps.push({...mkState(), type:'place', geneIdx:fi, chosenIdx:-1,
         batchPlacements: clone(batchPlacements), newFreeCount: newFrees.length, bp,
         text:`<span class="tag t-place">Place</span><strong>${cnt}&times;${ps.width}&times;${ps.height}</strong>`+
-             `${found.rotated?' (rotated)':''} strip at (${fr.x},${fr.y}). `+
+             `${found.rotated?' (rotated)':''} ${dir} at (${fr.x},${fr.y}). `+
              `Blueprint: <strong>${bp}</strong>. ${newFrees.length} new free rect(s).`});
     }
   }
 
   const totalArea = sheet.width * sheet.height * sheets_open;
   const usedArea  = all_placements.reduce((s,p) => s+p.pw*p.ph, 0);
-  steps.push({...mkState(), type:'done', geneIdx:-1, snugIdxs:[], chosenIdx:-1,
+  steps.push({...mkState(), type:'done', geneIdx:-1, chosenIdx:-1,
     text:`<span class="tag t-done">Done</span>All pieces placed on <strong>${sheets_open}</strong> sheet(s). `+
          `Utilisation: <strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>.`});
 
@@ -688,10 +634,9 @@ function renderStep(idx) {
   } else {
     fl.innerHTML = s.free.map((fr,i) => {
       const isChosen = i === s.chosenIdx;
-      const isSnug   = s.snugIdxs && s.snugIdxs.includes(i);
-      const cls = isChosen ? 'free-item chosen' : isSnug ? 'free-item snug' : 'free-item';
+      const cls = isChosen ? 'free-item chosen' : 'free-item';
       return `<div class="${cls}">[${i}] sh${fr.sheet_idx}: ${fr.x},${fr.y} → ${fr.w}&times;${fr.h}`+
-             `${isSnug?' <span style="color:#1D9E75">snug</span>':''}${isChosen?' <span style="color:#EF9F27">✓</span>':''}</div>`;
+             `${isChosen?' <span style="color:#EF9F27">✓</span>':''}</div>`;
     }).join('');
   }
 
@@ -734,13 +679,10 @@ function drawSheet(ctx, si, s, W, H) {
   // Free rects
   s.free.filter(fr=>fr.sheet_idx===si).forEach((fr,i) => {
     const isChosen = i === s.chosenIdx;
-    const isSnug   = s.snugIdxs && s.snugIdxs.includes(s.free.indexOf(fr));
-    const fIdx     = s.free.indexOf(fr);
-    const snugMatch= s.snugIdxs && s.snugIdxs.includes(fIdx);
     const x=fr.x*SCALE, y=fr.y*SCALE, w=fr.w*SCALE, h=fr.h*SCALE;
-    ctx.fillStyle   = isChosen ? '#EF9F2730' : snugMatch ? '#1D9E7520' : '#378ADD10';
-    ctx.strokeStyle = isChosen ? '#EF9F27'   : snugMatch ? '#1D9E75'   : '#378ADD55';
-    ctx.lineWidth   = (isChosen||snugMatch) ? 1.5 : 1;
+    ctx.fillStyle   = isChosen ? '#EF9F2730' : '#378ADD10';
+    ctx.strokeStyle = isChosen ? '#EF9F27'   : '#378ADD55';
+    ctx.lineWidth   = isChosen ? 1.5 : 1;
     ctx.setLineDash(isChosen ? [] : [3,3]);
     roundRect(ctx,x,y,w,h,2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     if (Math.min(w,h) > 18) {
