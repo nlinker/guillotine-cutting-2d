@@ -4,7 +4,8 @@ use crate::cut_tree::build_cut_tree;
 
 /// Three-level lexicographic fitness (lower is better):
 ///   0. `sheets_used`
-///   1. `leftover_area` — area of the largest single leftover rect on any non-last sheet
+///   1. `consolidated_leftover` — `u64::MAX - Σ area_i²` over all free rects (higher
+///      sum-of-squares = waste concentrated in fewer large pieces = better)
 ///   2. `staircase_area` — sum of staircase-polygon areas across all used sheets
 pub type Objective = (usize, u64, u64);
 
@@ -232,24 +233,25 @@ impl Solution {
             return (0, 0, 0);
         }
         let sheets = self.sheets_used();
-        let leftover = self.leftover_area();
+        let leftover = self.consolidated_leftover();
         let staircase = self.staircase_area(problem);
         (sheets, leftover, staircase)
     }
 
-    /// Area of the largest single leftover rectangle on any non-last sheet (lower = better).
+    /// `u64::MAX − Σ area_i²` over all free rectangles (lower = better).
     ///
-    /// Measures wasted space on fully "committed" sheets: a large free rect there means
-    /// pieces could have been packed more tightly, leaving more room on the last sheet.
-    /// Returns 0 when only one sheet is used (no non-last sheets exist).
-    pub fn leftover_area(&self) -> u64 {
-        let last = self.sheets_used().saturating_sub(1);
-        self.leftovers
+    /// Maximising `Σ area_i²` concentrates waste into fewer, larger pieces; subtracting
+    /// from `u64::MAX` converts it to a minimisation objective compatible with the tuple.
+    pub fn consolidated_leftover(&self) -> u64 {
+        let sum_sq: u64 = self
+            .leftovers
             .iter()
-            .filter(|fr| fr.sheet_idx < last)
-            .map(|fr| fr.w as u64 * fr.h as u64)
-            .max()
-            .unwrap_or(0)
+            .map(|fr| {
+                let a = fr.w as u64 * fr.h as u64;
+                a * a
+            })
+            .sum();
+        u64::MAX - sum_sq
     }
 
     /// Inter-sheet spread penalty: sum over each canonical piece size of
