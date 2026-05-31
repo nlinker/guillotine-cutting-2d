@@ -1,7 +1,7 @@
 use smallvec::SmallVec;
 
 use crate::{
-    cut_tree::{Blueprint, CutForest},
+    cut_tree::{Blueprint, CutForest, improve_tl_corners},
     expand,
     model::{FreeRect, Placement, Problem, ProblemSpec, Solution},
 };
@@ -80,7 +80,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
     let mut next = offsets.clone(); // next[i] = next unassigned flat index for type i
     let mut forest = CutForest::new(problem.sheet.width, problem.sheet.height);
     let mut placements: Vec<Placement> = Vec::with_capacity(problem.pieces.len());
-    let mfg_cost = 0u32; // TODO: compute via forest.to_cut_trees() once implemented
+    let mfg_cost = 0u32;
 
     for class in genome {
         for gene in class {
@@ -99,12 +99,10 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
 
                 let piece = &problem.pieces[next[gene.type_idx]];
 
-                let found = forest
-                    .find_fitting_leaf(piece, gene.rotate, ps)
-                    .or_else(|| {
-                        forest.open_new_sheet(problem.sheet.width, problem.sheet.height);
-                        forest.find_fitting_leaf(piece, gene.rotate, ps)
-                    });
+                let found = forest.find_fitting_leaf(piece, gene.rotate, ps).or_else(|| {
+                    forest.open_new_sheet(problem.sheet.width, problem.sheet.height);
+                    forest.find_fitting_leaf(piece, gene.rotate, ps)
+                });
 
                 let Some((leaf_idx, pw, ph, rotated)) = found else {
                     debug_assert!(
@@ -168,11 +166,14 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
         })
         .collect();
 
-    Solution {
-        placements,
-        leftovers,
-        mfg_cost,
-    }
+    improve_tl_corners(
+        problem,
+        Solution {
+            placements,
+            leftovers,
+            mfg_cost,
+        },
+    )
 }
 
 #[cfg(test)]

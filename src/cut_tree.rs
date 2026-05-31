@@ -1,4 +1,6 @@
-use crate::model::{Piece, Placement, Problem};
+use std::collections::HashMap;
+
+use crate::model::{Piece, Placement, Problem, Solution};
 
 /// A node in the guillotine cut tree for one sheet.
 #[derive(Debug, Clone)]
@@ -517,6 +519,209 @@ pub(crate) fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) 
     None
 }
 
+// TL-corner improvement
+
+/// Leftmost x of the bounding rect covered by `node`.
+fn node_x(node: &CutNode) -> u32 {
+    match node {
+        CutNode::Piece { x, .. } | CutNode::Waste { x, .. } => *x,
+        CutNode::VSplit { left, .. } => node_x(left),
+        CutNode::HSplit { top, .. } => node_x(top),
+    }
+}
+
+/// Topmost y of the bounding rect covered by `node`.
+fn node_y(node: &CutNode) -> u32 {
+    match node {
+        CutNode::Piece { y, .. } | CutNode::Waste { y, .. } => *y,
+        CutNode::VSplit { left, .. } => node_y(left),
+        CutNode::HSplit { top, .. } => node_y(top),
+    }
+}
+
+/// Rightmost x (exclusive) of the bounding rect covered by `node`.
+fn node_right(node: &CutNode) -> u32 {
+    match node {
+        CutNode::Piece { x, pw, .. } => x + pw,
+        CutNode::Waste { x, w, .. } => x + w,
+        CutNode::VSplit { right, .. } => node_right(right),
+        CutNode::HSplit { top, bottom, .. } => node_right(top).max(node_right(bottom)),
+    }
+}
+
+/// Bottom y (exclusive) of the bounding rect covered by `node`.
+fn node_bottom(node: &CutNode) -> u32 {
+    match node {
+        CutNode::Piece { y, ph, .. } => y + ph,
+        CutNode::Waste { y, h, .. } => y + h,
+        CutNode::VSplit { left, right, .. } => node_bottom(left).max(node_bottom(right)),
+        CutNode::HSplit { bottom, .. } => node_bottom(bottom),
+    }
+}
+
+/// Area of the piece at the top-left corner of the subtree rooted at `node`.
+/// Returns 0 for a Waste leaf (no piece there).
+fn tl_corner_area(node: &CutNode) -> u64 {
+    match node {
+        CutNode::Piece { pw, ph, .. } => (*pw as u64) * (*ph as u64),
+        CutNode::Waste { .. } => 0,
+        CutNode::VSplit { left, .. } => tl_corner_area(left),
+        CutNode::HSplit { top, .. } => tl_corner_area(top),
+    }
+}
+
+/// Shift all absolute x-coordinates in `node` by `dx`.
+fn translate_x(node: &mut CutNode, dx: i32) {
+    match node {
+        CutNode::Piece { x, .. } | CutNode::Waste { x, .. } => {
+            *x = x.wrapping_add_signed(dx);
+        }
+        CutNode::VSplit { cut_x, left, right } => {
+            *cut_x = cut_x.wrapping_add_signed(dx);
+            translate_x(left, dx);
+            translate_x(right, dx);
+        }
+        CutNode::HSplit { top, bottom, .. } => {
+            translate_x(top, dx);
+            translate_x(bottom, dx);
+        }
+    }
+}
+
+/// Shift all absolute y-coordinates in `node` by `dy`.
+fn translate_y(node: &mut CutNode, dy: i32) {
+    match node {
+        CutNode::Piece { y, .. } | CutNode::Waste { y, .. } => {
+            *y = y.wrapping_add_signed(dy);
+        }
+        CutNode::VSplit { left, right, .. } => {
+            translate_y(left, dy);
+            translate_y(right, dy);
+        }
+        CutNode::HSplit { cut_y, top, bottom } => {
+            *cut_y = cut_y.wrapping_add_signed(dy);
+            translate_y(top, dy);
+            translate_y(bottom, dy);
+        }
+    }
+}
+
+/// Rightmost x (exclusive) of all Piece leaves in `node`; `None` if only Waste.
+fn piece_right(node: &CutNode) -> Option<u32> {
+    match node {
+        CutNode::Piece { x, pw, .. } => Some(x + pw),
+        CutNode::Waste { .. } => None,
+        CutNode::VSplit { left, right, .. } => {
+            [piece_right(left), piece_right(right)].into_iter().flatten().max()
+        }
+        CutNode::HSplit { top, bottom, .. } => {
+            [piece_right(top), piece_right(bottom)].into_iter().flatten().max()
+        }
+    }
+}
+
+/// Bottom y (exclusive) of all Piece leaves in `node`; `None` if only Waste.
+fn piece_bottom(node: &CutNode) -> Option<u32> {
+    match node {
+        CutNode::Piece { y, ph, .. } => Some(y + ph),
+        CutNode::Waste { .. } => None,
+        CutNode::VSplit { left, right, .. } => {
+            [piece_bottom(left), piece_bottom(right)].into_iter().flatten().max()
+        }
+        CutNode::HSplit { top, bottom, .. } => {
+            [piece_bottom(top), piece_bottom(bottom)].into_iter().flatten().max()
+        }
+    }
+}
+
+/// At the top-level split of a sheet tree, swap children if the right/bottom child
+/// has a larger TL-corner piece than the left/top child.  Only the root node is
+/// examined — no recursion into children.
+///
+/// The cut coordinate is set to the content extent of the moved child (piece_right /
+/// piece_bottom, ignoring trailing Waste), so trailing free space ends up at the
+/// sheet boundary rather than in the middle of the layout.
+fn sort_tl_corners(node: &mut CutNode) {
+    match node {
+        CutNode::Piece { .. } | CutNode::Waste { .. } => {}
+        CutNode::VSplit { cut_x, left, right } => {
+            if tl_corner_area(left) < tl_corner_area(right) {
+                let x0 = node_x(left);
+                // Content width of old right: up to the last Piece, not trailing Waste.
+                let content_w = piece_right(right)
+                    .map(|r| r - *cut_x)
+                    .unwrap_or_else(|| node_right(right) - *cut_x);
+                // Old right shifts left to start at x0.
+                translate_x(right, x0 as i32 - *cut_x as i32);
+                // Old left shifts right by content_w only, pushing free space to the right.
+                translate_x(left, content_w as i32);
+                std::mem::swap(left, right);
+                *cut_x = x0 + content_w;
+            }
+        }
+        CutNode::HSplit { cut_y, top, bottom } => {
+            if tl_corner_area(top) < tl_corner_area(bottom) {
+                let y0 = node_y(top);
+                // Content height of old bottom: up to the last Piece, not trailing Waste.
+                let content_h = piece_bottom(bottom)
+                    .map(|b| b - *cut_y)
+                    .unwrap_or_else(|| node_bottom(bottom) - *cut_y);
+                // Old bottom shifts up to start at y0.
+                translate_y(bottom, y0 as i32 - *cut_y as i32);
+                // Old top shifts down by content_h only, pushing free space to the bottom.
+                translate_y(top, content_h as i32);
+                std::mem::swap(top, bottom);
+                *cut_y = y0 + content_h;
+            }
+        }
+    }
+}
+
+/// Collect `piece_idx → (x, y)` from all `Piece` leaves in the tree.
+fn collect_positions(node: &CutNode, map: &mut HashMap<usize, (u32, u32)>) {
+    match node {
+        CutNode::Piece { piece_idx, x, y, .. } => {
+            map.insert(*piece_idx, (*x, *y));
+        }
+        CutNode::Waste { .. } => {}
+        CutNode::VSplit { left, right, .. } => {
+            collect_positions(left, map);
+            collect_positions(right, map);
+        }
+        CutNode::HSplit { top, bottom, .. } => {
+            collect_positions(top, map);
+            collect_positions(bottom, map);
+        }
+    }
+}
+
+/// Post-decode local improvement: one recursive pass over the cut tree that
+/// pushes the largest piece toward the top-left corner of each split node.
+///
+/// Builds the cut tree from `sol.placements`, applies `sort_tl_corners` to every
+/// sheet tree, updates placement coordinates, and recomputes `mfg_cost`.
+/// Returns `sol` unchanged if the cut tree cannot be reconstructed (non-guillotine layout).
+pub fn improve_tl_corners(problem: &Problem, mut sol: Solution) -> Solution {
+    let Ok(mut trees) = build_cut_tree(problem, &sol.placements) else {
+        return sol;
+    };
+    for tree in &mut trees {
+        sort_tl_corners(tree);
+    }
+    let mut pos_map: HashMap<usize, (u32, u32)> = HashMap::new();
+    for tree in &trees {
+        collect_positions(tree, &mut pos_map);
+    }
+    for p in &mut sol.placements {
+        if let Some(&(x, y)) = pos_map.get(&p.piece_idx) {
+            p.x = x;
+            p.y = y;
+        }
+    }
+    sol.mfg_cost = mfg_cost_from_trees(&trees);
+    sol
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -634,5 +839,144 @@ mod tests {
         let (bx, by) = forest.apply_blueprint(leaf, 100, 100, Blueprint::TlH);
         assert_eq!((bx, by), (0, 0));
         assert_eq!(free_rects(&forest), vec![(100, 0, 100, 100)]);
+    }
+
+    // sort_tl_corners tests
+
+    /// VSplit where left piece (10×10=100) is smaller than right piece (20×20=400)
+    /// → after sort_tl_corners the large piece must be on the left.
+    #[test]
+    fn sort_corners_vsplit_swaps() {
+        // Build tree manually: VSplit at x=10, left=Piece(10×10), right=Piece(20×20).
+        // Sheet would be 30×20.
+        let mut tree = CutNode::VSplit {
+            cut_x: 10,
+            left: Box::new(CutNode::Piece {
+                piece_idx: 0,
+                x: 0,
+                y: 0,
+                pw: 10,
+                ph: 20,
+            }),
+            right: Box::new(CutNode::Piece {
+                piece_idx: 1,
+                x: 10,
+                y: 0,
+                pw: 20,
+                ph: 20,
+            }),
+        };
+        sort_tl_corners(&mut tree);
+        match &tree {
+            CutNode::VSplit { cut_x, left, right } => {
+                assert_eq!(*cut_x, 20, "cut_x should shift to width of new left child");
+                // Large piece (idx=1, 20×20) is now left
+                assert!(matches!(left.as_ref(), CutNode::Piece { piece_idx: 1, x: 0, .. }));
+                // Small piece (idx=0, 10×10) is now right
+                assert!(matches!(
+                    right.as_ref(),
+                    CutNode::Piece {
+                        piece_idx: 0,
+                        x: 20,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("expected VSplit"),
+        }
+    }
+
+    /// VSplit where left piece is already larger — no swap should occur.
+    #[test]
+    fn sort_corners_no_swap_when_left_larger() {
+        let mut tree = CutNode::VSplit {
+            cut_x: 20,
+            left: Box::new(CutNode::Piece {
+                piece_idx: 0,
+                x: 0,
+                y: 0,
+                pw: 20,
+                ph: 20,
+            }),
+            right: Box::new(CutNode::Piece {
+                piece_idx: 1,
+                x: 20,
+                y: 0,
+                pw: 10,
+                ph: 20,
+            }),
+        };
+        sort_tl_corners(&mut tree);
+        match &tree {
+            CutNode::VSplit { cut_x, left, .. } => {
+                assert_eq!(*cut_x, 20);
+                assert!(matches!(left.as_ref(), CutNode::Piece { piece_idx: 0, .. }));
+            }
+            _ => panic!("expected VSplit"),
+        }
+    }
+
+    /// HSplit where top piece (10×5=50) is smaller than bottom piece (10×15=150)
+    /// → after sort_tl_corners the large piece must be on top.
+    #[test]
+    fn sort_corners_hsplit_swaps() {
+        let mut tree = CutNode::HSplit {
+            cut_y: 5,
+            top: Box::new(CutNode::Piece {
+                piece_idx: 0,
+                x: 0,
+                y: 0,
+                pw: 10,
+                ph: 5,
+            }),
+            bottom: Box::new(CutNode::Piece {
+                piece_idx: 1,
+                x: 0,
+                y: 5,
+                pw: 10,
+                ph: 15,
+            }),
+        };
+        sort_tl_corners(&mut tree);
+        match &tree {
+            CutNode::HSplit { cut_y, top, bottom } => {
+                assert_eq!(*cut_y, 15, "cut_y should shift to height of new top child");
+                assert!(matches!(top.as_ref(), CutNode::Piece { piece_idx: 1, y: 0, .. }));
+                assert!(matches!(
+                    bottom.as_ref(),
+                    CutNode::Piece {
+                        piece_idx: 0,
+                        y: 15,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("expected HSplit"),
+        }
+    }
+
+    /// After improve_tl_corners the solution must still be valid (build_cut_tree succeeds).
+    #[test]
+    fn improve_roundtrip_stays_guillotine() {
+        // Two pieces of different sizes on one sheet.
+        let spec = parse_problem("100x100F:0:30x30/1,60x60/1").unwrap();
+        let problem = expand_problem(&spec);
+        let genome = vec![
+            crate::slas::decoder::Gene {
+                piece_idx: 0,
+                rotate: false,
+                point_selector: 0,
+                inverse: false,
+            },
+            crate::slas::decoder::Gene {
+                piece_idx: 1,
+                rotate: false,
+                point_selector: 0,
+                inverse: false,
+            },
+        ];
+        let sol = decode(&problem, &genome);
+        let improved = crate::cut_tree::improve_tl_corners(&problem, sol);
+        assert!(build_cut_tree(&problem, &improved.placements).is_ok());
     }
 }
