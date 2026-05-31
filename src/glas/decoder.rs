@@ -48,7 +48,7 @@ pub type Genome = Vec<Vec<Gene>>;
 /// High-level entry point: decode a group genome into a `SolutionSpec`.
 pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::SolutionSpec {
     let problem = expand::expand_problem(spec);
-    let sol = decode(&problem, spec, genome);
+    let sol = improve_tl_corners(&problem, decode(&problem, spec, genome));
     expand::shrink_solution(&sol, spec)
 }
 
@@ -166,14 +166,11 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
         })
         .collect();
 
-    improve_tl_corners(
-        problem,
-        Solution {
-            placements,
-            leftovers,
-            mfg_cost,
-        },
-    )
+    Solution {
+        placements,
+        leftovers,
+        mfg_cost,
+    }
 }
 
 #[cfg(test)]

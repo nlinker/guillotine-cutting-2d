@@ -46,7 +46,7 @@ pub type Genome = Vec<Gene>;
 /// `Placement.piece_idx` from flat index back to the type index in `spec`.
 pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::SolutionSpec {
     let problem = expand::expand_problem(spec);
-    let sol = decode(&problem, genome);
+    let sol = improve_tl_corners(&problem, decode(&problem, genome));
     expand::shrink_solution(&sol, spec)
 }
 
@@ -101,14 +101,11 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
         }
     }
     let leftovers = free.into_iter().map(|(fr, _)| fr).collect();
-    improve_tl_corners(
-        problem,
-        Solution {
-            placements,
-            leftovers,
-            mfg_cost,
-        },
-    )
+    Solution {
+        placements,
+        leftovers,
+        mfg_cost,
+    }
 }
 
 const W_R: u32 = 10;
