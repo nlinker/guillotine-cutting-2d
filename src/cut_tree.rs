@@ -611,12 +611,8 @@ fn piece_right(node: &CutNode) -> Option<u32> {
     match node {
         CutNode::Piece { x, pw, .. } => Some(x + pw),
         CutNode::Waste { .. } => None,
-        CutNode::VSplit { left, right, .. } => {
-            [piece_right(left), piece_right(right)].into_iter().flatten().max()
-        }
-        CutNode::HSplit { top, bottom, .. } => {
-            [piece_right(top), piece_right(bottom)].into_iter().flatten().max()
-        }
+        CutNode::VSplit { left, right, .. } => [piece_right(left), piece_right(right)].into_iter().flatten().max(),
+        CutNode::HSplit { top, bottom, .. } => [piece_right(top), piece_right(bottom)].into_iter().flatten().max(),
     }
 }
 
@@ -625,12 +621,8 @@ fn piece_bottom(node: &CutNode) -> Option<u32> {
     match node {
         CutNode::Piece { y, ph, .. } => Some(y + ph),
         CutNode::Waste { .. } => None,
-        CutNode::VSplit { left, right, .. } => {
-            [piece_bottom(left), piece_bottom(right)].into_iter().flatten().max()
-        }
-        CutNode::HSplit { top, bottom, .. } => {
-            [piece_bottom(top), piece_bottom(bottom)].into_iter().flatten().max()
-        }
+        CutNode::VSplit { left, right, .. } => [piece_bottom(left), piece_bottom(right)].into_iter().flatten().max(),
+        CutNode::HSplit { top, bottom, .. } => [piece_bottom(top), piece_bottom(bottom)].into_iter().flatten().max(),
     }
 }
 
