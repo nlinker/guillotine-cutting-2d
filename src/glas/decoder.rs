@@ -64,20 +64,17 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
 pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solution {
     debug_assert_eq!(genome.iter().map(|c| c.len()).sum::<usize>(), spec.piespecs.len());
 
-    // flat index range for type i: problem.pieces[offsets[i] .. offsets[i] + count_i]
-    let offsets: Vec<usize> = {
-        let mut acc = 0usize;
-        spec.piespecs
-            .iter()
-            .map(|ps| {
-                let start = acc;
-                acc += ps.count as usize;
-                start
-            })
-            .collect()
-    };
-
-    let mut next = offsets.clone(); // next[i] = next unassigned flat index for type i
+    // end_idxs[i] = one-past-last flat index for type i
+    // next[i]     = next unassigned flat index for type i (starts equal to start offset)
+    let n_types = spec.piespecs.len();
+    let mut end_idxs = Vec::with_capacity(n_types);
+    let mut next = Vec::with_capacity(n_types);
+    let mut acc = 0usize;
+    for ps in &spec.piespecs {
+        next.push(acc);
+        acc += ps.count as usize;
+        end_idxs.push(acc);
+    }
     let mut forest = CutForest::new(problem.sheet.width, problem.sheet.height);
     let mut placements: Vec<Placement> = Vec::with_capacity(problem.pieces.len());
     let mfg_cost = 0u32;
@@ -85,13 +82,13 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
     for class in genome {
         for gene in class {
             let count = spec.piespecs[gene.type_idx].count as usize;
-            let end_idx = offsets[gene.type_idx] + count;
+            let end_idx = end_idxs[gene.type_idx];
             debug_assert_eq!(gene.selectors.len(), count);
             debug_assert_eq!(gene.inverses.len(), count);
 
             while next[gene.type_idx] < end_idx {
                 // placed = copies of this type already placed = index into selectors/inverses
-                let placed = next[gene.type_idx] - offsets[gene.type_idx];
+                let placed = count - (end_idx - next[gene.type_idx]);
 
                 let ps = gene.selectors[placed];
                 let inv = gene.inverses[placed];

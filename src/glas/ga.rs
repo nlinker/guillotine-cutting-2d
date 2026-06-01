@@ -402,14 +402,15 @@ fn ox_at(p1: &[Gene], p2: &[Gene], lo: usize, hi: usize, n_types: usize) -> (Vec
         for gene in &donor[lo..hi] {
             in_segment[gene.type_idx] = true;
         }
-        let fill_positions = (hi..n).chain(0..lo).collect::<Vec<_>>();
-        let fill_genes = (0..n)
+        // Filler genes in OX order (starting from hi, wrapping), skipping segment types.
+        // Processed lazily — no intermediate Vec allocation.
+        let mut fill_iter = (0..n)
             .map(|i| &filler[(hi + i) % n])
-            .filter(|g| !in_segment[g.type_idx])
-            .collect::<Vec<_>>();
+            .filter(|g| !in_segment[g.type_idx]);
+        // Fill positions in OX order: (hi..n) then (0..lo) — no intermediate Vec.
         let mut child = donor.to_vec();
-        for (pos, gene) in fill_positions.iter().zip(fill_genes.iter()) {
-            child[*pos] = (*gene).clone();
+        for pos in (hi..n).chain(0..lo) {
+            child[pos] = fill_iter.next().expect("filler exhausted").clone();
         }
         child
     }
