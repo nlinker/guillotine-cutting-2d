@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use std::{sync::Arc, time::Instant};
 
 use cutting::{
-    ga::{GaConfig, GaEvent, run_ga_mt},
+    ga::GaConfig,
+    slas::ga::{GaEvent, run_ga_mt},
     model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     slas::decoder::decode_spec,

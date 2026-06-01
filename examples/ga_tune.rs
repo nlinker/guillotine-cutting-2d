@@ -10,7 +10,8 @@ use std::time::Instant;
 
 use cutting::{
     expand::expand_problem,
-    ga::{GaConfig, run_ga},
+    ga::GaConfig,
+    slas::ga::run_ga,
     model::Objective,
     parse::parse_problem,
 };

@@ -11,7 +11,8 @@
 ///   let best = run_ga(&out.problem, &suite.ga, &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)));
 ///
 /// Run with:  cargo run --example ga_benchmark --release
-use cutting::ga::{GaConfig, run_ga};
+use cutting::ga::GaConfig;
+use cutting::slas::ga::run_ga;
 use cutting::{
     generator::{GeneratorConfig, generate},
     model::{Objective, Sheet},

@@ -6,8 +6,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
-    ga::{GaConfig, GaEvent, GaHandle, run_ga_mt},
+    ga::GaConfig,
     glas::ga as glas_ga,
+    slas::ga as slas_ga,
     glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
@@ -219,13 +220,13 @@ struct AnyHandle {
 
 /// Convert a flat slas `GaHandle` into an `AnyHandle`. A bridge thread forwards
 /// events, wrapping each genome in a lazy `slas::decoder::decode_spec` closure.
-fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
+fn slas_handle_to_any(handle: slas_ga::GaHandle) -> AnyHandle {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
     std::thread::spawn(move || {
         let mut handle = handle;
         while let Some(evt) = handle.rx.blocking_recv() {
             let any = match evt {
-                GaEvent::Progress(p) => {
+                slas_ga::GaEvent::Progress(p) => {
                     let genome = p.genome;
                     AnyEvent::Progress {
                         seed: p.seed,
@@ -234,7 +235,7 @@ fn slas_handle_to_any(handle: GaHandle) -> AnyHandle {
                         lazy: LazyDecode(Box::new(move |spec| cutting::slas::decoder::decode_spec(spec, &genome))),
                     }
                 }
-                GaEvent::Done(results) => AnyEvent::Done {
+                slas_ga::GaEvent::Done(results) => AnyEvent::Done {
                     results: results
                         .into_iter()
                         .map(|(seed, ind)| {
@@ -301,7 +302,7 @@ fn make_any_handle(
 ) -> AnyHandle {
     match algorithm {
         Algorithm::Glas => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
-        Algorithm::Slas => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
+        Algorithm::Slas => slas_handle_to_any(slas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
 

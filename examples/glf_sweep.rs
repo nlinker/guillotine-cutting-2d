@@ -8,12 +8,12 @@ use std::sync::Arc;
 use std::{fs, path::Path};
 
 use cutting::{
-    ga::{self, GaConfig, GaEvent},
+    ga::GaConfig,
     glf::build_glf,
     model::{ProblemSpec, Sheet},
     parse::parse_problem,
     render::render_svg,
-    slas::decoder::decode_spec,
+    slas::{decoder::decode_spec, ga as slas_ga},
 };
 
 const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
@@ -62,10 +62,10 @@ fn main() {
 
         // GA solution
         let seeds = vec![0u64];
-        let mut handle = ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0);
+        let mut handle = slas_ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0);
         let results = loop {
             match handle.rx.blocking_recv() {
-                Some(GaEvent::Done(r)) => break r,
+                Some(slas_ga::GaEvent::Done(r)) => break r,
                 _ => {}
             }
         };
