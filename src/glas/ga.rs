@@ -435,13 +435,22 @@ fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_threshold: u32, larg
     let max_dim = ps.width.max(ps.height);
     let area = ps.width as u64 * ps.height as u64;
     if max_dim >= long_dim_threshold {
-        if area >= large_area_threshold as u64 * large_area_threshold as u64 { 0 } else { 1 }
+        if area >= large_area_threshold as u64 * large_area_threshold as u64 {
+            0
+        } else {
+            1
+        }
     } else {
         2
     }
 }
 
-fn random_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32, rng: &mut R) -> Genome {
+fn random_genome<R: Rng>(
+    spec: &ProblemSpec,
+    long_dim_threshold: u32,
+    large_area_threshold: u32,
+    rng: &mut R,
+) -> Genome {
     let n = spec.piespecs.len();
     let mut classes: [Vec<usize>; 3] = [vec![], vec![], vec![]];
     for i in 0..n {

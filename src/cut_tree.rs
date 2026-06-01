@@ -588,7 +588,11 @@ fn tl_piece_type(node: &CutNode, type_of: &[usize]) -> Option<usize> {
 fn type_group_area(node: &CutNode, type_of: &[usize], target: usize) -> u64 {
     match node {
         CutNode::Piece { piece_idx, pw, ph, .. } => {
-            if type_of[*piece_idx] == target { (*pw as u64) * (*ph as u64) } else { 0 }
+            if type_of[*piece_idx] == target {
+                (*pw as u64) * (*ph as u64)
+            } else {
+                0
+            }
         }
         CutNode::Waste { .. } => 0,
         CutNode::VSplit { left, right, .. } => {
