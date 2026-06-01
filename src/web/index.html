@@ -209,18 +209,22 @@ function buildRowColors(specs) {
 function buildPlacementsTable(solution, pieces, elapsed, sheets, seed) {
   let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), seed: ${seed}</p>`;
   html += '<table><thead><tr>'
-        + '<th>Sheet</th><th>Piece</th><th>W</th><th>H</th>'
-        + '<th>X</th><th>Y</th><th>Rot</th>'
+        + '<th>Sheet</th><th>Piece</th><th>X</th><th>Y</th>'
+        + '<th>W</th><th>H</th><th>Rot</th>'
         + '</tr></thead><tbody>';
-  for (const pl of solution.placements) {
+  const sorted = [...solution.placements].sort((a, b) =>
+    a.sheet_idx !== b.sheet_idx ? a.sheet_idx - b.sheet_idx :
+    a.x !== b.x ? a.x - b.x : a.y - b.y
+  );
+  for (const pl of sorted) {
     const pc = pieces[pl.piespec_idx];
     const pw = pl.rotated ? pc.height : pc.width;
     const ph = pl.rotated ? pc.width  : pc.height;
     html += `<tr>`
           + `<td>${pl.sheet_idx}</td>`
           + `<td style="text-align:left">${pc.name || '#' + pl.piespec_idx}</td>`
-          + `<td>${pw}</td><td>${ph}</td>`
           + `<td>${pl.x}</td><td>${pl.y}</td>`
+          + `<td>${pw}</td><td>${ph}</td>`
           + `<td>${pl.rotated ? 'yes' : ''}</td>`
           + `</tr>`;
   }
