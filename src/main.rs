@@ -139,8 +139,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             render,
             algorithm,
         } => {
-            let cfg = ga_config(gens, pop, elite, k);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
+            let cfg = ga_config(gens, pop, elite, k, &spec);
             let n_threads = resolve_threads(threads);
             if render {
                 run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
@@ -533,7 +533,8 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaConfig {
+pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spec: &ProblemSpec) -> GaConfig {
+    let sh = spec.sheet;
     GaConfig {
         pop_size: pop,
         n_generations: gens,
@@ -545,7 +546,7 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize) -> GaCo
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        long_dim_ratio: 0.29,
-        large_area_ratio: 0.034,
+        long_dim_threshold: (sh.width.max(sh.height) as f64 * 0.3) as u32,
+        large_area_threshold: ((sh.width as f64 * sh.height as f64 * 0.05).sqrt()) as u32,
     }
 }

@@ -67,21 +67,23 @@ pub struct GaConfig {
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
 
-    /// Minimum dominant dimension (fraction of sheet's max side) to classify a piece type
-    /// as "medium" or "large". Piece types with max(w,h) < sheet_max * long_dim_ratio
-    /// go into the "small" class and are placed last by the glas decoder.
-    pub long_dim_ratio: f64,
+    /// Minimum dominant side length (px) for a piece type to be considered "long".
+    /// Piece types with max(w,h) < long_dim_threshold go into the "small" class and are placed
+    /// last by the glas decoder.
+    /// 0 = auto-derive: max(sheet.width, sheet.height) * 0.3.
+    pub long_dim_threshold: u32,
 
-    /// Minimum area fraction (relative to sheet area) for a long piece to be "large".
-    /// Long pieces with area < sheet_area * large_area_ratio go into the "medium" class.
-    pub large_area_ratio: f64,
+    /// Sqrt of the minimum area (px) for a long piece to be "large".
+    /// A long piece is "large" if width*height >= large_area_threshold^2; otherwise "medium".
+    /// 0 = auto-derive: sqrt(sheet.width * sheet.height * 0.05).
+    pub large_area_threshold: u32,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim={:.2} large_area={:.3}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim_threshold={} large_area_threshold={}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -93,8 +95,8 @@ impl fmt::Display for GaConfig {
             self.point_delta.0,
             self.point_delta.1,
             self.inverse_p,
-            self.long_dim_ratio,
-            self.large_area_ratio,
+            self.long_dim_threshold,
+            self.large_area_threshold,
         )
     }
 }
@@ -112,8 +114,8 @@ impl Default for GaConfig {
             point_p: 0.10,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            long_dim_ratio: 0.29,
-            large_area_ratio: 0.034,
+            long_dim_threshold: 0,
+            large_area_threshold: 0,
         }
     }
 }
@@ -750,8 +752,8 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            long_dim_ratio: 0.29,
-            large_area_ratio: 0.034,
+            long_dim_threshold: 0,
+            large_area_threshold: 0,
         }
     }
 

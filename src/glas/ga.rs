@@ -258,7 +258,7 @@ pub fn init_population<R: Rng>(
 ) -> Vec<Individual> {
     (0..size)
         .map(|_| {
-            let genome = random_genome(spec, config.long_dim_ratio, config.large_area_ratio, rng);
+            let genome = random_genome(spec, config.long_dim_threshold, config.large_area_threshold, rng);
             let sol = decode(problem, spec, &genome);
             Individual {
                 genome,
@@ -420,23 +420,32 @@ fn ox_at(p1: &[Gene], p2: &[Gene], lo: usize, hi: usize, n_types: usize) -> (Vec
     )
 }
 
-fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_ratio: f64, large_area_ratio: f64) -> usize {
-    let max_dim = ps.width.max(ps.height) as f64;
-    let sheet_max = spec.sheet.width.max(spec.sheet.height) as f64;
-    let area = ps.width as f64 * ps.height as f64;
-    let sheet_area = spec.sheet.width as f64 * spec.sheet.height as f64;
-    if max_dim >= sheet_max * long_dim_ratio {
-        if area >= sheet_area * large_area_ratio { 0 } else { 1 }
+fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32) -> usize {
+    let sheet_max = spec.sheet.width.max(spec.sheet.height);
+    let long_dim_threshold = if long_dim_threshold == 0 {
+        (sheet_max as f64 * 0.3) as u32
+    } else {
+        long_dim_threshold
+    };
+    let large_area_threshold = if large_area_threshold == 0 {
+        ((spec.sheet.width as f64 * spec.sheet.height as f64 * 0.05).sqrt()) as u32
+    } else {
+        large_area_threshold
+    };
+    let max_dim = ps.width.max(ps.height);
+    let area = ps.width as u64 * ps.height as u64;
+    if max_dim >= long_dim_threshold {
+        if area >= large_area_threshold as u64 * large_area_threshold as u64 { 0 } else { 1 }
     } else {
         2
     }
 }
 
-fn random_genome<R: Rng>(spec: &ProblemSpec, long_dim_ratio: f64, large_area_ratio: f64, rng: &mut R) -> Genome {
+fn random_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32, rng: &mut R) -> Genome {
     let n = spec.piespecs.len();
     let mut classes: [Vec<usize>; 3] = [vec![], vec![], vec![]];
     for i in 0..n {
-        classes[piece_class(&spec.piespecs[i], spec, long_dim_ratio, large_area_ratio)].push(i);
+        classes[piece_class(&spec.piespecs[i], spec, long_dim_threshold, large_area_threshold)].push(i);
     }
     let mut genome = Genome::with_capacity(3);
     for mut indices in classes {
@@ -535,8 +544,8 @@ mod tests {
             point_p: 0.05,
             point_delta: (1, 3),
             inverse_p: 0.05,
-            long_dim_ratio: 0.29,
-            large_area_ratio: 0.034,
+            long_dim_threshold: 0,
+            large_area_threshold: 0,
         }
     }
 
