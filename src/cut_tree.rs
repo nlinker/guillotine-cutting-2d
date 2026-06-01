@@ -561,14 +561,50 @@ fn node_bottom(node: &CutNode) -> u32 {
     }
 }
 
-/// Area of the piece at the top-left corner of the subtree rooted at `node`.
-/// Returns 0 for a Waste leaf (no piece there).
-fn tl_corner_area(node: &CutNode) -> u64 {
+/// Group pieces by `(min_dim, max_dim, can_rotate)`; returns a `type_idx` per piece.
+fn compute_type_of(pieces: &[Piece]) -> Vec<usize> {
+    let mut map: HashMap<(u32, u32, bool), usize> = HashMap::new();
+    pieces
+        .iter()
+        .map(|p| {
+            let key = (p.width.min(p.height), p.width.max(p.height), p.can_rotate);
+            let n = map.len();
+            *map.entry(key).or_insert(n)
+        })
+        .collect()
+}
+
+/// Type index of the TL-corner piece; `None` for pure-waste subtrees.
+fn tl_piece_type(node: &CutNode, type_of: &[usize]) -> Option<usize> {
     match node {
-        CutNode::Piece { pw, ph, .. } => (*pw as u64) * (*ph as u64),
+        CutNode::Piece { piece_idx, .. } => Some(type_of[*piece_idx]),
+        CutNode::Waste { .. } => None,
+        CutNode::VSplit { left, .. } => tl_piece_type(left, type_of),
+        CutNode::HSplit { top, .. } => tl_piece_type(top, type_of),
+    }
+}
+
+/// Sum of areas of all pieces of type `target` in the subtree.
+fn type_group_area(node: &CutNode, type_of: &[usize], target: usize) -> u64 {
+    match node {
+        CutNode::Piece { piece_idx, pw, ph, .. } => {
+            if type_of[*piece_idx] == target { (*pw as u64) * (*ph as u64) } else { 0 }
+        }
         CutNode::Waste { .. } => 0,
-        CutNode::VSplit { left, .. } => tl_corner_area(left),
-        CutNode::HSplit { top, .. } => tl_corner_area(top),
+        CutNode::VSplit { left, right, .. } => {
+            type_group_area(left, type_of, target) + type_group_area(right, type_of, target)
+        }
+        CutNode::HSplit { top, bottom, .. } => {
+            type_group_area(top, type_of, target) + type_group_area(bottom, type_of, target)
+        }
+    }
+}
+
+/// Total area of all pieces of the same type as the TL-corner piece; 0 for waste-only subtrees.
+fn tl_group_area(node: &CutNode, type_of: &[usize]) -> u64 {
+    match tl_piece_type(node, type_of) {
+        None => 0,
+        Some(t) => type_group_area(node, type_of, t),
     }
 }
 
@@ -635,11 +671,11 @@ fn piece_bottom(node: &CutNode) -> Option<u32> {
 /// The cut coordinate is set to the content extent of the moved child (piece_right /
 /// piece_bottom, ignoring trailing Waste), so trailing free space ends up at the
 /// sheet boundary rather than in the middle of the layout.
-fn sort_tl_corners(node: &mut CutNode) {
+fn sort_tl_corners(node: &mut CutNode, type_of: &[usize]) {
     match node {
         CutNode::Piece { .. } | CutNode::Waste { .. } => {}
         CutNode::VSplit { cut_x, left, right } => {
-            if tl_corner_area(left) < tl_corner_area(right) {
+            if tl_group_area(left, type_of) < tl_group_area(right, type_of) {
                 let x0 = node_x(left);
                 // Content width of old right: up to the last Piece, not trailing Waste.
                 let content_w = piece_right(right)
@@ -654,7 +690,7 @@ fn sort_tl_corners(node: &mut CutNode) {
             }
         }
         CutNode::HSplit { cut_y, top, bottom } => {
-            if tl_corner_area(top) < tl_corner_area(bottom) {
+            if tl_group_area(top, type_of) < tl_group_area(bottom, type_of) {
                 let y0 = node_y(top);
                 // Content height of old bottom: up to the last Piece, not trailing Waste.
                 let content_h = piece_bottom(bottom)
@@ -699,8 +735,9 @@ pub fn improve_tl_corners(problem: &Problem, mut sol: Solution) -> Solution {
     let Ok(mut trees) = build_cut_tree(problem, &sol.placements) else {
         return sol;
     };
+    let type_of = compute_type_of(&problem.pieces);
     for tree in &mut trees {
-        sort_tl_corners(tree);
+        sort_tl_corners(tree, &type_of);
     }
     let mut pos_map: HashMap<usize, (u32, u32)> = HashMap::new();
     for tree in &trees {
@@ -855,7 +892,7 @@ mod tests {
                 ph: 20,
             }),
         };
-        sort_tl_corners(&mut tree);
+        sort_tl_corners(&mut tree, &[0, 1]);
         match &tree {
             CutNode::VSplit { cut_x, left, right } => {
                 assert_eq!(*cut_x, 20, "cut_x should shift to width of new left child");
@@ -895,7 +932,7 @@ mod tests {
                 ph: 20,
             }),
         };
-        sort_tl_corners(&mut tree);
+        sort_tl_corners(&mut tree, &[0, 1]);
         match &tree {
             CutNode::VSplit { cut_x, left, .. } => {
                 assert_eq!(*cut_x, 20);
@@ -926,7 +963,7 @@ mod tests {
                 ph: 15,
             }),
         };
-        sort_tl_corners(&mut tree);
+        sort_tl_corners(&mut tree, &[0, 1]);
         match &tree {
             CutNode::HSplit { cut_y, top, bottom } => {
                 assert_eq!(*cut_y, 15, "cut_y should shift to height of new top child");
