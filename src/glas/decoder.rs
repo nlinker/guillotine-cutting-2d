@@ -104,7 +104,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                     forest.find_fitting_leaf(piece, gene.rotate, ps)
                 });
 
-                let Some((leaf_idx, pw, ph, rotated)) = found else {
+                let Some((free_pos, pw, ph, rotated)) = found else {
                     debug_assert!(
                         false,
                         "piece {}×{} does not fit on empty {}×{} sheet",
@@ -114,7 +114,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                 };
 
                 let (fr_w, fr_h, sheet_idx) = {
-                    let node = &forest.nodes[leaf_idx];
+                    let node = &forest.nodes[forest.free_leaves[free_pos]];
                     (node.w, node.h, node.sheet_idx)
                 };
 
@@ -131,7 +131,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                 };
 
                 // Apply blueprint: splits the leaf, returns batch origin.
-                let (batch_x, batch_y) = forest.apply_blueprint(leaf_idx, cw, ch, bp);
+                let (batch_x, batch_y) = forest.apply_blueprint(free_pos, cw, ch, bp);
 
                 // Place all pieces in the strip (left-to-right or top-to-bottom).
                 let mut cursor = if vertical { batch_y } else { batch_x };
