@@ -34,14 +34,16 @@ Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: rando
 Private Const CFG_SEED_CELL      As String = "N1"  ' base random seed (--seed)
 Private Const CFG_GENS_CELL      As String = "N2"  ' generations per run (--gens)
 Private Const CFG_POP_CELL       As String = "N3"  ' population size (--pop)
-Private Const CFG_ALGORITHM_CELL As String = "N4"  ' decoder algorithm: glas or slas
+Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' decoder algorithm: glas or slas
+Private Const CFG_LARGE_AREA_CELL     As String = "N5"  ' large_area_threshold (0 = auto)
+Private Const CFG_LONG_DIM_CELL       As String = "N6"  ' long_dim_threshold   (0 = auto)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
 Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
 Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
 Private Const OUT_SHEETS_CELL  As String = "R4"  ' sheets used
 Private Const OUT_CUT_CELL     As String = "R5"  ' cuts used for each of the sheets
 
-Private Const CANVAS_RANGE     As String = "I7:N7"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_RANGE     As String = "I8:N8"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 #If VBA7 Then
@@ -509,12 +511,18 @@ Public Sub RunCut()
     Dim sAlgorithm As String: sAlgorithm = "glas"
     If ws.Range(CFG_ALGORITHM_CELL).Value <> "" Then _
         sAlgorithm = LCase(Trim(CStr(ws.Range(CFG_ALGORITHM_CELL).Value)))
+    Dim nLargeArea As Long: nLargeArea = 0
+    If ws.Range(CFG_LARGE_AREA_CELL).Value <> "" Then nLargeArea = CLng(ws.Range(CFG_LARGE_AREA_CELL).Value)
+    Dim nLongDim As Long: nLongDim = 0
+    If ws.Range(CFG_LONG_DIM_CELL).Value <> "" Then nLongDim = CLng(ws.Range(CFG_LONG_DIM_CELL).Value)
 
     ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
         & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
         & " --algorithm " & sAlgorithm
+    If nLargeArea > 0 Then cmd = cmd & " --large-area-threshold " & nLargeArea
+    If nLongDim > 0 Then cmd = cmd & " --long-dim-threshold " & nLongDim
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe

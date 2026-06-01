@@ -96,6 +96,12 @@ enum Command {
         /// Solver algorithm
         #[arg(long, default_value = "glas")]
         algorithm: Algorithm,
+        /// Min side length (px) for a piece to be "long"; 0 = auto (sheet_max * 0.3)
+        #[arg(long, default_value_t = 0)]
+        long_dim_threshold: u32,
+        /// Sqrt of min area (px) for a long piece to be "large"; 0 = auto (sqrt(sheet_area * 0.05))
+        #[arg(long, default_value_t = 0)]
+        large_area_threshold: u32,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -138,9 +144,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink_interval,
             render,
             algorithm,
+            long_dim_threshold,
+            large_area_threshold,
         } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let cfg = ga_config(gens, pop, elite, k, &spec);
+            let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold);
             let n_threads = resolve_threads(threads);
             if render {
                 run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
@@ -533,7 +541,15 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spec: &ProblemSpec) -> GaConfig {
+pub(crate) fn ga_config(
+    gens: usize,
+    pop: usize,
+    elite: usize,
+    k: usize,
+    spec: &ProblemSpec,
+    large_area_threshold: u32,
+    long_dim_threshold: u32,
+) -> GaConfig {
     let sh = spec.sheet;
     GaConfig {
         pop_size: pop,
@@ -546,7 +562,15 @@ pub(crate) fn ga_config(gens: usize, pop: usize, elite: usize, k: usize, spec: &
         point_p: 0.10,
         point_delta: (1, 3),
         inverse_p: 0.05,
-        long_dim_threshold: (sh.width.max(sh.height) as f64 * 0.3) as u32,
-        large_area_threshold: ((sh.width as f64 * sh.height as f64 * 0.05).sqrt()) as u32,
+        long_dim_threshold: if long_dim_threshold == 0 {
+            (sh.width.max(sh.height) as f64 * 0.3) as u32
+        } else {
+            long_dim_threshold
+        },
+        large_area_threshold: if large_area_threshold == 0 {
+            ((sh.width as f64 * sh.height as f64 * 0.05).sqrt()) as u32
+        } else {
+            large_area_threshold
+        },
     }
 }
