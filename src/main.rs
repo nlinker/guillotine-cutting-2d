@@ -21,6 +21,26 @@ use tokio::sync::mpsc;
 
 mod web;
 
+/// Solver algorithm.
+#[derive(clap::ValueEnum, serde::Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Algorithm {
+    /// Group-SLAS genetic algorithm (one gene per piece type)
+    #[default]
+    Glas,
+    /// Flat-SLAS genetic algorithm (one gene per physical piece)
+    Slas,
+}
+
+impl std::fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Algorithm::Glas => write!(f, "glas"),
+            Algorithm::Slas => write!(f, "slas"),
+        }
+    }
+}
+
 #[cfg(windows)]
 const PIPE_NAME: &str = r"\\.\pipe\cut_progress";
 #[cfg(unix)]
@@ -73,9 +93,9 @@ enum Command {
         /// Render the best solution as SVG to stdout instead of JSON
         #[arg(long, default_value_t = false)]
         render: bool,
-        /// Decoder variant: "slas" (default) or "glas" (group SLAS, one gene per piece type)
-        #[arg(long, default_value = "slas")]
-        decoder: String,
+        /// Solver algorithm
+        #[arg(long, default_value = "glas")]
+        algorithm: Algorithm,
     },
     /// Start a web server with an interactive UI
     Serve {
@@ -117,15 +137,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink,
             sink_interval,
             render,
-            decoder,
+            algorithm,
         } => {
             let cfg = ga_config(gens, pop, elite, k);
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
             let n_threads = resolve_threads(threads);
             if render {
-                run_calc_render(&spec, &cfg, seed, n_threads, progress, &decoder)?;
+                run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
             } else {
-                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval, &decoder)?;
+                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval, algorithm)?;
             }
         }
         Command::Serve { port } => web::run_serve(port)?,
@@ -264,17 +284,16 @@ fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
     AnyHandle { rx }
 }
 
-/// Create an `AnyHandle` for the chosen decoder.
 fn make_any_handle(
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: Vec<u64>,
     progress_interval: usize,
-    decoder: &str,
+    algorithm: Algorithm,
 ) -> AnyHandle {
-    match decoder {
-        "glas" => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
-        _ => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
+    match algorithm {
+        Algorithm::Glas => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
+        Algorithm::Slas => slas_handle_to_any(run_ga_mt(spec, cfg, seeds, progress_interval)),
     }
 }
 
@@ -309,26 +328,26 @@ fn run_calc_with_sink(
     progress_interval: usize,
     sink_mode: &str,
     sink_interval_ms: u64,
-    decoder: &str,
+    algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
 
     let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     eprintln!(
-        "Pieces  : {} ({} types)   Sheet: {}×{}   Decoder: {}",
+        "Pieces  : {} ({} types)   Sheet: {}×{}   Algorithm: {}",
         total,
         spec.piespecs.len(),
         spec.sheet.width,
         spec.sheet.height,
-        decoder,
+        algorithm,
     );
     eprintln!("GA cfg  : {cfg}");
     eprintln!("Sink    : {sink_mode}  interval={sink_interval_ms}ms");
 
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
-    let any_handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
+    let any_handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
 
     match sink_mode {
         "stdout" => {
@@ -457,13 +476,12 @@ fn run_with_any_handle(
     Ok(())
 }
 
-/// Decoder-aware entry point for the web server.
 pub(crate) fn run_with_sink_any(
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: &[u64],
     progress_interval: usize,
-    decoder: &str,
+    algorithm: Algorithm,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -472,7 +490,7 @@ pub(crate) fn run_with_sink_any(
         Arc::clone(&cfg),
         seeds.to_vec(),
         progress_interval,
-        decoder,
+        algorithm,
     );
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
@@ -483,14 +501,14 @@ fn run_calc_render(
     base_seed: u64,
     n_threads: usize,
     progress_interval: usize,
-    decoder: &str,
+    algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();
-    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, decoder);
+    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
     loop {
         match handle.rx.blocking_recv() {
             None => break,

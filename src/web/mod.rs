@@ -36,8 +36,8 @@ struct SolveParams {
     pop: usize,
     #[serde(default = "default_progress")]
     progress: usize,
-    #[serde(default = "default_decoder")]
-    decoder: String,
+    #[serde(default)]
+    algorithm: crate::Algorithm,
 }
 
 fn default_seed() -> u64 {
@@ -54,9 +54,6 @@ fn default_pop() -> usize {
 }
 fn default_progress() -> usize {
     50
-}
-fn default_decoder() -> String {
-    "glas".to_string()
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
@@ -122,9 +119,9 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
                 sheet_w,
                 sheet_h,
             };
-            let decoder = params.decoder.clone();
+            let algorithm = params.algorithm;
             std::thread::spawn(move || {
-                crate::run_with_sink_any(problem, cfg, &seeds, params.progress, &decoder, &mut sink, 0).ok();
+                crate::run_with_sink_any(problem, cfg, &seeds, params.progress, algorithm, &mut sink, 0).ok();
             });
         }
     }
