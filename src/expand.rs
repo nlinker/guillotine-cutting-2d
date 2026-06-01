@@ -125,7 +125,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))
         .collect();
-    let placements = sol
+    let mut placements: Vec<PlacementSpec> = sol
         .placements
         .iter()
         .map(|pl| PlacementSpec {
@@ -136,6 +136,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
             rotated: pl.rotated,
         })
         .collect();
+    placements.sort_by_key(|pl| (pl.sheet_idx, pl.x, pl.y));
     let leftovers = sol
         .leftovers
         .iter()

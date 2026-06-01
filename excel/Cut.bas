@@ -31,9 +31,10 @@ Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table (
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
-Private Const CFG_SEED_CELL     As String = "N1"  ' base random seed (--seed)
-Private Const CFG_GENS_CELL     As String = "N2"  ' generations per run (--gens)
-Private Const CFG_POP_CELL      As String = "N3"  ' population size (--pop)
+Private Const CFG_SEED_CELL      As String = "N1"  ' base random seed (--seed)
+Private Const CFG_GENS_CELL      As String = "N2"  ' generations per run (--gens)
+Private Const CFG_POP_CELL       As String = "N3"  ' population size (--pop)
+Private Const CFG_ALGORITHM_CELL As String = "N4"  ' decoder algorithm: glas or slas
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
 Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
 Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
@@ -198,27 +199,45 @@ End Sub
 
 ' Renders the placement table after a Done message.
 Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
-    Dim rRow As Long:  rRow  = ws.Range(RESULT_CELL).Row
-    Dim rCol As Long:  rCol  = ws.Range(RESULT_CELL).Column  ' "Sheet" label column
-    Dim r    As Long:  r     = rRow + 1
+    Dim rRow As Long: rRow = ws.Range(RESULT_CELL).Row
+    Dim rCol As Long: rCol = ws.Range(RESULT_CELL).Column
+    Dim r    As Long: r    = rRow + 1
 
-    Dim pl As Object
-    For Each pl In sol("placements")
-        Dim idx As Long
-        idx = pl("piespec_idx") + 1  ' VBA Collection is 1-based
+    Dim pls As Object: Set pls = sol("placements")
+    Dim n   As Long:   n   = pls.Count
+    If n = 0 Then Exit Sub
 
-        Dim pieceName As String
+    ' Build index array and sort by (sheet_idx, x, y) — bubble sort
+    Dim ord() As Long
+    ReDim ord(1 To n)
+    Dim i As Long, j As Long, tmp As Long
+    For i = 1 To n
+        ord(i) = i
+    Next i
+    Dim pa As Object, pb As Object, cmp As Long
+    For i = 1 To n - 1
+        For j = 1 To n - i
+            Set pa = pls(ord(j))
+            Set pb = pls(ord(j + 1))
+            cmp = CLng(pa("sheet_idx")) - CLng(pb("sheet_idx"))
+            If cmp = 0 Then cmp = CLng(pa("x")) - CLng(pb("x"))
+            If cmp = 0 Then cmp = CLng(pa("y")) - CLng(pb("y"))
+            If cmp > 0 Then
+                tmp = ord(j): ord(j) = ord(j + 1): ord(j + 1) = tmp
+            End If
+        Next j
+    Next i
+
+    Dim pl As Object, idx As Long, pieceName As String, pw As Long, ph As Long
+    For i = 1 To n
+        Set pl = pls(ord(i))
+        idx = pl("piespec_idx") + 1
         pieceName = pieces(idx)("name")
-
-        Dim pw As Long, ph As Long
         If pl("rotated") Then
-            pw = pieces(idx)("height")
-            ph = pieces(idx)("width")
+            pw = pieces(idx)("height"): ph = pieces(idx)("width")
         Else
-            pw = pieces(idx)("width")
-            ph = pieces(idx)("height")
+            pw = pieces(idx)("width"):  ph = pieces(idx)("height")
         End If
-
         ws.Cells(r, rCol).Value     = pl("sheet_idx") + 1
         ws.Cells(r, rCol + 1).Value = pieceName
         ws.Cells(r, rCol + 2).Value = pl("x")
@@ -227,7 +246,7 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
         ws.Cells(r, rCol + 5).Value = ph
         ws.Cells(r, rCol + 6).Value = IIf(pl("rotated"), "yes", "")
         r = r + 1
-    Next pl
+    Next i
     DoEvents
 End Sub
 
@@ -487,11 +506,15 @@ Public Sub RunCut()
     End If
     If ws.Range(CFG_GENS_CELL).Value <> "" Then nGens = CLng(ws.Range(CFG_GENS_CELL).Value)
     If ws.Range(CFG_POP_CELL).Value  <> "" Then nPop  = CLng(ws.Range(CFG_POP_CELL).Value)
+    Dim sAlgorithm As String: sAlgorithm = "glas"
+    If ws.Range(CFG_ALGORITHM_CELL).Value <> "" Then _
+        sAlgorithm = LCase(Trim(CStr(ws.Range(CFG_ALGORITHM_CELL).Value)))
 
     ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
-        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop
+        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
+        & " --algorithm " & sAlgorithm
     Shell cmd, vbHide
 
     ' Give cut.exe time to create the pipe
@@ -811,9 +834,20 @@ End Sub
 
 '' == One-time sheet setup =====================================================
 
-' Runs one-time setup: "Can rotate?" checkboxes.
+' Runs one-time setup: "Can rotate?" checkboxes + algorithm dropdown.
 Public Sub SetupAll()
     CreateCheckboxes
+    SetupAlgorithmValidation
+End Sub
+
+Private Sub SetupAlgorithmValidation()
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    With ws.Range(CFG_ALGORITHM_CELL).Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+             Formula1:="glas,slas"
+    End With
 End Sub
 
 '' == Checkboxes for "Can rotate?" =============================================
