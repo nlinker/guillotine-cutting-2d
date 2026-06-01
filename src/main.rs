@@ -8,12 +8,12 @@ use clap::{Parser, Subcommand};
 use cutting::{
     ga::GaConfig,
     glas::ga as glas_ga,
-    slas::ga as slas_ga,
     glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
+    slas::ga as slas_ga,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
@@ -301,8 +301,20 @@ fn make_any_handle(
     algorithm: Algorithm,
 ) -> AnyHandle {
     match algorithm {
-        Algorithm::Glas => glas_handle_to_any(glas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
-        Algorithm::Slas => slas_handle_to_any(slas_ga::run_ga_mt(spec, cfg, seeds, progress_interval)),
+        Algorithm::Glas => glas_handle_to_any(glas_ga::run_ga_mt(
+            spec,
+            cfg,
+            seeds,
+            progress_interval,
+            progress_interval,
+        )),
+        Algorithm::Slas => slas_handle_to_any(slas_ga::run_ga_mt(
+            spec,
+            cfg,
+            seeds,
+            progress_interval,
+            progress_interval,
+        )),
     }
 }
 

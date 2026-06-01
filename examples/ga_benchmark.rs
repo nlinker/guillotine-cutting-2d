@@ -12,10 +12,10 @@
 ///
 /// Run with:  cargo run --example ga_benchmark --release
 use cutting::ga::GaConfig;
-use cutting::slas::ga::run_ga;
 use cutting::{
     generator::{GeneratorConfig, generate},
     model::{Objective, Sheet},
+    slas::ga::run_ga,
 };
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;

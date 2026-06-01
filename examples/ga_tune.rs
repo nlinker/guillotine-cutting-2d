@@ -8,13 +8,7 @@
 /// Run with:  cargo run --example ga_tune --release
 use std::time::Instant;
 
-use cutting::{
-    expand::expand_problem,
-    ga::GaConfig,
-    slas::ga::run_ga,
-    model::Objective,
-    parse::parse_problem,
-};
+use cutting::{expand::expand_problem, ga::GaConfig, model::Objective, parse::parse_problem, slas::ga::run_ga};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 

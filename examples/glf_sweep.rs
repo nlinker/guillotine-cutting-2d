@@ -62,7 +62,7 @@ fn main() {
 
         // GA solution
         let seeds = vec![0u64];
-        let mut handle = slas_ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0);
+        let mut handle = slas_ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0, 0);
         let results = loop {
             match handle.rx.blocking_recv() {
                 Some(slas_ga::GaEvent::Done(r)) => break r,

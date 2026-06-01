@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc, Mutex,
+    Arc, Barrier, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -7,12 +7,12 @@ use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+use super::decoder::{Gene, Genome, decode};
 use crate::{
     expand::expand_problem,
     ga::GaConfig,
     model::{Objective, Problem, ProblemSpec},
 };
-use super::decoder::{Gene, Genome, decode};
 
 /// A genome paired with its cached fitness value to avoid re-decoding during selection.
 #[derive(Debug, Clone)]
@@ -79,6 +79,21 @@ impl Clone for GaContext {
     }
 }
 
+/// Shared state for barrier-based migration in `run_ga_mt`.
+///
+/// All N threads synchronize every `interval` generations via two barriers:
+/// - `barrier1`: all threads have written their best individual to their slot
+/// - `barrier2`: all threads have read the global best and injected it
+///
+/// Stop flag is checked only after `barrier2` to avoid deadlocks.
+struct SyncMigration<'a> {
+    bests: &'a [Mutex<Option<Individual>>],
+    barrier1: &'a Barrier,
+    barrier2: &'a Barrier,
+    idx: usize,
+    interval: usize,
+}
+
 fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
     let (tx, rx) = mpsc::unbounded_channel();
     let stop = Arc::new(AtomicBool::new(false));
@@ -105,20 +120,18 @@ fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
 /// The returned `Individual.genome` contains flat piece indices (0..total_pieces).
 /// Use `cutting::slas::decoder::decode_spec` to convert to a type-indexed `SolutionSpec`.
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
-    let pool = Mutex::new(None);
-    run_ga_inner(problem, config, &pool, None, rng)
+    run_ga_inner(problem, config, None, None, rng)
 }
 
 /// Inner GA loop shared by `run_ga` and `run_ga_mt`.
 ///
-/// When `ctx` is `Some`, every `progress_interval` generations:
-/// - checks the stop flag and exits early if set
-/// - updates the shared migration pool; injects global best into local population
-/// - sends `GaEvent::Progress` with the current global best
+/// When `migration` is `Some`, every `migration.interval` generations all threads
+/// synchronize via two barriers, exchange best individuals, then continue.
+/// The stop flag is checked only after `barrier2` to prevent deadlocks.
 fn run_ga_inner<R: Rng>(
     problem: &Problem,
     config: &GaConfig,
-    migration_pool: &Mutex<Option<Individual>>,
+    migration: Option<SyncMigration<'_>>,
     ctx: Option<&GaContext>,
     rng: &mut R,
 ) -> Individual {
@@ -178,40 +191,53 @@ fn run_ga_inner<R: Rng>(
             best = gen_best;
         }
 
-        if let Some(ctx) = ctx
-            && ctx.progress_interval > 0
-            && (step + 1) % ctx.progress_interval == 0
+        if let Some(ref mig) = migration
+            && mig.interval > 0
+            && (step + 1) % mig.interval == 0
         {
-            if ctx.stop.load(Ordering::Relaxed) {
-                break;
+            // Phase 1: write current best into own slot
+            {
+                let mut slot = mig.bests[mig.idx].lock().expect("migration slot poisoned");
+                if slot.as_ref().is_none_or(|g| best.objective < g.objective) {
+                    *slot = Some(best.clone());
+                }
             }
-            let event = {
-                let mut pool = migration_pool.lock().expect("migration pool lock poisoned");
-                if pool.as_ref().is_none_or(|g| best.objective < g.objective) {
-                    *pool = Some(best.clone());
-                }
-                let worst_idx = pop
+            mig.barrier1.wait(); // all slots written
+
+            // Phase 2: read global best, inject into worst, send progress event
+            {
+                let global = mig
+                    .bests
                     .iter()
-                    .enumerate()
-                    .max_by_key(|(_, i)| i.objective)
-                    .map(|(i, _)| i)
-                    .expect("pop is non-empty");
-                if let Some(global) = pool.as_ref()
-                    && global.objective < pop[worst_idx].objective
-                {
-                    pop[worst_idx] = global.clone();
+                    .filter_map(|s| s.lock().expect("migration slot poisoned").clone())
+                    .min_by_key(|i| i.objective);
+                if let Some(gb) = global {
+                    let worst_idx = pop
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(_, i)| i.objective)
+                        .map(|(i, _)| i)
+                        .expect("pop is non-empty");
+                    if gb.objective < pop[worst_idx].objective {
+                        pop[worst_idx] = gb.clone();
+                    }
+                    if let Some(ctx) = ctx {
+                        ctx.tx
+                            .send(GaEvent::Progress(ProgressEvent {
+                                seed: ctx.seed,
+                                generation: step + 1,
+                                objective: gb.objective,
+                                genome: gb.genome.clone(),
+                            }))
+                            .ok();
+                    }
                 }
-                pool.as_ref().map(|g| {
-                    GaEvent::Progress(ProgressEvent {
-                        seed: ctx.seed,
-                        generation: step + 1,
-                        objective: g.objective,
-                        genome: g.genome.clone(),
-                    })
-                })
-            };
-            if let Some(evt) = event {
-                ctx.tx.send(evt).ok();
+            }
+            mig.barrier2.wait(); // all threads done reading; safe to start next epoch
+
+            // Check stop only after both barriers to avoid deadlock
+            if ctx.is_some_and(|c| c.stop.load(Ordering::Relaxed)) {
+                break;
             }
         }
     }
@@ -221,27 +247,50 @@ fn run_ga_inner<R: Rng>(
 
 /// Spawns the GA in a background thread and returns a `GaHandle` immediately.
 ///
-/// Events arrive through `handle.rx`: `GaEvent::Progress` every `progress_interval`
-/// generations and `GaEvent::Done` when all islands finish.
+/// Events arrive through `handle.rx`: `GaEvent::Progress` every `migration_interval`
+/// generations (when `migration_interval > 0`) and `GaEvent::Done` when all islands finish.
 /// Dropping the handle (or calling `handle.stop()`) requests early termination.
 ///
-/// Pass `progress_interval = 0` to suppress progress events.
-pub fn run_ga_mt(spec: Arc<ProblemSpec>, config: Arc<GaConfig>, seeds: Vec<u64>, progress_interval: usize) -> GaHandle {
+/// `migration_interval = 0` disables migration entirely (independent islands).
+/// With `migration_interval > 0` all islands synchronize at a global barrier every N
+/// generations and share the best individual, which makes results fully deterministic:
+/// identical seeds + identical config always produce identical output.
+pub fn run_ga_mt(
+    spec: Arc<ProblemSpec>,
+    config: Arc<GaConfig>,
+    seeds: Vec<u64>,
+    progress_interval: usize,
+    migration_interval: usize,
+) -> GaHandle {
     let (handle, ctx) = ga_channel(progress_interval);
     std::thread::spawn(move || {
         let flat = Arc::new(expand_problem(&spec));
-        let migration_pool: Mutex<Option<Individual>> = Mutex::new(None);
-        let pool_ref = &migration_pool;
+        let n = seeds.len();
+        let bests: Vec<Mutex<Option<Individual>>> = (0..n).map(|_| Mutex::new(None)).collect();
+        let barrier1 = Barrier::new(n);
+        let barrier2 = Barrier::new(n);
         let p = &*flat;
         let c = &*config;
         let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
             seeds
                 .iter()
-                .map(|&seed| {
+                .enumerate()
+                .map(|(idx, &seed)| {
+                    let mig = if migration_interval > 0 && n > 1 {
+                        Some(SyncMigration {
+                            bests: &bests,
+                            barrier1: &barrier1,
+                            barrier2: &barrier2,
+                            idx,
+                            interval: migration_interval,
+                        })
+                    } else {
+                        None
+                    };
                     let thread_ctx = GaContext { seed, ..ctx.clone() };
                     s.spawn(move || {
                         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                        let individual = run_ga_inner(p, c, pool_ref, Some(&thread_ctx), &mut rng);
+                        let individual = run_ga_inner(p, c, mig, Some(&thread_ctx), &mut rng);
                         (seed, individual)
                     })
                 })
@@ -785,6 +834,43 @@ mod tests {
         let (c1b, c2b) = ox_crossover(&p1, &p2, &mut Xoshiro256StarStar::seed_from_u64(7));
         assert_eq!(c1a, c1b);
         assert_eq!(c2a, c2b);
+    }
+
+    #[test]
+    fn run_ga_mt_is_deterministic() {
+        let spec = Arc::new(parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap());
+        let cfg = Arc::new(GaConfig {
+            pop_size: 20,
+            n_generations: 30,
+            ..GaConfig::default()
+        });
+        let seeds = vec![0u64, 1, 2];
+        let migration_interval = 10;
+
+        let collect = || {
+            let mut h = run_ga_mt(
+                Arc::clone(&spec),
+                Arc::clone(&cfg),
+                seeds.clone(),
+                0,
+                migration_interval,
+            );
+            loop {
+                match h.rx.blocking_recv() {
+                    Some(GaEvent::Done(r)) => break r,
+                    _ => {}
+                }
+            }
+        };
+
+        let r1 = collect();
+        let r2 = collect();
+        assert_eq!(r1.len(), r2.len());
+        for ((s1, i1), (s2, i2)) in r1.iter().zip(r2.iter()) {
+            assert_eq!(s1, s2, "seed order differs");
+            assert_eq!(i1.objective, i2.objective, "objective differs for seed {s1}");
+            assert_eq!(i1.genome, i2.genome, "genome differs for seed {s1}");
+        }
     }
 
     /// GA with cut_promotion_enabled=true must produce non-overlapping, in-bounds placements.
