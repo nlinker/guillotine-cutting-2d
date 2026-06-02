@@ -38,11 +38,16 @@ and this combinatorics makes the problem hard:
   all guillotine-cut subsets. Supports piece rotation.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`.
-- Two **Decoders** (`--decoder slas|glas`):
+- **Island-model GA** — `run_ga_mt` spawns one independent island (population) per seed.
+  Islands evolve in parallel; every `migration_interval` generations they synchronise via a
+  shared barrier, injecting the global best into each island's worst slot.
+  The final result is the best individual found across all islands.
+- Two **Decoders** (`--algorithm slas|glas`):
   - **SLAS** — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic (see [docs/slas.md](docs/slas.md)).
   - **GLAS** (default) — one gene per piece *type*; pieces grouped into Large / Medium / Small classes
     so large pieces are always placed first. Each batch chooses horizontal or vertical strip
     (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
+    See [docs/glas.md](docs/glas.md).
 - **Genome** (GLAS): `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
   inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
   independently within each class.
@@ -129,9 +134,9 @@ fn main() {
     );
     let cfg = Arc::new(GaConfig { pop_size: 200, n_generations: 1000, ..GaConfig::default() });
 
-    // Run 8 independent GA islands (one per seed) in parallel; 0 = no progress events
+    // 8 independent GA islands in parallel; progress_interval=0 (no events), migration_interval=0
     let seeds: Vec<u64> = (0..8).collect();
-    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0);
+    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0, 0);
 
     // Block until all islands finish; results are sorted best-first
     let results = loop {
