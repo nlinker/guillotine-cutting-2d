@@ -173,7 +173,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let spec = parse_problem(&problem)?;
             let table = build_glf(&spec);
             let query_w = spec.sheet.width + spec.kerf;
-            println!("{}", table.display_table(query_w));
+            println!("{}", table.render(query_w));
             if let Some(h) = table.eval_full_set(query_w) {
                 println!("\nMinimum height for width={}: {}", spec.sheet.width, h - spec.kerf);
             } else {

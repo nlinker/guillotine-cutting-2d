@@ -327,7 +327,7 @@ impl GlfTable {
     }
 
     /// Print the full DP table: each non-empty subset, its step function, and f(width).
-    pub fn display_table(&self, width: u32) -> String {
+    pub fn render(&self, width: u32) -> String {
         let total = self.total_subsets();
         // Collect all non-empty subsets, sort by total piece count
         let mut rows = (1..total)
@@ -555,6 +555,17 @@ fn decode_split(ranges: &[u32], mut idx: usize) -> Vec<u32> {
     }
     result
 }
+
+#[allow(dead_code)]
+fn estimate_table_size(pieces: &[Piece], indices: &[usize]) -> usize {
+    let mut counts: HashMap<(u32, u32, bool), usize> = HashMap::new();
+    for &idx in indices {
+        let p = &pieces[idx];
+        *counts.entry((p.width, p.height, p.can_rotate)).or_insert(0) += 1;
+    }
+    counts.values().map(|&c| c + 1).product()
+}
+
 
 #[cfg(test)]
 mod tests {

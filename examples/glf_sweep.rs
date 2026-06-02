@@ -21,6 +21,7 @@ const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
 fn main() {
     let base_spec = parse_problem(SPEC_STR).expect("parse error");
     let glf = build_glf(&base_spec);
+    // println!("{}", glf.render(15));
 
     let (min_w, max_w) = glf.feasible_width_range().expect("problem is infeasible");
 
