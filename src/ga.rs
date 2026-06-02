@@ -422,17 +422,17 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
                     if gb.objective < pop[worst_idx].objective {
                         pop[worst_idx] = gb.clone();
                     }
-                    if mig.idx == 0 {
-                        if let Some(ctx) = ctx {
-                            ctx.tx
-                                .send(GaEvent::Progress(ProgressEvent {
-                                    seed: ctx.seed,
-                                    generation: step + 1,
-                                    objective: gb.objective,
-                                    genome: gb.genome.clone(),
-                                }))
-                                .ok();
-                        }
+                    if mig.idx == 0
+                        && let Some(ctx) = ctx
+                    {
+                        ctx.tx
+                            .send(GaEvent::Progress(ProgressEvent {
+                                seed: ctx.seed,
+                                generation: step + 1,
+                                objective: gb.objective,
+                                genome: gb.genome.clone(),
+                            }))
+                            .ok();
                     }
                 }
             }

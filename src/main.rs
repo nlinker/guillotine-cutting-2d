@@ -323,7 +323,7 @@ fn run_calc_with_sink(
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
-    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
+    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
 
     let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     eprintln!(
@@ -496,7 +496,7 @@ fn run_calc_render(
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
-    let seeds: Vec<u64> = (0..n_threads).map(|_| rng.next_u64()).collect();
+    let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();

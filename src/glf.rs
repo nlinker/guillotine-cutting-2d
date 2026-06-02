@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::{PlacementSpec, ProblemSpec, SolutionSpec};
+use crate::model::{Piece, Placement, PlacementSpec, ProblemSpec, SolutionSpec};
 
 /// A piece type used in the GLF DP table.
 #[derive(Debug, Clone)]
@@ -13,8 +13,8 @@ pub struct GlfType {
 /// Step function f(x; D): sorted by x ascending, heights strictly descending.
 /// Semantics: f(x) = h_i for x ∈ [x_i, x_{i+1}), ∞ for x < x_1.
 /// Empty vec = identically ∞ (infeasible).
-/// Invariants: x_i < x_{i+1} and h_i > h_{i+1} for all i
-/// For example, for `[(1,4),(2,2),(4,1)]` the f graph is
+/// Invariants: x_i < x_{i+1} and h_i > h_{i+1} for all i.
+/// An example: for `[(1,4),(2,2),(4,1)]` the f graph is
 /// ```none
 ///   h
 ///   ↑
@@ -179,32 +179,53 @@ impl GlfTable {
     /// Reconstruct an optimal 1-sheet placement for the full piece set at the given width.
     ///
     /// Returns `None` if the pieces don't fit at this width (GLF is infeasible).
-    /// The returned `SolutionSpec` uses `piece_idx` = index into `ProblemSpec::pieces`.
+    /// The returned `SolutionSpec` uses `piespec_idx` = index into `ProblemSpec::piespecs`,
+    /// as stored by `build_glf` in `type_to_spec`.
     pub fn reconstruct(&self, width: u32) -> Option<SolutionSpec> {
+        let placements = self
+            .reconstruct_flat(width)?
+            .into_iter()
+            .map(|p| PlacementSpec {
+                sheet_idx: 0,
+                piespec_idx: p.piece_idx,
+                x: p.x,
+                y: p.y,
+                rotated: p.rotated,
+            })
+            .collect();
+        Some(SolutionSpec {
+            placements,
+            leftovers: vec![],
+        })
+    }
+
+    /// Reconstruct an optimal 1-sheet placement for the full piece set at the given width.
+    ///
+    /// Returns `None` if the pieces don't fit at this width.
+    /// `piece_idx` values come from the `indices` slice passed to `build_glf_from_flat`;
+    /// `sheet_idx` is always 0.
+    pub fn reconstruct_flat(&self, width: u32) -> Option<Vec<Placement>> {
         let height = self.eval_full_set(width)?;
-        let full: Vec<u32> = self.types.iter().map(|t| t.count).collect();
+        let full = self.types.iter().map(|t| t.count).collect::<Vec<_>>();
         let mut placements = Vec::new();
         let mut used = vec![0usize; self.types.len()];
-        if self.recon(&full, 0, 0, width, height, &mut placements, &mut used) {
+        if self.recon_flat(&full, 0, 0, width, height, &mut placements, &mut used) {
             placements.sort_unstable_by_key(|p| (p.x, p.y));
-            Some(SolutionSpec {
-                placements,
-                leftovers: vec![],
-            })
+            Some(placements)
         } else {
             None
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn recon(
+    fn recon_flat(
         &self,
         counts: &[u32],
         x: u32,
         y: u32,
         width: u32,
         height: u32,
-        placements: &mut Vec<PlacementSpec>,
+        placements: &mut Vec<Placement>,
         used: &mut Vec<usize>,
     ) -> bool {
         let total: u32 = counts.iter().sum();
@@ -216,14 +237,14 @@ impl GlfTable {
                 .iter()
                 .position(|&k| k == 1)
                 .expect("total==1 implies a type with count==1");
-            let spec_idx = self.type_to_spec[ti][used[ti]];
+            let piece_idx = self.type_to_spec[ti][used[ti]];
             used[ti] += 1;
             let rotated = self.types[ti].can_rotate
                 && self.types[ti].width != self.types[ti].height
                 && height == self.types[ti].width;
-            placements.push(PlacementSpec {
+            placements.push(Placement {
                 sheet_idx: 0,
-                piespec_idx: spec_idx,
+                piece_idx,
                 x,
                 y,
                 rotated,
@@ -241,20 +262,19 @@ impl GlfTable {
                 continue;
             }
 
-            let d2: Vec<u32> = counts.iter().zip(&d1).map(|(&k, &a)| k - a).collect();
+            let d2 = counts.iter().zip(&d1).map(|(&k, &a)| k - a).collect::<Vec<_>>();
             let f1 = &self.cells[flat_index_with(&self.strides, &d1)];
             let f2 = &self.cells[flat_index_with(&self.strides, &d2)];
             if f1.is_empty() || f2.is_empty() {
                 continue;
             }
 
-            // H-cut: d1 on top, d2 on bottom
             if let (Some(h1), Some(h2)) = (eval_f(f1, width), eval_f(f2, width))
                 && h1 + h2 == height
             {
                 let snap = (placements.len(), used.clone());
-                if self.recon(&d1, x, y, width, h1, placements, used)
-                    && self.recon(&d2, x, y + h1, width, h2, placements, used)
+                if self.recon_flat(&d1, x, y, width, h1, placements, used)
+                    && self.recon_flat(&d2, x, y + h1, width, h2, placements, used)
                 {
                     return true;
                 }
@@ -262,16 +282,14 @@ impl GlfTable {
                 *used = snap.1;
             }
 
-            // V-cut: d1 on left, d2 on right.
-            // w1+w2 may be < width (unused space on the right is fine).
             if let (Some(w1), Some(w2)) = (eval_f_inv(f1, height), eval_f_inv(f2, height))
                 && w1 + w2 <= width
             {
                 let h1 = eval_f(f1, w1).unwrap_or(height);
                 let h2 = eval_f(f2, w2).unwrap_or(height);
                 let snap = (placements.len(), used.clone());
-                if self.recon(&d1, x, y, w1, h1, placements, used)
-                    && self.recon(&d2, x + w1, y, w2, h2, placements, used)
+                if self.recon_flat(&d1, x, y, w1, h1, placements, used)
+                    && self.recon_flat(&d2, x + w1, y, w2, h2, placements, used)
                 {
                     return true;
                 }
@@ -383,29 +401,61 @@ fn format_step_fn(f: &StepFn) -> String {
 /// Query `eval_full_set` with `spec.sheet.width + spec.kerf` to check feasibility.
 pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
     let k = spec.kerf;
-    // Group piece specs by (width, height) preserving order of first appearance.
-    // Multiple specs with the same dimensions are merged (summing counts).
-    // ProblemSpec is normalized: (width, height, can_rotate) is unique per entry.
+    // One Piece entry per spec type (indexed by piespec_idx).
+    // indices has one entry per physical copy; each value is the piespec_idx,
+    // so build_glf_from_flat accesses pieces[piespec_idx] and stores piespec_idx
+    // in type_to_spec — which reconstruct() then copies into PlacementSpec::piespec_idx.
+    let pieces = spec
+        .piespecs
+        .iter()
+        .map(|ps| Piece {
+            name: String::new(),
+            width: ps.width + k,
+            height: ps.height + k,
+            can_rotate: ps.can_rotate,
+        })
+        .collect::<Vec<_>>();
+    let indices = spec
+        .piespecs
+        .iter()
+        .enumerate()
+        .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))
+        .collect::<Vec<_>>();
+    build_glf_from_flat(&pieces, &indices)
+}
+
+/// Build a GLF table from a subset of flat (kerf-expanded) pieces.
+///
+/// `pieces` is `Problem.pieces`; dimensions are already kerf-expanded — do not add kerf here.
+/// `indices` selects which entries of `pieces` to include (e.g. all `piece_idx` on one sheet).
+///
+/// Use `reconstruct_flat(sheet.width)` on the result to get `Vec<Placement>`
+/// with `piece_idx` values taken directly from `indices`.
+pub fn build_glf_from_flat(pieces: &[Piece], indices: &[usize]) -> GlfTable {
     let mut type_map: HashMap<(u32, u32, bool), usize> = HashMap::new();
     let mut types: Vec<GlfType> = Vec::new();
-    for ps in &spec.piespecs {
-        let key = (ps.width + k, ps.height + k, ps.can_rotate);
+    let mut type_to_spec: Vec<Vec<usize>> = Vec::new();
+
+    for &idx in indices {
+        let p = &pieces[idx];
+        let key = (p.width, p.height, p.can_rotate);
         if let Some(&ti) = type_map.get(&key) {
-            types[ti].count += ps.count;
+            types[ti].count += 1;
+            type_to_spec[ti].push(idx);
         } else {
             let ti = types.len();
             type_map.insert(key, ti);
             types.push(GlfType {
-                width: ps.width + k,
-                height: ps.height + k,
-                count: ps.count,
-                can_rotate: ps.can_rotate,
+                width: p.width,
+                height: p.height,
+                count: 1,
+                can_rotate: p.can_rotate,
             });
+            type_to_spec.push(vec![idx]);
         }
     }
-    let t = types.len();
 
-    // 2. Compute strides: strides[i] = ∏_{j<i} (types[j].count + 1)
+    let t = types.len();
     let mut strides = vec![1usize; t];
     for i in 1..t {
         strides[i] = strides[i - 1] * (types[i - 1].count + 1) as usize;
@@ -418,7 +468,6 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
 
     let mut cells: Vec<StepFn> = vec![vec![]; total];
 
-    // 3. Collect all non-empty subsets sorted by total piece count (BFS order)
     let mut subsets: Vec<(u32, usize, Vec<u32>)> = Vec::with_capacity(total - 1);
     for flat in 1..total {
         let counts = decode_index_with(&types, flat);
@@ -427,10 +476,8 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
     }
     subsets.sort_unstable_by_key(|&(tp, _, _)| tp);
 
-    // 4. Fill DP table
     for (total_pieces, flat, counts) in subsets {
         if total_pieces == 1 {
-            // Base case: find which type has exactly 1 piece
             for (i, &k) in counts.iter().enumerate() {
                 if k == 1 {
                     let f_normal = vec![(types[i].width, types[i].height)];
@@ -443,25 +490,21 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
                 }
             }
         } else {
-            // Enumerate all splits D = D1 ∪ D2
-            // D1 = a[i] pieces of type i, D2 = counts[i] - a[i]
             let mut best: StepFn = vec![];
             let ranges = counts.to_vec();
             let split_count: usize = ranges.iter().map(|&k| (k + 1) as usize).product();
 
             for split_flat in 0..split_count {
-                // Decode split_flat into per-type split (a[i] for D1)
                 let d1_counts = decode_split(&ranges, split_flat);
                 let d1_total: u32 = d1_counts.iter().sum();
                 if d1_total == 0 || d1_total == total_pieces {
-                    continue; // skip empty splits
+                    continue;
                 }
                 let d2_counts = counts.iter().zip(&d1_counts).map(|(&k, &a)| k - a).collect::<Vec<_>>();
 
                 let d1_flat = flat_index_with(&strides, &d1_counts);
                 let d2_flat = flat_index_with(&strides, &d2_counts);
 
-                // Avoid processing (D1, D2) and (D2, D1) twice
                 if d1_flat > d2_flat {
                     continue;
                 }
@@ -478,15 +521,6 @@ pub fn build_glf(spec: &ProblemSpec) -> GlfTable {
                 best = min_fn(&best, &candidate);
             }
             cells[flat] = best;
-        }
-    }
-
-    // Build type_to_spec: for each GLF type, list of spec piece indices (one per copy).
-    let mut type_to_spec: Vec<Vec<usize>> = vec![vec![]; t];
-    for (spec_idx, ps) in spec.piespecs.iter().enumerate() {
-        let ti = type_map[&(ps.width + k, ps.height + k, ps.can_rotate)];
-        for _ in 0..ps.count {
-            type_to_spec[ti].push(spec_idx);
         }
     }
 
@@ -525,7 +559,7 @@ fn decode_split(ranges: &[u32], mut idx: usize) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::parse_problem;
+    use crate::{expand::expand_problem, parse::parse_problem};
 
     #[test]
     fn eval_f_basic() {
@@ -596,5 +630,35 @@ mod tests {
         assert_eq!(table.eval_subset(&[0, 1, 0, 0], 4), Some(3)); // {B} at x=4
         assert_eq!(table.eval_subset(&[0, 0, 1, 0], 8), Some(3)); // {C} at x=8
         assert_eq!(table.eval_subset(&[0, 0, 0, 1], 5), Some(2)); // {D} at x=5
+    }
+
+    #[test]
+    fn build_glf_from_flat_matches_spec() {
+        // kerf=0: Problem dimensions == ProblemSpec dimensions, so both tables must agree.
+        let spec = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
+        let problem = expand_problem(&spec);
+        let indices = (0..problem.pieces.len()).collect::<Vec<_>>();
+        let table_flat = build_glf_from_flat(&problem.pieces, &indices);
+        let table_spec = build_glf(&spec);
+        assert_eq!(
+            table_flat.eval_full_set(spec.sheet.width),
+            table_spec.eval_full_set(spec.sheet.width),
+        );
+    }
+
+    #[test]
+    fn reconstruct_flat_returns_valid_placement() {
+        let spec = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
+        let problem = expand_problem(&spec);
+        let indices = (0..problem.pieces.len()).collect::<Vec<_>>();
+        let table = build_glf_from_flat(&problem.pieces, &indices);
+        let placements = table.reconstruct_flat(spec.sheet.width).expect("must fit at width=10");
+        // All 8 physical pieces placed; piece_idx values are a permutation of 0..8
+        assert_eq!(placements.len(), problem.pieces.len());
+        let mut seen = vec![false; problem.pieces.len()];
+        for pl in &placements {
+            assert!(!seen[pl.piece_idx], "duplicate piece_idx {}", pl.piece_idx);
+            seen[pl.piece_idx] = true;
+        }
     }
 }

@@ -24,8 +24,8 @@ fn main() {
 
     let (min_w, max_w) = glf.feasible_width_range().expect("problem is infeasible");
 
-    let out_dir = Path::new("tmp");
-    fs::create_dir_all(out_dir).expect("failed to create tmp/");
+    let out_dir = Path::new("tmp/glf");
+    fs::create_dir_all(out_dir).expect("failed to create tmp/glf directory");
 
     let ga_cfg = Arc::new(GaConfig {
         pop_size: 200,

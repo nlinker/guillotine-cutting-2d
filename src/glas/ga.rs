@@ -494,8 +494,8 @@ mod tests {
 
     #[test]
     fn ox_at_known() {
-        let p1: Vec<Gene> = (0..5).map(|i| gg(i, 1)).collect();
-        let p2: Vec<Gene> = [3usize, 0, 4, 1, 2].into_iter().map(|i| gg(i, 1)).collect();
+        let p1 = (0..5).map(|i| gg(i, 1)).collect::<Vec<_>>();
+        let p2 = [3usize, 0, 4, 1, 2].into_iter().map(|i| gg(i, 1)).collect::<Vec<_>>();
         let (c1, c2) = ox_at(&p1, &p2, 1, 3, 5);
         assert_eq!(type_ids_flat(&c1), [4, 1, 2, 3, 0]);
         assert_eq!(type_ids_flat(&c2), [2, 0, 4, 3, 1]);

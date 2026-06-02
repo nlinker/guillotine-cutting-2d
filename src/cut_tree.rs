@@ -162,8 +162,12 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
         if pieces.iter().any(|p| p.y < cut_y && p.bottom() > cut_y) {
             continue;
         }
-        let top_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.bottom() <= cut_y).collect();
-        let bot_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.y >= cut_y).collect();
+        let top_pieces = pieces
+            .iter()
+            .copied()
+            .filter(|p| p.bottom() <= cut_y)
+            .collect::<Vec<_>>();
+        let bot_pieces = pieces.iter().copied().filter(|p| p.y >= cut_y).collect::<Vec<_>>();
         if top_pieces.len() + bot_pieces.len() != pieces.len() {
             continue; // some piece straddles the cut (shouldn't happen after the guard above)
         }
@@ -202,8 +206,12 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
         if pieces.iter().any(|p| p.x < cut_x && p.right() > cut_x) {
             continue;
         }
-        let left_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.right() <= cut_x).collect();
-        let right_pieces: Vec<PlacedPiece> = pieces.iter().copied().filter(|p| p.x >= cut_x).collect();
+        let left_pieces = pieces
+            .iter()
+            .copied()
+            .filter(|p| p.right() <= cut_x)
+            .collect::<Vec<_>>();
+        let right_pieces = pieces.iter().copied().filter(|p| p.x >= cut_x).collect::<Vec<_>>();
         if left_pieces.len() + right_pieces.len() != pieces.len() {
             continue;
         }
