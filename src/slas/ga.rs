@@ -1,311 +1,74 @@
-use std::sync::{
-    Arc, Barrier, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+﻿use std::sync::Arc;
 
-use rand::{Rng, SeedableRng};
-use rand_xoshiro::Xoshiro256StarStar;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use rand::Rng;
 
-use super::decoder::{Gene, Genome, decode};
+pub use crate::ga::{GaEvent, GaHandle, ProgressEvent, select_elite, tournament_select};
 use crate::{
     expand::expand_problem,
-    ga::GaConfig,
+    ga::{self, GaConfig, GaDecoder},
     model::{Objective, Problem, ProblemSpec},
+    slas::decoder::{Gene, Genome, decode},
 };
 
-/// A genome paired with its cached fitness value to avoid re-decoding during selection.
-#[derive(Debug, Clone)]
-pub struct Individual {
-    pub genome: Genome,
-    pub objective: Objective,
+/// Concrete individual type for the SLAS decoder.
+pub type Individual = crate::ga::Individual<Genome>;
+
+/// SLAS GA decoder. Owns the expanded (flat) problem.
+pub struct SlasDecoder {
+    pub problem: Arc<Problem>,
 }
 
-/// Progress snapshot emitted every `progress_interval` generations (passed to `run_ga_mt`).
-/// Contains the current global best across all islands.
-#[derive(Debug, Clone)]
-pub struct ProgressEvent {
-    pub seed: u64,
-    pub generation: usize,
-    pub genome: Genome,
-    pub objective: Objective,
-}
+impl GaDecoder for SlasDecoder {
+    type Genome = Genome;
 
-/// Event delivered from the GA to the caller via `GaHandle`.
-#[derive(Debug)]
-pub enum GaEvent {
-    /// Emitted every `progress_interval` generations with the current global best.
-    Progress(ProgressEvent),
-    /// Emitted once when all islands finish; carries results sorted by objective.
-    Done(Vec<(u64, Individual)>),
-}
+    fn random_genome<R: Rng>(&self, _config: &GaConfig, rng: &mut R) -> Genome {
+        make_genome(self.problem.pieces.len(), rng)
+    }
 
-/// Caller-facing handle for observing and stopping a running GA.
-///
-/// Dropping the handle requests early termination - useful when an SSE client disconnects.
-pub struct GaHandle {
-    pub rx: UnboundedReceiver<GaEvent>,
-    stop: Arc<AtomicBool>,
-}
+    fn eval(&self, genome: &Genome) -> Objective {
+        decode(&self.problem, genome).eval(&self.problem)
+    }
 
-impl GaHandle {
-    pub fn stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
+    fn crossover<R: Rng>(&self, p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
+        ox_crossover(p1, p2, rng)
+    }
+
+    fn mutate<R: Rng>(&self, genome: &mut Genome, config: &GaConfig, rng: &mut R) {
+        mutate(
+            genome,
+            config.swap_p,
+            config.flip_p,
+            config.point_p,
+            config.point_delta,
+            config.inverse_p,
+            rng,
+        );
     }
 }
 
-impl Drop for GaHandle {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
-
-/// Internal per-thread GA context.
-pub struct GaContext {
-    tx: UnboundedSender<GaEvent>,
-    stop: Arc<AtomicBool>,
-    pub progress_interval: usize,
-    pub seed: u64,
-}
-
-impl Clone for GaContext {
-    fn clone(&self) -> Self {
-        GaContext {
-            tx: self.tx.clone(),
-            stop: Arc::clone(&self.stop),
-            progress_interval: self.progress_interval,
-            seed: self.seed,
-        }
-    }
-}
-
-/// Shared state for barrier-based migration in `run_ga_mt`.
-///
-/// All N threads synchronize every `interval` generations via two barriers:
-/// - `barrier1`: all threads have written their best individual to their slot
-/// - `barrier2`: all threads have read the global best and injected it
-///
-/// Stop flag is checked only after `barrier2` to avoid deadlocks.
-struct SyncMigration<'a> {
-    bests: &'a [Mutex<Option<Individual>>],
-    barrier1: &'a Barrier,
-    barrier2: &'a Barrier,
-    idx: usize,
-    interval: usize,
-}
-
-fn ga_channel(progress_interval: usize) -> (GaHandle, GaContext) {
-    let (tx, rx) = mpsc::unbounded_channel();
-    let stop = Arc::new(AtomicBool::new(false));
-    let handle = GaHandle {
-        rx,
-        stop: Arc::clone(&stop),
-    };
-    let context = GaContext {
-        tx,
-        stop,
-        progress_interval,
-        seed: 0,
-    };
-    (handle, context)
-}
-
-/// Runs the GA for `config.n_generations` and returns the best `Individual` found.
-///
-/// Each generation: elite individuals are carried over unchanged; the remainder is
-/// filled by tournament selection -> OX crossover (with probability `crossover_p`) ->
-/// mutation -> decode. The running best is tracked independently of elitism so that
-/// `n_elite = 0` still returns a valid result.
-///
-/// The returned `Individual.genome` contains flat piece indices (0..total_pieces).
-/// Use `cutting::slas::decoder::decode_spec` to convert to a type-indexed `SolutionSpec`.
+/// Single-threaded SLAS GA. Takes a flat `Problem` (already expanded from spec).
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
-    run_ga_inner(problem, config, None, None, rng)
+    let decoder = SlasDecoder {
+        problem: Arc::new(problem.clone()),
+    };
+    ga::run_ga(&decoder, config, rng)
 }
 
-/// Inner GA loop shared by `run_ga` and `run_ga_mt`.
-///
-/// When `migration` is `Some`, every `migration.interval` generations all threads
-/// synchronize via two barriers, exchange best individuals, then continue.
-/// The stop flag is checked only after `barrier2` to prevent deadlocks.
-fn run_ga_inner<R: Rng>(
-    problem: &Problem,
-    config: &GaConfig,
-    migration: Option<SyncMigration<'_>>,
-    ctx: Option<&GaContext>,
-    rng: &mut R,
-) -> Individual {
-    let mut pop = init_population(problem, config.pop_size, rng);
-    let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
-
-    for step in 0..config.n_generations {
-        let elite = select_elite(&pop, config.n_elite);
-        let mut next_pop = elite;
-
-        while next_pop.len() < config.pop_size {
-            let p1 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
-            let p2 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
-
-            let (mut g1, mut g2) = if rng_01(rng) < config.crossover_p {
-                ox_crossover(&p1, &p2, rng)
-            } else {
-                (p1, p2)
-            };
-
-            mutate(
-                &mut g1,
-                config.swap_p,
-                config.flip_p,
-                config.point_p,
-                config.point_delta,
-                config.inverse_p,
-                rng,
-            );
-            let sol1 = decode(problem, &g1);
-            next_pop.push(Individual {
-                genome: g1,
-                objective: sol1.eval(problem),
-            });
-
-            if next_pop.len() < config.pop_size {
-                mutate(
-                    &mut g2,
-                    config.swap_p,
-                    config.flip_p,
-                    config.point_p,
-                    config.point_delta,
-                    config.inverse_p,
-                    rng,
-                );
-                let sol2 = decode(problem, &g2);
-                next_pop.push(Individual {
-                    genome: g2,
-                    objective: sol2.eval(problem),
-                });
-            }
-        }
-
-        pop = next_pop;
-        let gen_best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
-        if gen_best.objective < best.objective {
-            best = gen_best;
-        }
-
-        if let Some(ref mig) = migration
-            && mig.interval > 0
-            && (step + 1) % mig.interval == 0
-        {
-            // Phase 1: write current best into own slot
-            {
-                let mut slot = mig.bests[mig.idx].lock().expect("migration slot poisoned");
-                if slot.as_ref().is_none_or(|g| best.objective < g.objective) {
-                    *slot = Some(best.clone());
-                }
-            }
-            mig.barrier1.wait(); // all slots written
-
-            // Phase 2: read global best, inject into worst, send progress event
-            {
-                let global = mig
-                    .bests
-                    .iter()
-                    .filter_map(|s| s.lock().expect("migration slot poisoned").clone())
-                    .min_by_key(|i| i.objective);
-                if let Some(gb) = global {
-                    let worst_idx = pop
-                        .iter()
-                        .enumerate()
-                        .max_by_key(|(_, i)| i.objective)
-                        .map(|(i, _)| i)
-                        .expect("pop is non-empty");
-                    if gb.objective < pop[worst_idx].objective {
-                        pop[worst_idx] = gb.clone();
-                    }
-                    if let Some(ctx) = ctx {
-                        ctx.tx
-                            .send(GaEvent::Progress(ProgressEvent {
-                                seed: ctx.seed,
-                                generation: step + 1,
-                                objective: gb.objective,
-                                genome: gb.genome.clone(),
-                            }))
-                            .ok();
-                    }
-                }
-            }
-            mig.barrier2.wait(); // all threads done reading; safe to start next epoch
-
-            // Check stop only after both barriers to avoid deadlock
-            if ctx.is_some_and(|c| c.stop.load(Ordering::Relaxed)) {
-                break;
-            }
-        }
-    }
-
-    best
-}
-
-/// Spawns the GA in a background thread and returns a `GaHandle` immediately.
-///
-/// Events arrive through `handle.rx`: `GaEvent::Progress` every `migration_interval`
-/// generations (when `migration_interval > 0`) and `GaEvent::Done` when all islands finish.
-/// Dropping the handle (or calling `handle.stop()`) requests early termination.
-///
-/// `migration_interval = 0` disables migration entirely (independent islands).
-/// With `migration_interval > 0` all islands synchronize at a global barrier every N
-/// generations and share the best individual, which makes results fully deterministic:
-/// identical seeds + identical config always produce identical output.
+/// Multi-threaded SLAS GA. Takes a `ProblemSpec` (expanded internally).
 pub fn run_ga_mt(
     spec: Arc<ProblemSpec>,
     config: Arc<GaConfig>,
     seeds: Vec<u64>,
     progress_interval: usize,
     migration_interval: usize,
-) -> GaHandle {
-    let (handle, ctx) = ga_channel(progress_interval);
-    std::thread::spawn(move || {
-        let flat = Arc::new(expand_problem(&spec));
-        let n = seeds.len();
-        let bests: Vec<Mutex<Option<Individual>>> = (0..n).map(|_| Mutex::new(None)).collect();
-        let barrier1 = Barrier::new(n);
-        let barrier2 = Barrier::new(n);
-        let p = &*flat;
-        let c = &*config;
-        let mut results: Vec<(u64, Individual)> = std::thread::scope(|s| {
-            seeds
-                .iter()
-                .enumerate()
-                .map(|(idx, &seed)| {
-                    let mig = if migration_interval > 0 && n > 1 {
-                        Some(SyncMigration {
-                            bests: &bests,
-                            barrier1: &barrier1,
-                            barrier2: &barrier2,
-                            idx,
-                            interval: migration_interval,
-                        })
-                    } else {
-                        None
-                    };
-                    let thread_ctx = GaContext { seed, ..ctx.clone() };
-                    s.spawn(move || {
-                        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
-                        let individual = run_ga_inner(p, c, mig, Some(&thread_ctx), &mut rng);
-                        (seed, individual)
-                    })
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|h| h.join().expect("GA thread panicked"))
-                .collect()
-        });
-        results.sort_by_key(|(_, ind)| ind.objective);
-        ctx.tx.send(GaEvent::Done(results)).ok();
+) -> GaHandle<Genome> {
+    let decoder = Arc::new(SlasDecoder {
+        problem: Arc::new(expand_problem(&spec)),
     });
-    handle
+    ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
-/// OX (Ordered Crossover) for two genomes.
+/// OX (Ordered Crossover) for two SLAS genomes.
 ///
 /// A random segment `[lo, hi)` is copied from each donor into the corresponding child;
 /// the remaining positions are filled from the other parent in order starting at `hi`
@@ -355,7 +118,7 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
 
-/// CX (Cycle Crossover) for two genomes. No RNG required - cycle structure is
+/// CX (Cycle Crossover) for two SLAS genomes. No RNG required - cycle structure is
 /// fully determined by the two parents.
 ///
 /// Each `piece_idx` value appears exactly once in the genome (bijection).
@@ -405,8 +168,6 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
         odd = !odd;
     }
 
-    // Even cycles: C1 <- P1, C2 <- P2 (already correct from clone)
-    // Odd cycles:  C1 <- P2, C2 <- P1
     let mut c1 = p1.clone();
     let mut c2 = p2.clone();
     for i in 0..n {
@@ -419,7 +180,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
     (c1, c2)
 }
 
-/// Mutate a genome in-place. For each gene, independently:
+/// Mutate a SLAS genome in-place. For each gene, independently:
 /// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
 /// - with probability `flip_p`: flip `rotate`
 /// - with probability `point_p`: nudge `point_selector` by +/-`point_delta` wrapping
@@ -460,46 +221,7 @@ pub fn mutate<R: Rng>(
     }
 }
 
-/// Returns the `n_elite` individuals with the lowest objective (lower is better),
-/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
-pub fn select_elite(individuals: &[Individual], n_elite: usize) -> Vec<Individual> {
-    let mut ranked = individuals.iter().collect::<Vec<_>>();
-    ranked.sort_unstable_by_key(|ind| ind.objective);
-    ranked.into_iter().take(n_elite).cloned().collect()
-}
-
-/// Picks `k` individuals at random and returns the one with the lowest objective.
-pub fn tournament_select<'a, R: Rng>(individuals: &'a [Individual], k: usize, rng: &mut R) -> &'a Individual {
-    let n = individuals.len();
-    debug_assert!(k >= 1 && k <= n);
-    let first = (rng.next_u64() as usize) % n;
-    let mut best = &individuals[first];
-    for _ in 1..k {
-        let idx = (rng.next_u64() as usize) % n;
-        if individuals[idx].objective < best.objective {
-            best = &individuals[idx];
-        }
-    }
-    best
-}
-
-/// Generates `size` random individuals, each with a shuffled genome and a freshly computed
-/// objective.
-pub fn init_population<R: Rng>(problem: &Problem, size: usize, rng: &mut R) -> Vec<Individual> {
-    let n = problem.pieces.len();
-    (0..size)
-        .map(|_| {
-            let genome = random_genome(n, rng);
-            let sol = decode(problem, &genome);
-            Individual {
-                genome,
-                objective: sol.eval(problem),
-            }
-        })
-        .collect()
-}
-
-fn random_genome<R: Rng>(n: usize, rng: &mut R) -> Genome {
+fn make_genome<R: Rng>(n: usize, rng: &mut R) -> Genome {
     let mut indices = (0..n).collect::<Vec<_>>();
     for i in (1..n).rev() {
         let j = (rng.next_u64() as usize) % (i + 1);
@@ -546,6 +268,32 @@ mod tests {
         v.sort_unstable();
         v
     }
+
+    fn ind(piece_idx: usize, objective: crate::model::Objective) -> Individual {
+        Individual {
+            genome: vec![g(piece_idx)],
+            objective,
+        }
+    }
+
+    fn default_config() -> GaConfig {
+        GaConfig {
+            pop_size: 20,
+            n_generations: 10,
+            n_elite: 1,
+            tournament_k: 2,
+            crossover_p: 0.8,
+            swap_p: 0.1,
+            flip_p: 0.05,
+            point_p: 0.05,
+            point_delta: (1, 3),
+            inverse_p: 0.05,
+            long_dim_threshold: 0,
+            large_area_threshold: 0,
+        }
+    }
+
+    // --- mutate ---
 
     #[test]
     fn mutate_preserves_permutation() {
@@ -637,6 +385,8 @@ mod tests {
         assert_eq!(g1, g2);
     }
 
+    // --- selection ---
+
     #[test]
     fn tournament_full_k_returns_best() {
         let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
@@ -656,70 +406,6 @@ mod tests {
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         assert_eq!(w1.objective, w2.objective);
-    }
-
-    #[test]
-    fn init_population_size_and_valid_permutations() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
-        let flat = expand_problem(&spec);
-        let n = flat.pieces.len();
-        let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let pop = init_population(&flat, 20, &mut rng);
-        assert_eq!(pop.len(), 20);
-        for ind in &pop {
-            assert_eq!(sorted_ids(&ind.genome), (0..n).collect::<Vec<_>>());
-        }
-    }
-
-    #[test]
-    fn init_population_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
-        let flat = expand_problem(&spec);
-        let pop1 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
-        let pop2 = init_population(&flat, 5, &mut Xoshiro256StarStar::seed_from_u64(7));
-        assert!(pop1.iter().zip(&pop2).all(|(a, b)| a.genome == b.genome));
-    }
-
-    fn default_config() -> GaConfig {
-        GaConfig {
-            pop_size: 20,
-            n_generations: 10,
-            n_elite: 1,
-            tournament_k: 2,
-            crossover_p: 0.8,
-            swap_p: 0.1,
-            flip_p: 0.05,
-            point_p: 0.05,
-            point_delta: (1, 3),
-            inverse_p: 0.05,
-            long_dim_threshold: 0,
-            large_area_threshold: 0,
-        }
-    }
-
-    #[test]
-    fn run_ga_smoke() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
-        let problem = expand_problem(&spec);
-        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let _best = run_ga(&problem, &default_config(), &mut rng);
-    }
-
-    #[test]
-    fn run_ga_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
-        let problem = expand_problem(&spec);
-        let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
-        let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
-        assert_eq!(b1.objective, b2.objective);
-        assert_eq!(b1.genome, b2.genome);
-    }
-
-    fn ind(piece_idx: usize, objective: Objective) -> Individual {
-        Individual {
-            genome: vec![g(piece_idx)],
-            objective,
-        }
     }
 
     #[test]
@@ -753,12 +439,41 @@ mod tests {
         assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 3));
     }
 
+    // --- genome generation ---
+
+    #[test]
+    fn random_genome_valid_permutation() {
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let flat = expand_problem(&spec);
+        let n = flat.pieces.len();
+        let decoder = SlasDecoder {
+            problem: Arc::new(flat),
+        };
+        let cfg = default_config();
+        let mut rng = Xoshiro256StarStar::seed_from_u64(99);
+        for _ in 0..20 {
+            let genome = decoder.random_genome(&cfg, &mut rng);
+            assert_eq!(sorted_ids(&genome), (0..n).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn random_genome_is_deterministic() {
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
+        let flat = expand_problem(&spec);
+        let decoder = SlasDecoder {
+            problem: Arc::new(flat),
+        };
+        let cfg = default_config();
+        let g1 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
+        let g2 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
+        assert_eq!(g1, g2);
+    }
+
+    // --- CX crossover ---
+
     #[test]
     fn cx_known() {
-        // P1=[0,1,2,3,4], P2=[3,0,4,1,2]
-        // cycle 0 (even): positions {0,3,1} - trace: 0->pos_of(3)=3->pos_of(1)=1->pos_of(0)=0
-        // cycle 1 (odd):  positions {2,4}   - trace: 2->pos_of(4)=4->pos_of(2)=2
-        // C1 = [0,1,4,3,2],  C2 = [3,0,2,1,4]
         let p1: Genome = (0..5usize).map(g).collect();
         let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();
         let (c1, c2) = cx_crossover(&p1, &p2);
@@ -778,11 +493,6 @@ mod tests {
 
     #[test]
     fn cx_identity_parent_gives_self() {
-        // P1 = identity -> cycles are all singletons, alternating parity
-        // Each position i: pos_in_p1[P2[i]] = P2[i] (since P1 is identity)
-        // So cycle of pos i is just {i}, parity alternates 0,1,0,1,...
-        // C1: even positions from P1, odd from P2
-        // C2: even positions from P2, odd from P1
         let n = 6;
         let p1: Genome = (0..n).map(g).collect();
         let p2: Genome = [5, 4, 3, 2, 1, 0].into_iter().map(g).collect();
@@ -791,17 +501,10 @@ mod tests {
         assert_eq!(sorted_ids(&c2), (0..n).collect::<Vec<_>>());
     }
 
+    // --- OX crossover ---
+
     #[test]
     fn ox_at_known() {
-        // p1=[0,1,2,3,4], p2=[3,0,4,1,2], segment [lo=1, hi=3)
-        //
-        // child1: segment from p1 -> [_,1,2,_,_]
-        //   filler p2 from pos 3: 1(skip),2(skip),3,0,4 -> fill [3,4,0] with [3,0,4]
-        //   -> [4,1,2,3,0]
-        //
-        // child2: segment from p2 -> [_,0,4,_,_]
-        //   filler p1 from pos 3: 3,4(skip),0(skip),1,2 -> fill [3,4,0] with [3,1,2]
-        //   -> [2,0,4,3,1]
         let p1: Genome = (0..5usize).map(g).collect();
         let p2: Genome = [3, 0, 4, 1, 2].into_iter().map(g).collect();
         let (c1, c2) = ox_at(&p1, &p2, 1, 3);
@@ -836,6 +539,26 @@ mod tests {
         assert_eq!(c2a, c2b);
     }
 
+    // --- run_ga ---
+
+    #[test]
+    fn run_ga_smoke() {
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let problem = expand_problem(&spec);
+        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
+        let _best = run_ga(&problem, &default_config(), &mut rng);
+    }
+
+    #[test]
+    fn run_ga_is_deterministic() {
+        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let problem = expand_problem(&spec);
+        let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
+        let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
+        assert_eq!(b1.objective, b2.objective);
+        assert_eq!(b1.genome, b2.genome);
+    }
+
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap());
@@ -845,16 +568,9 @@ mod tests {
             ..GaConfig::default()
         });
         let seeds = vec![0u64, 1, 2];
-        let migration_interval = 10;
 
         let collect = || {
-            let mut h = run_ga_mt(
-                Arc::clone(&spec),
-                Arc::clone(&cfg),
-                seeds.clone(),
-                0,
-                migration_interval,
-            );
+            let mut h = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.clone(), 0, 10);
             loop {
                 match h.rx.blocking_recv() {
                     Some(GaEvent::Done(r)) => break r,
@@ -873,8 +589,7 @@ mod tests {
         }
     }
 
-    /// GA with cut_promotion_enabled=true must produce non-overlapping, in-bounds placements.
-    /// Uses the GLF-15 piece set at widths that previously triggered promotion bugs.
+    /// GA solutions must be non-overlapping and in-bounds.
     #[test]
     fn ga_cut_promotion_solutions_are_valid() {
         let specs = [

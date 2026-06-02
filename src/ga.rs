@@ -1,4 +1,16 @@
-use std::fmt;
+﻿use std::{
+    fmt,
+    sync::{
+        Arc, Barrier, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+
+use crate::model::Objective;
 
 /// GA hyperparameters.
 #[derive(Debug, Clone)]
@@ -19,7 +31,7 @@ pub struct GaConfig {
     /// Typical value: 2-5.
     pub tournament_k: usize,
 
-    /// Probability that two parents produce children via OX crossover.
+    /// Probability that two parents produce children via crossover.
     /// With probability `1 - crossover_p` children are clones of their parents.
     /// Typical value: 0.7-0.9.
     pub crossover_p: f64,
@@ -102,4 +114,314 @@ impl Default for GaConfig {
             large_area_threshold: 0,
         }
     }
+}
+
+/// Encapsulates genome representation and genetic operators for one decoder variant.
+///
+/// Implementors (SlasDecoder, GlasDecoder, ...) own the problem data they need and
+/// expose a uniform interface to the generic GA loop. The trait has no knowledge of
+/// ProblemSpec / SolutionSpec -- those are wire types handled by the caller.
+pub trait GaDecoder {
+    type Genome: Clone + Send + 'static;
+
+    fn random_genome<R: Rng>(&self, config: &GaConfig, rng: &mut R) -> Self::Genome;
+    fn eval(&self, genome: &Self::Genome) -> Objective;
+    fn crossover<R: Rng>(&self, p1: &Self::Genome, p2: &Self::Genome, rng: &mut R) -> (Self::Genome, Self::Genome);
+    fn mutate<R: Rng>(&self, genome: &mut Self::Genome, config: &GaConfig, rng: &mut R);
+}
+
+#[derive(Debug, Clone)]
+pub struct Individual<G> {
+    pub genome: G,
+    pub objective: Objective,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProgressEvent<G> {
+    pub seed: u64,
+    pub generation: usize,
+    pub genome: G,
+    pub objective: Objective,
+}
+
+#[derive(Debug)]
+pub enum GaEvent<G: Clone + Send + 'static> {
+    Progress(ProgressEvent<G>),
+    Done(Vec<(u64, Individual<G>)>),
+}
+
+/// Caller-facing handle for observing and stopping a running GA.
+///
+/// Dropping the handle requests early termination.
+pub struct GaHandle<G: Clone + Send + 'static> {
+    pub rx: UnboundedReceiver<GaEvent<G>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl<G: Clone + Send + 'static> GaHandle<G> {
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+impl<G: Clone + Send + 'static> Drop for GaHandle<G> {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+struct GaContext<G: Clone + Send + 'static> {
+    tx: UnboundedSender<GaEvent<G>>,
+    stop: Arc<AtomicBool>,
+    progress_interval: usize,
+    seed: u64,
+}
+
+impl<G: Clone + Send + 'static> Clone for GaContext<G> {
+    fn clone(&self) -> Self {
+        GaContext {
+            tx: self.tx.clone(),
+            stop: Arc::clone(&self.stop),
+            progress_interval: self.progress_interval,
+            seed: self.seed,
+        }
+    }
+}
+
+/// Shared state for barrier-based migration in `run_ga_mt`.
+///
+/// All N threads synchronize every `interval` generations via two barriers:
+/// - `barrier1`: all threads have written their best individual to their slot
+/// - `barrier2`: all threads have read the global best and injected it
+///
+/// Stop flag is checked only after `barrier2` to avoid deadlocks.
+struct SyncMigration<'a, G: Clone + Send + 'static> {
+    bests: &'a [Mutex<Option<Individual<G>>>],
+    barrier1: &'a Barrier,
+    barrier2: &'a Barrier,
+    idx: usize,
+    interval: usize,
+}
+
+fn ga_channel<G: Clone + Send + 'static>(progress_interval: usize) -> (GaHandle<G>, GaContext<G>) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let handle = GaHandle {
+        rx,
+        stop: Arc::clone(&stop),
+    };
+    let context = GaContext {
+        tx,
+        stop,
+        progress_interval,
+        seed: 0,
+    };
+    (handle, context)
+}
+
+fn rng_01<R: Rng>(rng: &mut R) -> f64 {
+    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
+}
+
+/// Returns the `n_elite` individuals with the lowest objective (lower is better),
+/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
+pub fn select_elite<G: Clone>(individuals: &[Individual<G>], n_elite: usize) -> Vec<Individual<G>> {
+    let mut ranked: Vec<&Individual<G>> = individuals.iter().collect();
+    ranked.sort_unstable_by_key(|ind| ind.objective);
+    ranked.into_iter().take(n_elite).cloned().collect()
+}
+
+/// Picks `k` individuals at random and returns the one with the lowest objective.
+pub fn tournament_select<'a, G, R: Rng>(individuals: &'a [Individual<G>], k: usize, rng: &mut R) -> &'a Individual<G> {
+    let n = individuals.len();
+    debug_assert!(k >= 1 && k <= n);
+    let first = (rng.next_u64() as usize) % n;
+    let mut best = &individuals[first];
+    for _ in 1..k {
+        let idx = (rng.next_u64() as usize) % n;
+        if individuals[idx].objective < best.objective {
+            best = &individuals[idx];
+        }
+    }
+    best
+}
+
+/// Runs the GA for `config.n_generations` and returns the best individual found.
+pub fn run_ga<D: GaDecoder, R: Rng>(decoder: &D, config: &GaConfig, rng: &mut R) -> Individual<D::Genome> {
+    run_ga_inner(decoder, config, None, None, rng)
+}
+
+/// Spawns the GA on multiple threads (one per seed) and returns a `GaHandle`.
+///
+/// Events arrive through `handle.rx`: `GaEvent::Progress` every `migration_interval`
+/// generations (when `migration_interval > 0`) and `GaEvent::Done` when all islands finish.
+/// Dropping the handle requests early termination.
+///
+/// `migration_interval = 0` disables migration entirely (independent islands).
+/// With `migration_interval > 0` all islands synchronize at a global barrier every N
+/// generations and share the best individual, which makes results fully deterministic:
+/// identical seeds + identical config always produce identical output.
+pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
+    decoder: Arc<D>,
+    config: Arc<GaConfig>,
+    seeds: Vec<u64>,
+    progress_interval: usize,
+    migration_interval: usize,
+) -> GaHandle<D::Genome> {
+    let (handle, ctx) = ga_channel::<D::Genome>(progress_interval);
+    std::thread::spawn(move || {
+        let n = seeds.len();
+        let bests: Vec<Mutex<Option<Individual<D::Genome>>>> = (0..n).map(|_| Mutex::new(None)).collect();
+        let barrier1 = Barrier::new(n);
+        let barrier2 = Barrier::new(n);
+        let d = &*decoder;
+        let c = &*config;
+        let mut results: Vec<(u64, Individual<D::Genome>)> = std::thread::scope(|s| {
+            seeds
+                .iter()
+                .enumerate()
+                .map(|(idx, &seed)| {
+                    let mig = if migration_interval > 0 && n > 1 {
+                        Some(SyncMigration {
+                            bests: &bests,
+                            barrier1: &barrier1,
+                            barrier2: &barrier2,
+                            idx,
+                            interval: migration_interval,
+                        })
+                    } else {
+                        None
+                    };
+                    let thread_ctx = GaContext { seed, ..ctx.clone() };
+                    s.spawn(move || {
+                        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+                        let individual = run_ga_inner(d, c, mig, Some(&thread_ctx), &mut rng);
+                        (seed, individual)
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|h| h.join().expect("GA thread panicked"))
+                .collect()
+        });
+        results.sort_by_key(|(_, ind)| ind.objective);
+        ctx.tx.send(GaEvent::Done(results)).ok();
+    });
+    handle
+}
+
+fn init_population<D: GaDecoder, R: Rng>(
+    decoder: &D,
+    config: &GaConfig,
+    size: usize,
+    rng: &mut R,
+) -> Vec<Individual<D::Genome>> {
+    (0..size)
+        .map(|_| {
+            let genome = decoder.random_genome(config, rng);
+            let objective = decoder.eval(&genome);
+            Individual { genome, objective }
+        })
+        .collect()
+}
+
+fn run_ga_inner<D: GaDecoder, R: Rng>(
+    decoder: &D,
+    config: &GaConfig,
+    migration: Option<SyncMigration<'_, D::Genome>>,
+    ctx: Option<&GaContext<D::Genome>>,
+    rng: &mut R,
+) -> Individual<D::Genome> {
+    let mut pop = init_population(decoder, config, config.pop_size, rng);
+    let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
+
+    for step in 0..config.n_generations {
+        let elite = select_elite(&pop, config.n_elite);
+        let mut next_pop = elite;
+
+        while next_pop.len() < config.pop_size {
+            let p1 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
+            let p2 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
+
+            let (mut g1, mut g2) = if rng_01(rng) < config.crossover_p {
+                decoder.crossover(&p1, &p2, rng)
+            } else {
+                (p1, p2)
+            };
+
+            decoder.mutate(&mut g1, config, rng);
+            let obj1 = decoder.eval(&g1);
+            next_pop.push(Individual {
+                genome: g1,
+                objective: obj1,
+            });
+
+            if next_pop.len() < config.pop_size {
+                decoder.mutate(&mut g2, config, rng);
+                let obj2 = decoder.eval(&g2);
+                next_pop.push(Individual {
+                    genome: g2,
+                    objective: obj2,
+                });
+            }
+        }
+
+        pop = next_pop;
+        let gen_best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
+        if gen_best.objective < best.objective {
+            best = gen_best;
+        }
+
+        if let Some(ref mig) = migration
+            && mig.interval > 0
+            && (step + 1) % mig.interval == 0
+        {
+            // Phase 1: write current best into own slot
+            {
+                let mut slot = mig.bests[mig.idx].lock().expect("migration slot poisoned");
+                if slot.as_ref().is_none_or(|g| best.objective < g.objective) {
+                    *slot = Some(best.clone());
+                }
+            }
+            mig.barrier1.wait(); // all slots written
+
+            // Phase 2: read global best, inject into worst, send progress event
+            {
+                let global = mig
+                    .bests
+                    .iter()
+                    .filter_map(|s| s.lock().expect("migration slot poisoned").clone())
+                    .min_by_key(|i| i.objective);
+                if let Some(gb) = global {
+                    let worst_idx = pop
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(_, i)| i.objective)
+                        .map(|(i, _)| i)
+                        .expect("pop is non-empty");
+                    if gb.objective < pop[worst_idx].objective {
+                        pop[worst_idx] = gb.clone();
+                    }
+                    if let Some(ctx) = ctx {
+                        ctx.tx
+                            .send(GaEvent::Progress(ProgressEvent {
+                                seed: ctx.seed,
+                                generation: step + 1,
+                                objective: gb.objective,
+                                genome: gb.genome.clone(),
+                            }))
+                            .ok();
+                    }
+                }
+            }
+            mig.barrier2.wait(); // all threads done reading; safe to start next epoch
+
+            // Check stop only after both barriers to avoid deadlock
+            if ctx.is_some_and(|c| c.stop.load(Ordering::Relaxed)) {
+                break;
+            }
+        }
+    }
+
+    best
 }

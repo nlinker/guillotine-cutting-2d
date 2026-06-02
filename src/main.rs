@@ -6,6 +6,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cutting::{
+    ga,
     ga::GaConfig,
     glas::ga as glas_ga,
     glf::build_glf,
@@ -218,31 +219,32 @@ struct AnyHandle {
     rx: mpsc::UnboundedReceiver<AnyEvent>,
 }
 
-/// Convert a flat slas `GaHandle` into an `AnyHandle`. A bridge thread forwards
-/// events, wrapping each genome in a lazy `slas::decoder::decode_spec` closure.
-fn slas_handle_to_any(handle: slas_ga::GaHandle) -> AnyHandle {
+/// Converts a `GaHandle<G>` into an `AnyHandle`. A bridge thread forwards events,
+/// wrapping each genome in a lazy closure produced by `decode`.
+fn ga_handle_to_any<G, F>(mut handle: ga::GaHandle<G>, decode: F) -> AnyHandle
+where
+    G: Clone + Send + 'static,
+    F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
+{
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
     std::thread::spawn(move || {
-        let mut handle = handle;
         while let Some(evt) = handle.rx.blocking_recv() {
             let any = match evt {
-                slas_ga::GaEvent::Progress(p) => {
-                    let genome = p.genome;
+                ga::GaEvent::Progress(p) => {
+                    let (genome, f) = (p.genome, decode.clone());
                     AnyEvent::Progress {
                         seed: p.seed,
                         generation: p.generation,
                         objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| cutting::slas::decoder::decode_spec(spec, &genome))),
+                        lazy: LazyDecode(Box::new(move |spec| f(&genome, spec))),
                     }
                 }
-                slas_ga::GaEvent::Done(results) => AnyEvent::Done {
+                ga::GaEvent::Done(results) => AnyEvent::Done {
                     results: results
                         .into_iter()
                         .map(|(seed, ind)| {
-                            let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy =
-                                LazyDecode(Box::new(move |spec| cutting::slas::decoder::decode_spec(spec, &genome)));
-                            (seed, obj, lazy)
+                            let (genome, f) = (ind.genome, decode.clone());
+                            (seed, ind.objective, LazyDecode(Box::new(move |spec| f(&genome, spec))))
                         })
                         .collect(),
                 },
@@ -251,44 +253,7 @@ fn slas_handle_to_any(handle: slas_ga::GaHandle) -> AnyHandle {
                 break;
             }
         }
-        // `handle` is dropped here → handle.stop() → GA threads halt
-    });
-    AnyHandle { rx }
-}
-
-/// Convert a `glas::ga::GaHandle` into an `AnyHandle`. A bridge thread forwards
-/// events, wrapping each genome in a lazy `glas::decoder::decode_spec` closure.
-fn glas_handle_to_any(handle: glas_ga::GaHandle) -> AnyHandle {
-    let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
-    std::thread::spawn(move || {
-        let mut handle = handle;
-        while let Some(evt) = handle.rx.blocking_recv() {
-            let any = match evt {
-                glas_ga::GaEvent::Progress(p) => {
-                    let genome = p.genome;
-                    AnyEvent::Progress {
-                        seed: p.seed,
-                        generation: p.generation,
-                        objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome))),
-                    }
-                }
-                glas_ga::GaEvent::Done(results) => AnyEvent::Done {
-                    results: results
-                        .into_iter()
-                        .map(|(seed, ind)| {
-                            let (genome, obj) = (ind.genome, ind.objective);
-                            let lazy =
-                                LazyDecode(Box::new(move |spec| cutting::glas::decoder::decode_spec(spec, &genome)));
-                            (seed, obj, lazy)
-                        })
-                        .collect(),
-                },
-            };
-            if tx.send(any).is_err() {
-                break;
-            }
-        }
+        // `handle` dropped here -> handle.stop() -> GA threads halt
     });
     AnyHandle { rx }
 }
@@ -301,20 +266,26 @@ fn make_any_handle(
     algorithm: Algorithm,
 ) -> AnyHandle {
     match algorithm {
-        Algorithm::Glas => glas_handle_to_any(glas_ga::run_ga_mt(
-            spec,
-            cfg,
-            seeds,
-            progress_interval,
-            progress_interval,
-        )),
-        Algorithm::Slas => slas_handle_to_any(slas_ga::run_ga_mt(
-            spec,
-            cfg,
-            seeds,
-            progress_interval,
-            progress_interval,
-        )),
+        Algorithm::Slas => {
+            let handle = slas_ga::run_ga_mt(
+                Arc::clone(&spec),
+                Arc::clone(&cfg),
+                seeds,
+                progress_interval,
+                progress_interval,
+            );
+            ga_handle_to_any(handle, |g, spec| cutting::slas::decoder::decode_spec(spec, g))
+        }
+        Algorithm::Glas => {
+            let handle = glas_ga::run_ga_mt(
+                Arc::clone(&spec),
+                Arc::clone(&cfg),
+                seeds,
+                progress_interval,
+                progress_interval,
+            );
+            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
+        }
     }
 }
 
