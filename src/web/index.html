@@ -74,7 +74,7 @@
 
   <div class="row">
     <label>Seed <input type="number" id="seed" value="42" min="0"></label>
-    <label><input type="checkbox" id="random-seed"> random</label>
+    <label><input type="checkbox" id="random-seed" checked> random</label>
     <label>Threads <input type="number" id="threads" min="1" max="64"></label>
     <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
@@ -310,7 +310,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('gens',     document.getElementById('gens').value);
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
-  params.set('decoder',  document.getElementById('use-glas').checked ? 'glas' : 'slas');
+  params.set('algorithm', document.getElementById('use-glas').checked ? 'glas' : 'slas');
 
   es = new EventSource('/stream?' + params);
 

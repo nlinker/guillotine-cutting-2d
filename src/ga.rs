@@ -372,6 +372,26 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
             best = gen_best;
         }
 
+        // Progress when migration is disabled: each island reports its local best.
+        // Stop check is safe here because there is no barrier waiting.
+        if migration.is_none()
+            && let Some(ctx) = ctx
+            && ctx.progress_interval > 0
+            && (step + 1) % ctx.progress_interval == 0
+        {
+            ctx.tx
+                .send(GaEvent::Progress(ProgressEvent {
+                    seed: ctx.seed,
+                    generation: step + 1,
+                    objective: best.objective,
+                    genome: best.genome.clone(),
+                }))
+                .ok();
+            if ctx.stop.load(Ordering::Relaxed) {
+                break;
+            }
+        }
+
         if let Some(ref mig) = migration
             && mig.interval > 0
             && (step + 1) % mig.interval == 0
@@ -385,7 +405,7 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
             }
             mig.barrier1.wait(); // all slots written
 
-            // Phase 2: read global best, inject into worst, send progress event
+            // Phase 2: read global best, inject into worst; island 0 sends one progress event.
             {
                 let global = mig
                     .bests
@@ -402,15 +422,17 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
                     if gb.objective < pop[worst_idx].objective {
                         pop[worst_idx] = gb.clone();
                     }
-                    if let Some(ctx) = ctx {
-                        ctx.tx
-                            .send(GaEvent::Progress(ProgressEvent {
-                                seed: ctx.seed,
-                                generation: step + 1,
-                                objective: gb.objective,
-                                genome: gb.genome.clone(),
-                            }))
-                            .ok();
+                    if mig.idx == 0 {
+                        if let Some(ctx) = ctx {
+                            ctx.tx
+                                .send(GaEvent::Progress(ProgressEvent {
+                                    seed: ctx.seed,
+                                    generation: step + 1,
+                                    objective: gb.objective,
+                                    genome: gb.genome.clone(),
+                                }))
+                                .ok();
+                        }
                     }
                 }
             }
