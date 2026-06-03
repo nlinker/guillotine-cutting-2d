@@ -5,7 +5,7 @@ Attribute VB_Name = "Cut"
 '' Requires JsonConverter module (excel/JsonConverter.bas) imported into the workbook.
 ''
 '' Usage:
-''   1. Alt+F11 -> Import File -> cut.bas + JsonConverter.bas
+''   1. Alt+F11 -> Import File -> Сut.bas + JsonConverter.bas
 ''   2. Fill in data on Sheet1
 ''   3. Run macro RunCut
 '' ============================================================================
@@ -20,12 +20,14 @@ Private Const GENERIC_READ     As Long   = &H80000000
 Private Const OPEN_EXISTING    As Long   = 3
 Private Const FILE_ATTR_NORMAL As Long   = &H80
 Private Const BUFFER_SIZE      As Long   = 8192
+Private Const MAX_PIECE_ROWS   As Long   = 100   ' max rows in the piece table
 
 Private Const SHEET_W_CELL     As String = "J1"  ' sheet width (mm)
 Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
 Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
 Private Const ACAD_FONT_SIZE   As String = "K4"  ' label text height in drawing units (mm)
+Private Const EDGE_MARGIN_CELL As String = "K5"  ' edging overhang per strip (mm); default 40
 Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
@@ -177,6 +179,10 @@ End Function
 
 Private Function DataStartRow(ws As Worksheet) As Long
     DataStartRow = ws.Range(DATA_CELL).Row + 1
+End Function
+
+Private Function DataEndRow(ws As Worksheet) As Long
+    DataEndRow = ws.Range(DATA_CELL).Row + MAX_PIECE_ROWS
 End Function
 
 ' Writes progress values to status cells.
@@ -375,7 +381,7 @@ End Sub
 '' == Piece row coloring =======================================================
 
 Private Sub ClearPieceColors(ws As Worksheet)
-    ws.Range(ws.Cells(DataStartRow(ws), DataCol(ws)), ws.Cells(200, DataCol(ws) + 4)).Interior.ColorIndex = xlNone
+    ws.Range(ws.Cells(DataStartRow(ws), DataCol(ws)), ws.Cells(DataEndRow(ws), DataCol(ws) + 4)).Interior.ColorIndex = xlNone
 End Sub
 
 Private Sub ColorPieceRows(ws As Worksheet, pieces As Object)
@@ -643,6 +649,44 @@ Public Function IsRunning() As Boolean
     IsRunning = g_Running
 End Function
 
+' Calculates total edge banding length (mm) from edging columns F and G.
+' F = number of width edges (0-2), G = number of height edges (0-2).
+' Overhang (припуск) is read from EDGE_MARGIN_CELL (K5); default = 40 mm if empty.
+' Usage: put =TotalEdgeLength() in any cell; recalculates on every sheet change.
+Public Function TotalEdgeLength() As Long
+    Application.Volatile
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+
+    Dim overhang As Long
+    overhang = CLng(ws.Range(EDGE_MARGIN_CELL).Value)
+
+    Dim dc As Long:    dc    = DataCol(ws)
+    Dim total As Long: total = 0
+    Dim i As Long
+
+    For i = DataStartRow(ws) To DataEndRow(ws)
+        Dim w As Long, h As Long
+        w = 0: h = 0
+        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
+        If w = 0 Or h = 0 Then Exit For
+
+        Dim cnt As Long: cnt = 0
+        If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
+
+        Dim ew As Long: ew = 0
+        Dim eh As Long: eh = 0
+        If ws.Cells(i, dc + 5).Value <> "" Then ew = CLng(ws.Cells(i, dc + 5).Value)
+        If ws.Cells(i, dc + 6).Value <> "" Then eh = CLng(ws.Cells(i, dc + 6).Value)
+
+        total = total + cnt * ew * (w + overhang)
+        total = total + cnt * eh * (h + overhang)
+    Next i
+
+    TotalEdgeLength = total
+End Function
+
 Public Sub RestartCut()
     If g_Running Then
         StopCut
@@ -883,7 +927,7 @@ Sub CreateCheckboxes()
     cb.OnAction = "Cut.MainCheckboxClick"
     cb.Name     = "cbMain"
 
-    For i = DataStartRow(ws) To DataStartRow(ws) + 99
+    For i = DataStartRow(ws) To DataEndRow(ws)
         Set cell = ws.Cells(i, cbCol)
         Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
         cb.LinkedCell = ws.Cells(i, DataCol(ws) + 4).Address
@@ -901,7 +945,7 @@ Sub MainCheckboxClick()
     mainVal = (ws.CheckBoxes("cbMain").Value = xlOn)
 
     Dim dc As Long: dc = DataCol(ws)
-    For i = DataStartRow(ws) To DataStartRow(ws) + 99
+    For i = DataStartRow(ws) To DataEndRow(ws)
         If ws.Cells(i, dc + 4).Value <> "" Then
             ws.Cells(i, dc + 4).Value = mainVal
         End If
