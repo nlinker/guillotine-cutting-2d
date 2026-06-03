@@ -45,6 +45,11 @@ impl GaDecoder for GlasDecoder {
             rng,
         );
     }
+
+    fn seed_genomes(&self, config: &GaConfig) -> Vec<Genome> {
+        let g = greedy_genome(&self.spec, config.long_dim_threshold, config.large_area_threshold);
+        vec![g]
+    }
 }
 
 /// Single-threaded GLAS GA. Takes `ProblemSpec` and the expanded `Problem`.
@@ -245,6 +250,42 @@ fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_threshold: u32, larg
     } else {
         2
     }
+}
+
+/// Deterministic seed genome: within each size class, types sorted by max(w,h) desc,
+/// then area desc. Rotation preference: true when height > width.
+pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32) -> Genome {
+    let n = spec.piespecs.len();
+    let mut classes: [Vec<usize>; 3] = [vec![], vec![], vec![]];
+    for i in 0..n {
+        classes[piece_class(&spec.piespecs[i], spec, long_dim_threshold, large_area_threshold)].push(i);
+    }
+    let mut genome = Genome::with_capacity(3);
+    for class_indices in classes {
+        let mut sorted = class_indices;
+        sorted.sort_by(|&a, &b| {
+            let pa = &spec.piespecs[a];
+            let pb = &spec.piespecs[b];
+            let ka = (pa.width.max(pa.height), pa.width * pa.height);
+            let kb = (pb.width.max(pb.height), pb.width * pb.height);
+            kb.cmp(&ka)
+        });
+        let genes: Vec<Gene> = sorted
+            .into_iter()
+            .map(|type_idx| {
+                let ps = &spec.piespecs[type_idx];
+                let count = ps.count as usize;
+                Gene {
+                    type_idx,
+                    rotate: ps.height > ps.width,
+                    selectors: std::iter::repeat_n(0u32, count).collect(),
+                    inverses: std::iter::repeat_n(false, count).collect(),
+                }
+            })
+            .collect();
+        genome.push(genes);
+    }
+    genome
 }
 
 fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32, rng: &mut R) -> Genome {

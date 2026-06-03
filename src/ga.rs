@@ -128,6 +128,12 @@ pub trait GaDecoder {
     fn eval(&self, genome: &Self::Genome) -> Objective;
     fn crossover<R: Rng>(&self, p1: &Self::Genome, p2: &Self::Genome, rng: &mut R) -> (Self::Genome, Self::Genome);
     fn mutate<R: Rng>(&self, genome: &mut Self::Genome, config: &GaConfig, rng: &mut R);
+
+    /// Deterministic seed genomes injected at position 0 in the initial population.
+    /// Default: empty (all individuals are random).
+    fn seed_genomes(&self, _config: &GaConfig) -> Vec<Self::Genome> {
+        vec![]
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -316,13 +322,22 @@ fn init_population<D: GaDecoder, R: Rng>(
     size: usize,
     rng: &mut R,
 ) -> Vec<Individual<D::Genome>> {
-    (0..size)
-        .map(|_| {
-            let genome = decoder.random_genome(config, rng);
+    let seeds = decoder.seed_genomes(config);
+    let n_seeds = seeds.len().min(size);
+    let mut pop: Vec<Individual<D::Genome>> = seeds
+        .into_iter()
+        .take(n_seeds)
+        .map(|genome| {
             let objective = decoder.eval(&genome);
             Individual { genome, objective }
         })
-        .collect()
+        .collect();
+    pop.extend((n_seeds..size).map(|_| {
+        let genome = decoder.random_genome(config, rng);
+        let objective = decoder.eval(&genome);
+        Individual { genome, objective }
+    }));
+    pop
 }
 
 fn run_ga_inner<D: GaDecoder, R: Rng>(
