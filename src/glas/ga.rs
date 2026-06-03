@@ -5,7 +5,7 @@ use rand::Rng;
 pub use crate::ga::{GaEvent, GaHandle, ProgressEvent, select_elite, tournament_select};
 use crate::{
     expand::expand_problem,
-    ga::{self, BatchFitMode, GaConfig, GaDecoder},
+    ga::{self, GaConfig, GaDecoder},
     glas::decoder::{Gene, Genome, decode},
     model::{Objective, PieceSpec, Problem, ProblemSpec},
 };
@@ -17,7 +17,6 @@ pub type Individual = crate::ga::Individual<Genome>;
 pub struct GlasDecoder {
     pub spec: Arc<ProblemSpec>,
     pub problem: Arc<Problem>,
-    pub batch_fit_mode: BatchFitMode,
 }
 
 impl GaDecoder for GlasDecoder {
@@ -28,7 +27,7 @@ impl GaDecoder for GlasDecoder {
     }
 
     fn eval(&self, genome: &Genome) -> Objective {
-        decode(&self.problem, &self.spec, genome, self.batch_fit_mode).eval(&self.problem)
+        decode(&self.problem, &self.spec, genome).eval(&self.problem)
     }
 
     fn crossover<R: Rng>(&self, p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
@@ -58,7 +57,6 @@ pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, 
     let decoder = GlasDecoder {
         spec: Arc::new(spec.clone()),
         problem: Arc::new(problem.clone()),
-        batch_fit_mode: config.batch_fit_mode,
     };
     ga::run_ga(&decoder, config, rng)
 }
@@ -75,7 +73,6 @@ pub fn run_ga_mt(
     let decoder = Arc::new(GlasDecoder {
         spec: Arc::clone(&spec),
         problem,
-        batch_fit_mode: config.batch_fit_mode,
     });
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
@@ -611,7 +608,6 @@ mod tests {
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
             problem: Arc::new(problem),
-            batch_fit_mode: BatchFitMode::None,
         };
         let cfg = small_config();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
@@ -630,7 +626,6 @@ mod tests {
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
             problem: Arc::new(problem),
-            batch_fit_mode: BatchFitMode::None,
         };
         let cfg = small_config();
         let g1 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));

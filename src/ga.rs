@@ -12,21 +12,6 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::model::Objective;
 
-/// Controls free-rect selection when a piece type has more than one copy remaining.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BatchFitMode {
-    /// No preference — pick free rect purely by selector (current behavior).
-    #[default]
-    None,
-    /// Try fit>=2 rects first; if none exist on existing rects, fall back to all
-    /// free rects without opening a new sheet.
-    Soft,
-    /// Try fit>=2 rects first; if none exist, open a new sheet and try again;
-    /// degrade to fit=1 only if even the new sheet cannot fit 2 copies.
-    Hard,
-}
-
 /// GA hyperparameters.
 #[derive(Debug, Clone)]
 pub struct GaConfig {
@@ -89,15 +74,13 @@ pub struct GaConfig {
     /// 0 = auto-derive: sqrt(sheet.width * sheet.height * 0.05).
     pub large_area_threshold: u32,
 
-    /// Batch-fit preference for the GLAS decoder. See [`BatchFitMode`].
-    pub batch_fit_mode: BatchFitMode,
 }
 
 impl fmt::Display for GaConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim_threshold={} large_area_threshold={} batch_fit_mode={:?}",
+            "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim_threshold={} large_area_threshold={}",
             self.pop_size,
             self.n_generations,
             self.n_elite,
@@ -111,7 +94,6 @@ impl fmt::Display for GaConfig {
             self.inverse_p,
             self.long_dim_threshold,
             self.large_area_threshold,
-            self.batch_fit_mode,
         )
     }
 }
@@ -131,7 +113,6 @@ impl Default for GaConfig {
             inverse_p: 0.05,
             long_dim_threshold: 0,
             large_area_threshold: 0,
-            batch_fit_mode: BatchFitMode::None,
         }
     }
 }

@@ -7,7 +7,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     ga,
-    ga::{BatchFitMode, GaConfig},
+    ga::GaConfig,
     glas::ga as glas_ga,
     glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             large_area_threshold,
         } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold, BatchFitMode::None);
+            let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold);
             let n_threads = resolve_threads(threads);
             if render {
                 run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
@@ -284,8 +284,7 @@ fn make_any_handle(
                 progress_interval,
                 progress_interval,
             );
-            let mode = cfg.batch_fit_mode;
-            ga_handle_to_any(handle, move |g, spec| cutting::glas::decoder::decode_spec(spec, g, mode))
+            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
         }
     }
 }
@@ -526,7 +525,6 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn ga_config(
     gens: usize,
     pop: usize,
@@ -535,7 +533,6 @@ pub(crate) fn ga_config(
     spec: &ProblemSpec,
     large_area_threshold: u32,
     long_dim_threshold: u32,
-    batch_fit_mode: BatchFitMode,
 ) -> GaConfig {
     let sh = spec.sheet;
     GaConfig {
@@ -553,7 +550,6 @@ pub(crate) fn ga_config(
         } else {
             large_area_threshold
         },
-        batch_fit_mode,
         ..GaConfig::default()
     }
 }

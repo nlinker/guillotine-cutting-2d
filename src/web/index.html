@@ -80,11 +80,6 @@
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <label><input type="checkbox" id="use-glas" checked> GLAS</label>
-    <label>Batch fit <select id="batch-fit-mode">
-      <option value="none">none</option>
-      <option value="soft">soft</option>
-      <option value="hard">hard</option>
-    </select></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -316,7 +311,6 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
   params.set('algorithm', document.getElementById('use-glas').checked ? 'glas' : 'slas');
-  params.set('batch_fit_mode', document.getElementById('batch-fit-mode').value);
 
   es = new EventSource('/stream?' + params);
 
