@@ -135,16 +135,7 @@ fn main() {
         ga_cfg: GaConfig {
             pop_size: 50,
             n_generations: 200,
-            n_elite: 2,
-            tournament_k: 3,
-            crossover_p: 0.80,
-            swap_p: 0.15,
-            flip_p: 0.05,
-            point_p: 0.10,
-            point_delta: (1, 3),
-            inverse_p: 0.05,
-            long_dim_threshold: 0,
-            large_area_threshold: 0,
+            ..GaConfig::default()
         },
     }];
 

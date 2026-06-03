@@ -498,6 +498,29 @@ impl CutForest {
         None
     }
 
+    /// Like [`find_fitting_leaf`], but only considers leaves where the batch count
+    /// `max(fr_w / pw, fr_h / ph)` is >= `min_fit`. Returns `None` if no such leaf exists.
+    pub fn find_fitting_leaf_min_batch(
+        &self,
+        piece: &Piece,
+        prefer_rotate: bool,
+        selector: u32,
+        min_fit: u32,
+    ) -> Option<(usize, u32, u32, bool)> {
+        let candidates: Vec<(usize, u32, u32, bool)> = (0..self.free_leaves.len())
+            .filter_map(|free_pos| {
+                let node = &self.nodes[self.free_leaves[free_pos]];
+                let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
+                let fits = (node.w / pw).max(node.h / ph);
+                if fits >= min_fit { Some((free_pos, pw, ph, rotated)) } else { None }
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        Some(candidates[(selector as usize) % candidates.len()])
+    }
+
     /// Convert the forest to a flat `Vec<CutNode>` for use with `mfg_cost_from_trees`.
     ///
     /// **Not yet implemented** — returns an empty vec.

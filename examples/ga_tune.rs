@@ -112,10 +112,8 @@ fn cfgi(
         swap_p,
         flip_p,
         point_p,
-        point_delta: (1, 3),
         inverse_p,
-        long_dim_threshold: 0,
-        large_area_threshold: 0,
+        ..GaConfig::default()
     }
 }
 

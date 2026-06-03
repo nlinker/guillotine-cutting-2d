@@ -20,18 +20,10 @@ const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
     GaConfig {
-        pop_size: 200,
         n_generations: 2000,
         n_elite: 5,
         tournament_k: 5,
-        crossover_p: 0.80,
-        swap_p: 0.15,
-        flip_p: 0.05,
-        point_p: 0.10,
-        point_delta: (1, 3),
-        inverse_p: 0.05,
-        long_dim_threshold: 0,
-        large_area_threshold: 0,
+        ..GaConfig::default()
     }
 }
 

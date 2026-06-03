@@ -3,6 +3,7 @@ use smallvec::SmallVec;
 use crate::{
     cut_tree::{Blueprint, CutForest, improve_tl_corners},
     expand,
+    ga::BatchFitMode,
     model::{FreeRect, Placement, Problem, ProblemSpec, Solution},
 };
 
@@ -46,9 +47,9 @@ pub struct Gene {
 pub type Genome = Vec<Vec<Gene>>;
 
 /// High-level entry point: decode a group genome into a `SolutionSpec`.
-pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::SolutionSpec {
+pub fn decode_spec(spec: &ProblemSpec, genome: &Genome, mode: BatchFitMode) -> crate::model::SolutionSpec {
     let problem = expand::expand_problem(spec);
-    let sol = improve_tl_corners(&problem, decode(&problem, spec, genome));
+    let sol = improve_tl_corners(&problem, decode(&problem, spec, genome, mode));
     expand::shrink_solution(&sol, spec)
 }
 
@@ -61,7 +62,7 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
 ///   3. Pack as many copies as fit side-by-side in the strip: `count = ⌊fr_w / pw⌋`.
 ///   4. Apply TlH (`inv=false`) or TlV (`inv=true`) to split the free leaf.
 ///   5. Advance `next[gene.type_idx]` by `count` and repeat.
-pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solution {
+pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome, mode: BatchFitMode) -> Solution {
     debug_assert_eq!(genome.iter().map(|c| c.len()).sum::<usize>(), spec.piespecs.len());
 
     // end_idxs[i] = one-past-last flat index for type i
@@ -95,17 +96,43 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                 let bp = if inv { Blueprint::TlV } else { Blueprint::TlH };
 
                 let piece = &problem.pieces[next[gene.type_idx]];
+                let remaining = end_idx - next[gene.type_idx];
 
-                let found = forest.find_fitting_leaf(piece, gene.rotate, ps).or_else(|| {
-                    forest.open_new_sheet(problem.sheet.width, problem.sheet.height);
-                    forest.find_fitting_leaf(piece, gene.rotate, ps)
-                });
+                let sw = problem.sheet.width;
+                let sh = problem.sheet.height;
+                let found = match (mode, remaining > 1) {
+                    (BatchFitMode::None, _) | (_, false) => {
+                        forest.find_fitting_leaf(piece, gene.rotate, ps).or_else(|| {
+                            forest.open_new_sheet(sw, sh);
+                            forest.find_fitting_leaf(piece, gene.rotate, ps)
+                        })
+                    }
+                    (BatchFitMode::Soft, true) => {
+                        forest
+                            .find_fitting_leaf_min_batch(piece, gene.rotate, ps, 2)
+                            .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
+                            .or_else(|| {
+                                forest.open_new_sheet(sw, sh);
+                                forest.find_fitting_leaf(piece, gene.rotate, ps)
+                            })
+                    }
+                    (BatchFitMode::Hard, true) => {
+                        forest
+                            .find_fitting_leaf_min_batch(piece, gene.rotate, ps, 2)
+                            .or_else(|| {
+                                forest.open_new_sheet(sw, sh);
+                                forest
+                                    .find_fitting_leaf_min_batch(piece, gene.rotate, ps, 2)
+                                    .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
+                            })
+                    }
+                };
 
                 let Some((free_pos, pw, ph, rotated)) = found else {
                     debug_assert!(
                         false,
-                        "piece {}×{} does not fit on empty {}×{} sheet",
-                        piece.width, piece.height, problem.sheet.width, problem.sheet.height
+                        "piece {}x{} does not fit on empty {}x{} sheet",
+                        piece.width, piece.height, sw, sh
                     );
                     break;
                 };
@@ -114,10 +141,6 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                     let node = &forest.nodes[forest.free_leaves[free_pos]];
                     (node.w, node.h, node.sheet_idx)
                 };
-
-                // Choose strip orientation: horizontal (left-to-right) or vertical
-                // (top-to-bottom), whichever fits more copies in one batch.
-                let remaining = end_idx - next[gene.type_idx];
                 let count_h = (fr_w / pw).min(remaining as u32) as usize;
                 let count_v = (fr_h / ph).min(remaining as u32) as usize;
                 let vertical = count_v > count_h;
@@ -194,7 +217,7 @@ mod tests {
         let spec = parse_problem("200x100F:0:80x100/2").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 2)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 2);
         let p0 = sol.placements.iter().find(|p| p.piece_idx == 0).unwrap();
@@ -215,7 +238,7 @@ mod tests {
         let spec = parse_problem("100x100F:0:60x40/3").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 3)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 2);
         assert_eq!(sol.placements.len(), 3);
         assert_eq!(
@@ -243,7 +266,7 @@ mod tests {
         let problem = expand_problem(&spec);
         let mut genome = vec![vec![gg(1, 1), gg(0, 2)]];
         genome[0][1].selectors[0] = 1; // steer first batch of type_0 to right leftover
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 2);
         let b = sol.placements.iter().find(|p| p.piece_idx == 2).unwrap(); // type_1
         assert_eq!((b.x, b.y, b.sheet_idx), (0, 0, 0));
@@ -263,7 +286,7 @@ mod tests {
         let spec = parse_problem("200x200F:0:100x100/4").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 4)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 4);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
@@ -284,7 +307,7 @@ mod tests {
         let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 5)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 5);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
@@ -307,7 +330,7 @@ mod tests {
         let spec = parse_problem("350x100F:0:150x100/1f,100x80/2f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 1), gg(1, 2)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 3);
         // Type A (piece 0) must be in the strip.
@@ -327,7 +350,7 @@ mod tests {
         let spec = parse_problem("400x300F:0:400x200/1f,200x100/1f,200x200/1f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 1), gg(1, 1), gg(2, 1)]];
-        let sol = decode(&problem, &spec, &genome);
+        let sol = decode(&problem, &spec, &genome, BatchFitMode::None);
         // B (piece_idx=2) cannot fit in the leftover rects (all h≤100); opens sheet 1.
         let pb = sol.placements.iter().find(|p| p.piece_idx == 2).unwrap();
         assert_eq!(

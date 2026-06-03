@@ -7,7 +7,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cutting::{
     ga,
-    ga::GaConfig,
+    ga::{BatchFitMode, GaConfig},
     glas::ga as glas_ga,
     glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             large_area_threshold,
         } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold);
+            let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold, BatchFitMode::None);
             let n_threads = resolve_threads(threads);
             if render {
                 run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
@@ -284,7 +284,8 @@ fn make_any_handle(
                 progress_interval,
                 progress_interval,
             );
-            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
+            let mode = cfg.batch_fit_mode;
+            ga_handle_to_any(handle, move |g, spec| cutting::glas::decoder::decode_spec(spec, g, mode))
         }
     }
 }
@@ -525,6 +526,7 @@ fn resolve_threads(n: usize) -> usize {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn ga_config(
     gens: usize,
     pop: usize,
@@ -533,6 +535,7 @@ pub(crate) fn ga_config(
     spec: &ProblemSpec,
     large_area_threshold: u32,
     long_dim_threshold: u32,
+    batch_fit_mode: BatchFitMode,
 ) -> GaConfig {
     let sh = spec.sheet;
     GaConfig {
@@ -540,12 +543,6 @@ pub(crate) fn ga_config(
         n_generations: gens,
         n_elite: elite,
         tournament_k: k,
-        crossover_p: 0.80,
-        swap_p: 0.15,
-        flip_p: 0.05,
-        point_p: 0.10,
-        point_delta: (1, 3),
-        inverse_p: 0.05,
         long_dim_threshold: if long_dim_threshold == 0 {
             (sh.width.max(sh.height) as f64 * 0.3) as u32
         } else {
@@ -556,5 +553,7 @@ pub(crate) fn ga_config(
         } else {
             large_area_threshold
         },
+        batch_fit_mode,
+        ..GaConfig::default()
     }
 }

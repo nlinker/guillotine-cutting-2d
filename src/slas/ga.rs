@@ -284,12 +284,8 @@ mod tests {
             tournament_k: 2,
             crossover_p: 0.8,
             swap_p: 0.1,
-            flip_p: 0.05,
             point_p: 0.05,
-            point_delta: (1, 3),
-            inverse_p: 0.05,
-            long_dim_threshold: 0,
-            large_area_threshold: 0,
+            ..GaConfig::default()
         }
     }
 
