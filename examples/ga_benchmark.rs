@@ -83,7 +83,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
 
     if worse > 0 {
         let sheet_area = s.gen_cfg.sheet.width as i64 * s.gen_cfg.sheet.height as i64;
-        let encode = |obj: Objective| obj.0 as i64 * (sheet_area + 1) + obj.1 as i64;
+        let encode = |obj: Objective| obj.sheets_used as i64 * (sheet_area + 1) + obj.leftover_area as i64;
         let mut gaps: Vec<i64> = results
             .iter()
             .filter(|r| r.ga_obj > r.ref_obj)

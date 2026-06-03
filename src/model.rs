@@ -2,11 +2,37 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Three-level lexicographic fitness (lower is better):
+/// Three-level lexicographic fitness. Lower is better except `shared_edge_score` (maximized).
 ///   0. `sheets_used`
-///   1. `leftover_area` — area of the largest single leftover rect on any non-last sheet
-///   2. `staircase_area` — sum of staircase-polygon areas across all used sheets
-pub type Objective = (usize, u64, u64);
+///   1. `shared_edge_score` — weighted adjacent-edge length; higher is better (reversed in `Ord`)
+///   2. `leftover_area`     — largest single leftover rectangle across all sheets
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Objective {
+    pub sheets_used: usize,
+    pub shared_edge_score: u64,
+    pub leftover_area: u64,
+}
+
+impl PartialOrd for Objective {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Objective {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.sheets_used
+            .cmp(&other.sheets_used)
+            .then(other.shared_edge_score.cmp(&self.shared_edge_score))
+            .then(self.leftover_area.cmp(&other.leftover_area))
+    }
+}
+
+impl Objective {
+    /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
+    /// Change the body here to switch what is displayed — no other files need updating.
+    pub fn secondary(&self) -> u64 { self.shared_edge_score }
+}
 
 /// Stock sheet - all sheets in the problem are identical.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,12 +232,12 @@ pub struct FreeRect {
 
 /// Flat solution: one placement per physical piece.
 /// Produced by `decoder::decode`; convert to `SolutionSpec` via `expand::shrink_solution`.
+/// `mfg_cost` - manufacturability cost computed by the decoder from the cut tree.
+/// Zero when constructed outside the decoder (e.g. generator, tests).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub leftovers: Vec<FreeRect>,
-    /// Manufacturability cost computed by the decoder from the cut tree.
-    /// Zero when constructed outside the decoder (e.g. generator, tests).
     #[serde(default)]
     pub mfg_cost: u32,
 }
@@ -226,27 +252,42 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Rust tuple `Ord` provides lexicographic comparison for free.
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return (0, 0, 0);
+            return Objective { sheets_used: 0, leftover_area: 0, shared_edge_score: 0 };
         }
-        let sheets = self.sheets_used();
-        let leftover = self.leftover_area();
-        let staircase = self.staircase_area(problem);
-        (sheets, leftover, staircase)
+        Objective {
+            sheets_used: self.sheets_used(),
+            leftover_area: self.leftover_area(),
+            shared_edge_score: self.shared_edge_score(problem),
+        }
     }
 
-    /// Area of the largest single leftover rectangle on any non-last sheet (lower = better).
+    /// Weighted total length of shared boundaries between adjacent placed pieces.
     ///
-    /// Measures wasted space on fully "committed" sheets: a large free rect there means
-    /// pieces could have been packed more tightly, leaving more room on the last sheet.
-    /// Returns 0 when only one sheet is used (no non-last sheets exist).
+    /// For each pair of pieces sharing a boundary segment of length `h`, where
+    /// `e1`/`e2` are the full edge lengths of each piece on that boundary:
+    /// - `h == e1 == e2`: score += 20*h  (full match on both sides)
+    /// - `h == e1 || h == e2`: score += h  (one edge fully included in the other)
+    /// - otherwise: 0  (partial overlap on both sides)
+    pub fn shared_edge_score(&self, problem: &Problem) -> u64 {
+        let n_sheets = self.sheets_used();
+        let mut total = 0u64;
+        for sheet in 0..n_sheets {
+            let pls: Vec<&Placement> = self.placements.iter().filter(|p| p.sheet_idx == sheet).collect();
+            for i in 0..pls.len() {
+                for j in (i + 1)..pls.len() {
+                    total += placement_pair_score(pls[i], pls[j], problem);
+                }
+            }
+        }
+        total
+    }
+
+    /// Area of the largest single leftover rectangle across all sheets (lower = better).
     pub fn leftover_area(&self) -> u64 {
-        let last = self.sheets_used().saturating_sub(1);
         self.leftovers
             .iter()
-            .filter(|fr| fr.sheet_idx < last)
             .map(|fr| fr.w as u64 * fr.h as u64)
             .max()
             .unwrap_or(0)
@@ -286,17 +327,17 @@ impl Solution {
         self.eval(problem)
     }
 
-    /// Sum of staircase-polygon areas across all sheets.
+    /// Maximum staircase-polygon area across all sheets (lower = better).
     ///
     /// For each sheet: build the Pareto-optimal set of bottom-right corners (rx, ry)
     /// of all placed pieces; integrate the resulting step function top-to-bottom.
-    /// Returns the sum of these areas over every sheet used.
+    /// Returns the maximum of these per-sheet areas.
     pub fn staircase_area(&self, problem: &Problem) -> u64 {
         let n = self.sheets_used();
         if n == 0 {
             return 0;
         }
-        let mut total = 0u64;
+        let mut best = 0u64;
         for sheet in 0..n {
             let mut stairs: Vec<(u32, u32)> = Vec::new();
             for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
@@ -319,13 +360,45 @@ impl Solution {
             }
             stairs.sort_unstable_by_key(|&(_, y)| y);
             let mut prev_y = 0u32;
+            let mut sheet_area = 0u64;
             for (x, y) in stairs {
-                total += x as u64 * (y - prev_y) as u64;
+                sheet_area += x as u64 * (y - prev_y) as u64;
                 prev_y = y;
             }
+            if sheet_area > best { best = sheet_area; }
         }
-        total
+        best
     }
+}
+
+fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
+    let p = &problem.pieces[pl.piece_idx];
+    let (w, h) = if pl.rotated { (p.height, p.width) } else { (p.width, p.height) };
+    (pl.x, pl.y, w, h)
+}
+
+fn overlap_weight(h: u64, e1: u64, e2: u64) -> u64 {
+    if h == e1 && h == e2 { 20 * h } else if h == e1 || h == e2 { h } else { 0 }
+}
+
+fn placement_pair_score(a: &Placement, b: &Placement, problem: &Problem) -> u64 {
+    let (ax, ay, aw, ah) = placement_rect(a, problem);
+    let (bx, by, bw, bh) = placement_rect(b, problem);
+    if ax + aw == bx || bx + bw == ax {
+        let lo = ay.max(by);
+        let hi = (ay + ah).min(by + bh);
+        if hi > lo {
+            return overlap_weight((hi - lo) as u64, ah as u64, bh as u64);
+        }
+    }
+    if ay + ah == by || by + bh == ay {
+        let lo = ax.max(bx);
+        let hi = (ax + aw).min(bx + bw);
+        if hi > lo {
+            return overlap_weight((hi - lo) as u64, aw as u64, bw as u64);
+        }
+    }
+    0
 }
 
 /// Check that no piece exceeds the sheet and no two pieces on the same sheet overlap

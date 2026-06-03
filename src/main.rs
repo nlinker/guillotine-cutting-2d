@@ -397,8 +397,8 @@ fn run_with_any_handle(
                     drop(lazy);
                     let msg = ProgressMessage::Progress {
                         generation,
-                        sheets_used: objective.0,
-                        secondary_objective: objective.1,
+                        sheets_used: objective.sheets_used,
+                        secondary_objective: objective.secondary(),
                         seed,
                         solution: None,
                         pieces: None,
@@ -422,8 +422,8 @@ fn run_with_any_handle(
                         let sol = pending.lazy.decode(&spec);
                         let msg = ProgressMessage::Progress {
                             generation: pending.generation,
-                            sheets_used: pending.objective.0,
-                            secondary_objective: pending.objective.1,
+                            sheets_used: pending.objective.sheets_used,
+                            secondary_objective: pending.objective.secondary(),
                             seed: pending.seed,
                             solution: Some(sol),
                             pieces: Some(spec.piespecs.clone()),
@@ -441,8 +441,8 @@ fn run_with_any_handle(
                     let sol = pending.lazy.decode(&spec);
                     sink.send(&ProgressMessage::Progress {
                         generation: pending.generation,
-                        sheets_used: pending.objective.0,
-                        secondary_objective: pending.objective.1,
+                        sheets_used: pending.objective.sheets_used,
+                        secondary_objective: pending.objective.secondary(),
                         seed: pending.seed,
                         solution: Some(sol),
                         pieces: Some(spec.piespecs.clone()),
@@ -455,7 +455,7 @@ fn run_with_any_handle(
                 let cut_lengths = sol.cut_lengths(&spec);
                 sink.send(&ProgressMessage::Done {
                     seed: best_seed,
-                    sheets_used: best_obj.0,
+                    sheets_used: best_obj.sheets_used,
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),

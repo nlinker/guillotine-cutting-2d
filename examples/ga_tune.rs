@@ -15,10 +15,10 @@ use rand_xoshiro::Xoshiro256StarStar;
 const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
-/// Ideal: 2 sheets, staircase ≤ 400×400 on last sheet.
-const IDEAL_OBJ: Objective = (2, u64::MAX, 400 * 400);
-/// 1-piece threshold: 2 sheets, staircase ≤ 495×495 on last sheet.
-const ONE_PIECE_OBJ: Objective = (2, u64::MAX, 495 * 495);
+/// Ideal: 2 sheets, staircase <= 400x400 on last sheet.
+const IDEAL_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, shared_edge_score: 0 };
+/// 1-piece threshold: 2 sheets, staircase <= 495x495 on last sheet.
+const ONE_PIECE_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, shared_edge_score: 0 };
 
 struct Variant {
     name: &'static str,
@@ -27,7 +27,7 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = (usize::MAX, u64::MAX, u64::MAX);
+    let mut best_obj: Objective = Objective { sheets_used: usize::MAX, leftover_area: u64::MAX, shared_edge_score: 0 };
     let mut sum_sheets: usize = 0;
     let mut sum_bbox: u64 = 0;
     let mut ideal_count = 0usize;
@@ -37,8 +37,8 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
         let ind = run_ga(problem, &v.cfg, &mut rng);
         let obj = ind.objective;
-        sum_sheets += obj.0;
-        sum_bbox += obj.1;
+        sum_sheets += obj.sheets_used;
+        sum_bbox += obj.leftover_area;
         if obj < best_obj {
             best_obj = obj;
         }
@@ -61,8 +61,8 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         N_SEEDS,
         one_piece_count,
         N_SEEDS,
-        best_obj.0,
-        best_obj.1,
+        best_obj.sheets_used,
+        best_obj.leftover_area,
         avg_sheets,
         avg_bbox,
         elapsed.as_secs_f64(),

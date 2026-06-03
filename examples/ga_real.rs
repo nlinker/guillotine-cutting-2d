@@ -100,14 +100,14 @@ fn main() {
     );
     println!("{}", "-".repeat(65));
     for (seed, obj, _sol, n, summary) in &decoded {
-        println!("{:6}  {:6}  {:8}  {:12}  {}", seed, obj.0, n, obj.1, summary);
+        println!("{:6}  {:6}  {:8}  {:12}  {}", seed, obj.sheets_used, n, obj.leftover_area, summary);
     }
     println!();
 
     let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
     println!(
         "BEST (seed={best_seed}  sheets={}  bbox_pen={}  last={best_n}: {best_summary})",
-        best_obj.0, best_obj.1
+        best_obj.sheets_used, best_obj.leftover_area
     );
     print_solution(&spec, best_sol);
 }

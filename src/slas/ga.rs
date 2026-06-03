@@ -389,20 +389,17 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
-        assert_eq!((winner.objective.0, winner.objective.1), (0, 10));
+        assert_eq!((winner.objective.sheets_used, winner.objective.leftover_area), (0, 10));
     }
 
     #[test]
     fn tournament_is_deterministic() {
-        let pop = vec![
-            ind(0, (0, 5, 0)),
-            ind(1, (0, 3, 0)),
-            ind(2, (0, 8, 0)),
-            ind(3, (0, 1, 0)),
-        ];
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let pop = vec![ind(0, o(5)), ind(1, o(3)), ind(2, o(8)), ind(3, o(1))];
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         assert_eq!(w1.objective, w2.objective);
@@ -410,33 +407,31 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let pop = vec![ind(0, (0, 30, 0)), ind(1, (0, 10, 0)), ind(2, (0, 20, 0))];
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
-        assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 10));
+        assert_eq!((elite[0].objective.sheets_used, elite[0].objective.leftover_area), (0, 10));
     }
 
     #[test]
     fn elite_top_k_sorted() {
-        let pop = vec![
-            ind(0, (0, 50, 0)),
-            ind(1, (0, 10, 0)),
-            ind(2, (0, 30, 0)),
-            ind(3, (0, 20, 0)),
-        ];
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let pop = vec![ind(0, o(50)), ind(1, o(10)), ind(2, o(30)), ind(3, o(20))];
         let elite = select_elite(&pop, 2);
         assert_eq!(
-            elite.iter().map(|e| (e.objective.0, e.objective.1)).collect::<Vec<_>>(),
+            elite.iter().map(|e| (e.objective.sheets_used, e.objective.leftover_area)).collect::<Vec<_>>(),
             [(0, 10), (0, 20)]
         );
     }
 
     #[test]
     fn elite_n_exceeds_pop() {
-        let pop = vec![ind(0, (0, 5, 0)), ind(1, (0, 3, 0))];
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let pop = vec![ind(0, o(5)), ind(1, o(3))];
         let elite = select_elite(&pop, 10);
         assert_eq!(elite.len(), 2);
-        assert_eq!((elite[0].objective.0, elite[0].objective.1), (0, 3));
+        assert_eq!((elite[0].objective.sheets_used, elite[0].objective.leftover_area), (0, 3));
     }
 
     // --- genome generation ---

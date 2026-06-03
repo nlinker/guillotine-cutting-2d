@@ -347,13 +347,13 @@ mod tests {
     }
 
     #[test]
-    fn staircase_area_sums_all_sheets() {
+    fn staircase_area_max_across_sheets() {
         // Sheet 10×10, kerf=0. Genome [0,1,2] packs sheet 0 full (10×6 + 10×4 = 100)
-        // and puts 3×3 alone on sheet 1 (staircase = 9). Sum = 109.
+        // and puts 3×3 alone on sheet 1 (staircase = 9). Max = 100.
         let spec = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
         let problem = expand_problem(&spec);
         let sol = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
         assert_eq!(sol.sheets_used(), 2);
-        assert_eq!(sol.staircase_area(&problem), 109);
+        assert_eq!(sol.staircase_area(&problem), 100);
     }
 }
