@@ -17,7 +17,7 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
     let sw = spec.sheet.width as f64;
     let sh = spec.sheet.height as f64;
 
-    // Normalise to a fixed display width so both 12×41 and 3000×2000 look reasonable.
+    // Normalize to a fixed display width so both 12×41 and 3000×2000 look reasonable.
     const DISPLAY_W: f64 = 700.0;
     let scale = DISPLAY_W / sw;
     let dw = DISPLAY_W;

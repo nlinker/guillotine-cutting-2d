@@ -2,8 +2,6 @@ use crate::model::{
     FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec,
 };
 
-// == expand_* : spec (type-indexed) -> flat ===================================
-
 /// Expand a `ProblemSpec` into a flat `Problem` (one `Piece` entry per physical copy).
 ///
 /// Sheet and every piece are enlarged by `kerf` so that the decoder can place pieces
@@ -76,8 +74,6 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     }
 }
 
-// == shrink_* : flat -> spec (type-indexed) ===================================
-
 /// Collapse a flat `Problem` into a `ProblemSpec` by grouping consecutive identical pieces.
 ///
 /// Pieces are grouped by run: consecutive pieces with matching `(name, width, height,
@@ -147,8 +143,6 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
         .collect();
     SolutionSpec { placements, leftovers }
 }
-
-// == helpers ===================================================================
 
 /// Build a `flat_to_type` mapping: `flat_to_type[flat_idx] = type_idx`.
 pub fn flat_to_type_map(spec: &ProblemSpec) -> Vec<usize> {

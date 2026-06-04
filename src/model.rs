@@ -278,7 +278,7 @@ impl Solution {
         let n_sheets = self.sheets_used();
         let mut total = 0u64;
         for sheet in 0..n_sheets {
-            let pls: Vec<&Placement> = self.placements.iter().filter(|p| p.sheet_idx == sheet).collect();
+            let pls = self.placements.iter().filter(|p| p.sheet_idx == sheet).collect::<Vec<&Placement>>();
             for i in 0..pls.len() {
                 for j in (i + 1)..pls.len() {
                     total += placement_pair_score(pls[i], pls[j], problem);
@@ -306,7 +306,7 @@ impl Solution {
         if self.placements.is_empty() {
             return 0;
         }
-        let mut pairs: Vec<((u32, u32), usize)> = self
+        let mut pairs = self
             .placements
             .iter()
             .map(|p| {
@@ -318,7 +318,7 @@ impl Solution {
                 };
                 ((pw.min(ph), pw.max(ph)), p.sheet_idx)
             })
-            .collect();
+            .collect::<Vec<_>>();
         pairs.sort_unstable();
         pairs.dedup();
         let total = pairs.len();
@@ -474,35 +474,6 @@ pub fn validate_solution(problem: &Problem, sol: &Solution) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn piece(w: u32, h: u32) -> Piece {
-        Piece {
-            name: String::new(),
-            width: w,
-            height: h,
-            can_rotate: false,
-        }
-    }
-
-    fn pl(piece_idx: usize, x: u32, y: u32) -> Placement {
-        Placement {
-            sheet_idx: 0,
-            piece_idx,
-            x,
-            y,
-            rotated: false,
-        }
-    }
-
-    fn problem(pieces: Vec<Piece>) -> Problem {
-        Problem {
-            sheet: Sheet {
-                width: 1000,
-                height: 1000,
-            },
-            pieces,
-        }
-    }
 
     // 2×2 grid of 50×50 pieces tiling a 100×100 sheet exactly (no leftovers, no margin).
     // Cuts: y=50 full-width (100) + x=50 in each strip (50+50) = 200.

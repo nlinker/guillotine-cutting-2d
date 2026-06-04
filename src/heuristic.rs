@@ -1,5 +1,12 @@
 use crate::model::{Placement, Problem, Solution};
 
+struct Shelf {
+    y: u32,
+    h: u32,
+    x_cursor: u32,
+}
+
+
 /// Standalone multi-sheet BFDH solver.
 ///
 /// Sorts all pieces by height descending (rotating if it makes the piece taller),
@@ -58,12 +65,4 @@ pub fn bfdh_solve(problem: &Problem) -> Solution {
     }
     Solution { placements, leftovers: vec![] }
 }
-
-
-struct Shelf {
-    y: u32,
-    h: u32,
-    x_cursor: u32,
-}
-
 

@@ -6,7 +6,7 @@ Rust library and CLI tool for 2D guillotine cutting stock problems.
 
 Given a stock sheet size and a list of rectangular pieces,
 the problem is to find placements that minimize the number
-of sheets used (ties broken by the used area on the last sheet).
+of sheets used (ties broken by the secondary metrics to obtain practical cuttings).
 Some (or all) pieces can be specified as rotatable.
 All cuts are guillotine cuts, i.e. straight lines across the full remaining rectangle.
 
@@ -16,7 +16,7 @@ All cuts are guillotine cuts, i.e. straight lines across the full remaining rect
 The problem is NP-hard, so for large inputs exact computation is infeasible;
 the GA finds good approximations instead.
 
-For example, here are the solutions of one instance of the problem for widths = 20..42.
+For example, here are the solutions of one instance of the problem for widths = 20..43.
 Each frame shows the exact optimal placement of the same piece set
 for a given sheet width, minimizing height.
 You can see that for any width W the optimums for W and W+1 are totally different,
@@ -42,15 +42,17 @@ and this combinatorics makes the problem hard:
   Islands evolve in parallel; every `migration_interval` generations they synchronise via a
   shared barrier, injecting the global best into each island's worst slot.
   The final result is the best individual found across all islands.
-- Two **Decoders** (`--algorithm slas|glas`):
-  - **SLAS** — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic (see [docs/slas.md](docs/slas.md)).
-  - **GLAS** (default) — one gene per piece *type*; pieces grouped into Large / Medium / Small classes
-    so large pieces are always placed first. Each batch chooses horizontal or vertical strip
-    (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
+- Three **Algorithms** (`--algorithm slas|glas|bfdh`):
+  - GA with **SLAS** decoder — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
+    (see [docs/slas.md](docs/slas.md)).
+  - GA with **GLAS** decoder (default) — grouped SLAS, one gene per piece *type*;
+    pieces grouped into Large / Medium / Small classes so large pieces are always placed first.
+    Each batch chooses horizontal or vertical strip (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
     See [docs/glas.md](docs/glas.md).
+  - **BFDH** — Best Fit Decreasing Height — greedy shelf heuristic, very fast
 - **Genome** (GLAS): `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
   inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
-  independently within each class.
+  independently within each class. For SLAS it is just `Vec<Gene>`.
 - Problem instance **Generator** — creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
@@ -64,7 +66,7 @@ and this combinatorics makes the problem hard:
   and cancellation via `GaHandle`.
   - `FifoSink` uses FIFO under Linux (via `mkfifo`).
   - `WindowsPipeSink` uses named pipes under Windows.
-  - `StdoutSink` is a no-op sink for use without a feedback channel.
+  - `StdoutSink` writes progress to stderr and the final JSON result to stdout.
   - Microsoft Excel integration: the executable can be (and is) used as the solver
     in an Excel spreadsheet (or any other external system) thanks to the JSON console interface.
     AutoCAD export is also supported.
