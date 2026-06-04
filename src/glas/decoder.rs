@@ -77,7 +77,6 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
     }
     let mut forest = CutForest::new(problem.sheet.width, problem.sheet.height);
     let mut placements: Vec<Placement> = Vec::with_capacity(problem.pieces.len());
-    let mfg_cost = 0u32;
 
     for class in genome {
         for gene in class {
@@ -175,7 +174,6 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
     Solution {
         placements,
         leftovers,
-        mfg_cost,
     }
 }
 

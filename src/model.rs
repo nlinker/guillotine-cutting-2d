@@ -232,14 +232,10 @@ pub struct FreeRect {
 
 /// Flat solution: one placement per physical piece.
 /// Produced by `decoder::decode`; convert to `SolutionSpec` via `expand::shrink_solution`.
-/// `mfg_cost` - manufacturability cost computed by the decoder from the cut tree.
-/// Zero when constructed outside the decoder (e.g. generator, tests).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Solution {
     pub placements: Vec<Placement>,
     pub leftovers: Vec<FreeRect>,
-    #[serde(default)]
-    pub mfg_cost: u32,
 }
 
 impl Solution {
@@ -521,7 +517,6 @@ mod tests {
                 pl(3, 0, 100), // стойка:    corner (500, 200)
             ],
             leftovers: vec![],
-            mfg_cost: 0,
         };
         assert_eq!(sol.staircase_area(&prob), 600 * 100 + 500 * 100);
     }

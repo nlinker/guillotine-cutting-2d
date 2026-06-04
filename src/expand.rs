@@ -73,7 +73,6 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     Solution {
         placements,
         leftovers: sol.leftovers.clone(),
-        mfg_cost: 0,
     }
 }
 

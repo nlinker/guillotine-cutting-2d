@@ -239,58 +239,6 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
     None
 }
 
-/// Manufacturability cost of a set of cut trees.
-///
-/// Models total operator effort to execute the cutting plan:
-/// - Rotating a workpiece (axis change between parent and child cut): weight 10
-/// - Re-setting the fence (same axis, new position): weight 3
-/// - Each guillotine cut: weight 1
-pub fn mfg_cost_from_trees(trees: &[CutNode]) -> u32 {
-    let mut cost = 0u32;
-    for tree in trees {
-        walk(tree, None, None, &mut cost);
-    }
-    cost
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Axis {
-    H,
-    V,
-}
-
-fn walk(node: &CutNode, parent_axis: Option<Axis>, parent_pos: Option<u32>, cost: &mut u32) {
-    const W_R: u32 = 10;
-    const W_D: u32 = 3;
-    const W_C: u32 = 1;
-    match node {
-        CutNode::Piece { .. } | CutNode::Waste { .. } => {}
-        CutNode::HSplit { cut_y, top, bottom } => {
-            *cost += W_C;
-            if let Some(pa) = parent_axis {
-                if pa != Axis::H {
-                    *cost += W_R;
-                } else if parent_pos != Some(*cut_y) {
-                    *cost += W_D;
-                }
-            }
-            walk(top, Some(Axis::H), Some(*cut_y), cost);
-            walk(bottom, Some(Axis::H), Some(*cut_y), cost);
-        }
-        CutNode::VSplit { cut_x, left, right } => {
-            *cost += W_C;
-            if let Some(pa) = parent_axis {
-                if pa != Axis::V {
-                    *cost += W_R;
-                } else if parent_pos != Some(*cut_x) {
-                    *cost += W_D;
-                }
-            }
-            walk(left, Some(Axis::V), Some(*cut_x), cost);
-            walk(right, Some(Axis::V), Some(*cut_x), cost);
-        }
-    }
-}
 
 /// Orientation of a guillotine cut produced by a blueprint.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -521,10 +469,9 @@ impl CutForest {
         Some(candidates[(selector as usize) % candidates.len()])
     }
 
-    /// Convert the forest to a flat `Vec<CutNode>` for use with `mfg_cost_from_trees`.
+    /// Convert the forest to a flat `Vec<CutNode>`.
     ///
     /// **Not yet implemented** — returns an empty vec.
-    /// Will be closed once the tree-reconstruction logic is added.
     pub fn to_cut_trees(&self) -> Vec<CutNode> {
         // TODO: walk arena and reconstruct CutNode trees
         Vec::new()
@@ -764,7 +711,7 @@ fn collect_positions(node: &CutNode, map: &mut HashMap<usize, (u32, u32)>) {
 /// pushes the largest piece toward the top-left corner of each split node.
 ///
 /// Builds the cut tree from `sol.placements`, applies `sort_tl_corners` to every
-/// sheet tree, updates placement coordinates, and recomputes `mfg_cost`.
+/// sheet tree, and updates placement coordinates.
 /// Returns `sol` unchanged if the cut tree cannot be reconstructed (non-guillotine layout).
 pub fn improve_tl_corners(problem: &Problem, mut sol: Solution) -> Solution {
     let Ok(mut trees) = build_cut_tree(problem, &sol.placements) else {
@@ -784,7 +731,6 @@ pub fn improve_tl_corners(problem: &Problem, mut sol: Solution) -> Solution {
             p.y = y;
         }
     }
-    sol.mfg_cost = mfg_cost_from_trees(&trees);
     sol
 }
 

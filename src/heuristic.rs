@@ -29,7 +29,6 @@ pub fn greedy_improve_solution(problem: &Problem, sol: &Solution) -> Solution {
     Solution {
         placements: improved,
         leftovers: vec![],
-        mfg_cost: sol.mfg_cost,
     }
 }
 
@@ -159,7 +158,6 @@ mod tests {
         let sol = Solution {
             placements: flat_placements,
             leftovers: vec![],
-            mfg_cost: 0,
         };
         let improved = greedy_improve_solution(&problem, &sol);
         // Each sheet has 1 piece, BFDH trivially keeps them (1 piece always fits)

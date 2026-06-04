@@ -1,12 +1,12 @@
 use smallvec::{SmallVec, smallvec};
 
-use super::decoder::{CutCtx, Gene, Genome, find_placement, fits_in, guillotine_split, open_new_sheet, sheet_rect};
+use super::decoder::{Gene, Genome, find_placement, fits_in, guillotine_split, open_new_sheet, sheet_rect};
 use crate::{
     expand, model,
     model::{FreeRect, Piece, Problem, Solution},
 };
 
-type FreeList = SmallVec<[(FreeRect, Option<CutCtx>); 16]>;
+type FreeList = SmallVec<[FreeRect; 16]>;
 
 /// Encode a [`Solution`] as a [`Genome`] suitable as a GA seed.
 ///
@@ -24,7 +24,7 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
         (p.sheet_idx, p.x, p.y)
     });
 
-    let mut free: FreeList = smallvec![(sheet_rect(problem, 0), None)];
+    let mut free: FreeList = smallvec![sheet_rect(problem, 0)];
     let mut sheets_open = 1usize;
     let mut genome = Vec::with_capacity(order.len());
 
@@ -38,7 +38,7 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
             .or_else(|| open_new_sheet(&mut free, &mut sheets_open, problem, piece, pl.rotated));
 
         if let Some((idx, pw, ph, _)) = found {
-            let (fr, _) = free.remove(idx);
+            let fr = free.remove(idx);
 
             let inverse = if let Some(&next_pl_idx) = order.get(i + 1) {
                 let next_pl = &solution.placements[next_pl_idx];
@@ -49,7 +49,7 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
                     let split_a = guillotine_split(&fr, pw, ph, false);
                     let split_b = guillotine_split(&fr, pw, ph, true);
                     let origin_in = |split: &SmallVec<[FreeRect; 2]>| {
-                        free.iter().map(|(r, _)| r).chain(split.iter()).any(|r| {
+                        free.iter().chain(split.iter()).any(|r| {
                             r.sheet_idx == next_pl.sheet_idx
                                 && r.x == next_pl.x
                                 && r.y == next_pl.y
@@ -65,7 +65,7 @@ pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
             };
 
             for fr_new in guillotine_split(&fr, pw, ph, inverse) {
-                free.push((fr_new, None));
+                free.push(fr_new);
             }
             genome.push(Gene {
                 piece_idx: pl.piece_idx,
@@ -90,26 +90,26 @@ pub fn encode_spec(spec: &model::ProblemSpec, sol: &model::SolutionSpec) -> Geno
 /// Priority: exact origin match on the correct sheet -> any fitting rect on the same sheet ->
 /// any fitting rect on any sheet. Falls back to 0 (decoder will open a new sheet).
 fn preferred_free_rect(
-    free: &[(FreeRect, Option<CutCtx>)],
+    free: &[FreeRect],
     sheet_idx: usize,
     x: u32,
     y: u32,
     piece: &Piece,
     prefer_rotate: bool,
 ) -> usize {
-    if let Some(i) = free.iter().position(|(fr, _)| {
+    if let Some(i) = free.iter().position(|fr| {
         fr.sheet_idx == sheet_idx && fr.x == x && fr.y == y && fits_in(fr, piece, prefer_rotate).is_some()
     }) {
         return i;
     }
     if let Some(i) = free
         .iter()
-        .position(|(fr, _)| fr.sheet_idx == sheet_idx && fits_in(fr, piece, prefer_rotate).is_some())
+        .position(|fr| fr.sheet_idx == sheet_idx && fits_in(fr, piece, prefer_rotate).is_some())
     {
         return i;
     }
     free.iter()
-        .position(|(fr, _)| fits_in(fr, piece, prefer_rotate).is_some())
+        .position(|fr| fits_in(fr, piece, prefer_rotate).is_some())
         .unwrap_or(0)
 }
 
@@ -170,7 +170,6 @@ mod tests {
                 },
             ],
             leftovers: vec![],
-            mfg_cost: 0,
         };
         let genome = encode(&optimal, &problem);
         assert_eq!(genome.len(), 4);
