@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
-    cut_tree::improve_tl_corners,
     expand, model,
     model::{FreeRect, Piece, Placement, Problem, Solution},
 };
@@ -36,7 +35,7 @@ pub type Genome = Vec<Gene>;
 /// `Placement.piece_idx` from flat index back to the type index in `spec`.
 pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::SolutionSpec {
     let problem = expand::expand_problem(spec);
-    let sol = improve_tl_corners(&problem, decode(&problem, genome));
+    let sol = decode(&problem, genome);
     expand::shrink_solution(&sol, spec)
 }
 
