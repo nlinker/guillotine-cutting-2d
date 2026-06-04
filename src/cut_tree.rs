@@ -293,9 +293,6 @@ pub(crate) enum ForestNodeKind {
     Free,
     /// A batch has been placed here; no longer available.
     Occupied,
-    /// Internal node created by a blueprint split.
-    #[allow(dead_code)]
-    Split { orient: Orient, left: usize, right: usize },
 }
 
 /// Arena-based guillotine cut forest — one forest per decode call.
