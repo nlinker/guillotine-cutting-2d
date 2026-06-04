@@ -66,6 +66,7 @@
       .t-new   { background: #2a1500; color: #ffbe50; }
       .t-done  { background: #071a12; color: #3ecf97; }
       .t-init  { background: #232320; color: #c4c2b8; }
+      .t-batch { background: #0f2010; color: #8ed638; }
 
       /* Sheet canvas border */
       .sheet-canvas      { border-color: #3d3d3a; }
@@ -154,6 +155,7 @@
     .t-new   { background: #FAEEDA; color: #633806; }
     .t-done  { background: #E1F5EE; color: #085041; }
     .t-init  { background: #F1EFE8; color: #444441; }
+    .t-batch { background: #EAF3DE; color: #27500A; }
 
     /* Legend */
     .legend { font-size: 11px; color: #444441; margin-top: 6px; }
@@ -239,10 +241,14 @@
       <div class="leg"><div class="swatch" style="background:#EEEDFE99;border:1.5px solid #7F77DD"></div>Placed (batch)</div>
       <div class="leg"><div class="swatch" style="background:#378ADD18;border:1.5px dashed #378ADD66"></div>Free rect</div>
     </div>
+    <div class="legend" style="margin-top:8px">
+      <div class="leg"><div class="swatch" style="background:#EAF3DE;border:1.5px solid #639922"></div><span class="tag t-batch" style="font-size:10px">Batch&ge;2</span> rect fits &ge;2 copies</div>
+    </div>
     <div style="margin-top:8px;font-size:10px;color:#888780">
-      Gene: <strong>W×H ×N</strong> = type dims &amp; count<br/>
+      Gene: <strong>W&times;H &times;N</strong> = type dims &amp; count<br/>
       <strong>[L/M/S]</strong> = Large / Medium / Small<br/>
-      Batch: horizontal strip if <em>floor(fr_w/pw) ≥ floor(fr_h/ph)</em>, else vertical.
+      Batch: horizontal if <em>floor(fr_w/pw) &ge; floor(fr_h/ph)</em>, else vertical.<br/>
+      When remaining &gt; 1: prefer rects where batch &ge; 2; fall back to any rect.
     </div>
   </div>
 </div>
@@ -318,6 +324,23 @@ function findFittingLeaf(free, ps, prefer_rotate, selector, kerf) {
   return null;
 }
 
+// ── find fitting leaf (min batch) ─────────────────────────────────
+// Only considers free rects where max(floor(fr_w/pw), floor(fr_h/ph)) >= minFit.
+// selector wraps around the filtered candidate list (not the full free list).
+function findFittingLeafMinBatch(free, ps, prefer_rotate, selector, kerf, minFit) {
+  const candidates = [];
+  for (let i = 0; i < free.length; i++) {
+    const fr  = free[i];
+    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
+    if (!fit) continue;
+    const batchH = Math.floor(fr.w / fit.pw_exp);
+    const batchV = Math.floor(fr.h / fit.ph_exp);
+    if (Math.max(batchH, batchV) >= minFit) candidates.push({idx:i, ...fit});
+  }
+  if (!candidates.length) return null;
+  return candidates[selector % candidates.length];
+}
+
 // ── apply blueprint ────────────────────────────────────────────────
 // Returns up to 2 new free rects; cw/ch are in expanded (kerf-padded) coords.
 function applyBlueprint(fr, cw, ch, bp) {
@@ -374,22 +397,40 @@ function buildSteps(problem, genome) {
       const inv    = (gene.inverses  && gene.inverses[placed])  || false;
       const bp     = inv ? 'TlV' : 'TlH';
 
-      // Find rect
-      const snugIdxs = [];
-      let found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+      // Find rect — soft batch preference: when remaining > 1, try fit>=2 first.
+      let found = null, batchMode = '';
+      if (remaining > 1) {
+        found = findFittingLeafMinBatch(free, ps, gene.rotate, sel, kerf, 2);
+        if (found) {
+          batchMode = 'batch';
+        } else {
+          found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+          if (found) batchMode = 'fallback';
+        }
+      } else {
+        found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+        batchMode = 'single';
+      }
 
       if (!found) {
         // Open new sheet
         free.push({sheet_idx:sheets_open, x:0, y:0, w:sheet.width, h:sheet.height});
         sheets_open++;
         found = findFittingLeaf(free, ps, gene.rotate, 0, kerf);
+        batchMode = 'new_sheet';
         steps.push({...mkState(), type:'new_sheet', geneIdx:fi, chosenIdx:free.length-1,
           text:`<span class="tag t-new">New sheet</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
                `batch ${placed+1}/${ps.count}: no rect fits. Opening sheet <strong>${sheets_open-1}</strong>.`});
       } else {
+        const tag = batchMode === 'batch'
+          ? `<span class="tag t-batch">Batch&ge;2</span>`
+          : `<span class="tag t-find">Fit</span>`;
+        const note = (remaining > 1 && batchMode === 'fallback')
+          ? ' <em style="font-size:10px">(no fit&ge;2 rect, fallback to any)</em>'
+          : '';
         steps.push({...mkState(), type:'search', geneIdx:fi, chosenIdx:found.idx,
-          text:`<span class="tag t-find">Fit</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
-               `batch ${placed+1}/${ps.count} — rect[<strong>${found.idx}</strong>]. sel=${sel}.`});
+          text:`${tag}Type <strong>${ps.width}&times;${ps.height}</strong> `+
+               `batch ${placed+1}/${ps.count} &mdash; rect[<strong>${found.idx}</strong>]. sel=${sel}.${note}`});
       }
 
       // Place batch — choose horizontal or vertical strip (whichever fits more pieces)

@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SLAS Decoder Visualizer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 13px; padding: 16px; background: #ffffff; color: #1a1a18; }
+
+    /* Per-palette piece text colours */
+    .pal-0 .gtype { color: #3C3489; } .pal-1 .gtype { color: #085041; }
+    .pal-2 .gtype { color: #712B13; } .pal-3 .gtype { color: #0C447C; }
+    .pal-4 .gtype { color: #633806; } .pal-5 .gtype { color: #72243E; }
+    .pal-6 .gtype { color: #27500A; } .pal-7 .gtype { color: #501313; }
+
+    @media (prefers-color-scheme: dark) {
+      body                { background: #1a1a18; color: #e8e6df; }
+      .gene-card          { background: #232320; border-color: #3d3d3a; }
+      .gene-card.active   { background: #2d1a00; border-color: #EF9F27; }
+      .gene-card.done     { opacity: .4; }
+      .gene-card .ginfo   { color: #7a7874; }
+      .pal-0 .gtype { color: #a8a3ff; } .pal-1 .gtype { color: #3ecf97; }
+      .pal-2 .gtype { color: #ff8a68; } .pal-3 .gtype { color: #60b8ff; }
+      .pal-4 .gtype { color: #ffbe50; } .pal-5 .gtype { color: #ff82b0; }
+      .pal-6 .gtype { color: #8ed638; } .pal-7 .gtype { color: #ff7a7a; }
+      .gene-card.active .gtype { color: #1a1a18; }
+      .explain            { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
+      .explain strong     { color: #e8e6df; }
+      .t-find  { background: #0a1e30; color: #60b8ff; }
+      .t-place { background: #16133a; color: #a8a3ff; }
+      .t-new   { background: #2a1500; color: #ffbe50; }
+      .t-done  { background: #071a12; color: #3ecf97; }
+      .t-init  { background: #232320; color: #c4c2b8; }
+      .t-slas-h { background: #0a1e30; color: #60b8ff; }
+      .t-slas-v { background: #2a1500; color: #ffbe50; }
+      .sheet-canvas       { border-color: #3d3d3a; }
+      .sheet-label        { color: #7a7874; }
+      .ctrl button        { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover  { background: #2e2e2b; }
+      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .ctrl button:disabled { opacity: .3; }
+      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
+      .sc  { color: #7a7874; }
+      .pdot { background: #3d3d3a; }
+      .panel-title { color: #7a7874; }
+      .free-list { color: #c4c2b8; }
+      .free-item { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
+      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; }
+      .legend { color: #c4c2b8; }
+      .settings label { color: #b4b2a9; }
+      .settings-group { background: #232320; border-color: #2e2e2b; }
+      .settings input { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .scale-info { background: #232320; border-color: #2e2e2b; color: #7a7874; }
+      .mfg-value { color: #ff8a68; }
+      .mfg-detail { color: #7a7874; }
+      .genome-wrap { border-color: #3d3d3a; background: #232320; }
+      .inv-tag { background: #2a0030; border-color: #9944aa; color: #d080e0; }
+    }
+
+    #layout { display: flex; gap: 12px; align-items: flex-start; }
+    #left   { flex: 1; min-width: 0; }
+    #right  { width: 220px; flex-shrink: 0; }
+
+    /* Genome row */
+    .genome-wrap { margin-bottom: 10px; border: 0.5px solid #e8e6df; border-radius: 6px; padding: 8px; background: #faf9f7; }
+    .gene-row    { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; min-height: 50px; }
+
+    /* Gene card */
+    .gene-card  {
+      display: flex; flex-direction: column; align-items: center;
+      border: 1.5px solid #d3d1c7; border-radius: 6px; padding: 3px 6px;
+      cursor: default; transition: border-color .2s, transform .15s;
+      background: #ffffff; min-width: 50px;
+    }
+    .gene-card.active { border-color: #EF9F27; background: #FAEEDA; }
+    .gene-card.done   { opacity: .45; }
+    .gene-card .gtype { font-size: 11px; font-weight: 600; }
+    .gene-card .ginfo { font-size: 9px; color: #888780; margin-top: 1px; line-height: 1.4; text-align: center; }
+    .inv-tag { font-size: 8px; background: #fef4ff; border: 1px solid #dda0dd; border-radius: 2px; padding: 0 3px; color: #9944aa; margin-left: 2px; }
+
+    /* Sheets */
+    .sheets-wrap     { display: flex; gap: 10px; flex-wrap: wrap; }
+    .sheet-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .sheet-label     { font-size: 10px; color: #888780; }
+    .sheet-canvas    { display: block; border: 0.5px solid #d3d1c7; border-radius: 4px; }
+
+    /* Explain */
+    .explain        { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; min-height: 52px; margin: 8px 0; }
+    .explain strong { color: #1a1a18; }
+
+    /* Tags */
+    .tag      { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+    .t-find   { background: #E6F1FB; color: #0C447C; }
+    .t-place  { background: #EEEDFE; color: #3C3489; }
+    .t-new    { background: #FAEEDA; color: #633806; }
+    .t-done   { background: #E1F5EE; color: #085041; }
+    .t-init   { background: #F1EFE8; color: #444441; }
+    .t-slas-h { background: #E6F1FB; color: #0C447C; }
+    .t-slas-v { background: #FAEEDA; color: #7A4800; }
+
+    /* mfg cost */
+    .mfg-value  { font-size: 20px; font-weight: 700; color: #D85A30; }
+    .mfg-detail { font-size: 10px; color: #888780; margin-top: 2px; }
+
+    /* Legend */
+    .legend { font-size: 11px; color: #444441; margin-top: 6px; }
+    .leg    { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+    .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+    /* Controls */
+    .ctrl               { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .ctrl button        { font-size: 12px; padding: 4px 11px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; cursor: pointer; transition: background .15s; }
+    .ctrl button:hover  { background: #f5f4f0; }
+    .ctrl button:disabled { opacity: .35; cursor: default; }
+    .ctrl button.primary       { background: #1a1a18; color: #ffffff; border-color: #1a1a18; }
+    .ctrl button.primary:hover { opacity: .85; }
+    .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
+    .sc  { font-size: 11px; color: #888780; margin-left: auto; }
+
+    /* Progress dots */
+    .progress { display: flex; gap: 3px; margin: 6px 0; flex-wrap: wrap; min-height: 16px; align-items: center; }
+    .pdot     { width: 7px; height: 7px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; }
+    .pdot.done { background: #1D9E75; }
+    .pdot.cur  { background: #EF9F27; transform: scale(1.5); }
+
+    /* Panel titles */
+    .panel-title { font-size: 10px; font-weight: 500; color: #888780; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+
+    /* Free rect list */
+    .free-list  { font-size: 11px; color: #444441; line-height: 1.7; max-height: 220px; overflow-y: auto; }
+    .free-item  { padding: 2px 5px; border-radius: 3px; border-left: 3px solid #378ADD; margin-bottom: 2px; background: #E6F1FB22; }
+    .free-item.chosen { background: #FAEEDA; border-color: #EF9F27; }
+    .free-ctx   { font-size: 9px; color: #888780; }
+
+    /* Settings */
+    .settings       { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+    .settings label { font-size: 12px; color: #444441; }
+    .settings input[type=number] { width: 52px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
+    .settings-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
+    .scale-info     { font-size: 10px; color: #888780; padding: 2px 6px; background: #f5f4f0; border-radius: 3px; border: 0.5px solid #e8e6df; }
+  </style>
+</head>
+<body>
+
+<div class="settings">
+  <div class="settings-group">
+    <label>Sheet:</label>
+    <input id="sw" type="number" value="20" min="4" max="200"/>&#x00D7;
+    <input id="sh" type="number" value="15" min="4" max="200"/>
+    <label>Kerf:</label>
+    <input id="kerf" type="number" value="0" min="0" max="20"/>
+  </div>
+  <div class="settings-group">
+    <label>Pieces:</label>
+    <input id="npieces" type="number" value="5" min="1" max="24"/>
+    <label>Sheets/row:</label>
+    <input id="sheets-per-row" type="number" value="2" min="1" max="6"/>
+    <span class="scale-info" id="scale-info">1 unit = 32 px</span>
+  </div>
+  <button onclick="problemBasic()">SLAS Basic</button>
+  <button onclick="problemInverse()">Inverse</button>
+  <button onclick="randomProblem()">&#x1F3B2; Random</button>
+</div>
+
+<div class="genome-wrap">
+  <div class="panel-title">Genome &mdash; flat permutation &nbsp;(one gene per physical piece &nbsp;|&nbsp; ps = point_selector &nbsp;|&nbsp; <span class="inv-tag">inv</span> = inverse split)</div>
+  <div class="gene-row" id="gene-row"></div>
+</div>
+
+<div id="layout">
+  <div id="left">
+    <div class="panel-title">Sheets</div>
+    <div class="sheets-wrap" id="sheets-wrap" style="display:grid"></div>
+    <div class="explain" id="explain">Press a preset or Random to start.</div>
+    <div class="progress" id="progress-row"></div>
+    <div class="ctrl">
+      <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
+      <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
+      <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+      <span class="sc" id="sc"></span>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="panel-title">Free rectangles</div>
+    <div class="free-list" id="free-list">&mdash;</div>
+
+    <div style="margin-top:12px">
+      <div class="panel-title">Mfg cost</div>
+      <div><span class="mfg-value" id="mfg-value">0</span></div>
+      <div class="mfg-detail" id="mfg-detail">&nbsp;</div>
+      <div style="font-size:10px;color:#888780;margin-top:5px;line-height:1.6">
+        W<sub>R</sub>=10&nbsp;rotate axis<br/>
+        W<sub>D</sub>=3&nbsp;&nbsp;reposition fence<br/>
+        W<sub>C</sub>=1&nbsp;&nbsp;per cut
+      </div>
+    </div>
+
+    <div class="legend" style="margin-top:10px">
+      <div class="leg"><div class="swatch" style="background:#EF9F2766;border:1.5px solid #EF9F27"></div>Chosen rect</div>
+      <div class="leg"><div class="swatch" style="background:#EEEDFE99;border:1.5px solid #7F77DD"></div>Just placed</div>
+      <div class="leg"><div class="swatch" style="background:#378ADD18;border:1.5px dashed #378ADD66"></div>Free rect</div>
+      <div class="leg"><div class="swatch" style="background:transparent;border:2px solid #D85A30"></div>Primary cut</div>
+      <div class="leg"><div class="swatch" style="background:transparent;border:2px dashed #D85A3077"></div>Secondary cut</div>
+    </div>
+
+    <div style="margin-top:8px;font-size:10px;color:#888780;line-height:1.6">
+      <strong>SLAS split rule:</strong><br/>
+      if <em>lw &le; lh</em> (and not inverse):<br/>
+      &nbsp;H-cut first &rarr; right=lw&times;ph, bottom=fw&times;lh<br/>
+      else:<br/>
+      &nbsp;V-cut first &rarr; right=lw&times;fh, bottom=pw&times;lh<br/>
+      <strong>Inverse</strong> flips the condition.
+    </div>
+  </div>
+</div>
+
+<script>
+// ── colour palette ──────────────────────────────────────────────────
+const PALETTES = [
+  {fill:'#EEEDFE99',stroke:'#7F77DD',text:'#3C3489'},
+  {fill:'#E1F5EE99',stroke:'#1D9E75',text:'#085041'},
+  {fill:'#FAECE799',stroke:'#D85A30',text:'#712B13'},
+  {fill:'#E6F1FB99',stroke:'#378ADD',text:'#0C447C'},
+  {fill:'#FAEEDA99',stroke:'#EF9F27',text:'#633806'},
+  {fill:'#FBEAF099',stroke:'#D4537E',text:'#72243E'},
+  {fill:'#EAF3DE99',stroke:'#639922',text:'#27500A'},
+  {fill:'#FCEBEB99',stroke:'#E24B4A',text:'#501313'},
+];
+const pal    = i => PALETTES[i % PALETTES.length];
+const clone  = x => JSON.parse(JSON.stringify(x));
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
+
+// Mfg cost weights
+const W_R = 10, W_D = 3, W_C = 1;
+
+let problem = null, genome = null, steps = null, stepIdx = -1, autoRunning = false;
+let SCALE = 32;
+
+// ── scale ──────────────────────────────────────────────────────────
+function computeScale() {
+  const spr = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sw  = parseInt(document.getElementById('sw').value)||12;
+  const lw  = document.getElementById('left').offsetWidth || 500;
+  const avail = lw - (spr-1)*10;
+  const scale = Math.max(4, Math.floor(avail / spr / sw));
+  document.getElementById('scale-info').textContent = `1 unit = ${scale} px`;
+  return scale;
+}
+
+// ── piece fitting ──────────────────────────────────────────────────
+// Returns {pw_exp, ph_exp, rotated} (expanded = display + kerf) or null.
+function fitsPiece(fr_w, fr_h, ps, prefer_rotate, kerf) {
+  const tryRot = prefer_rotate && ps.can_rotate;
+  const [wa, ha] = tryRot ? [ps.height+kerf, ps.width+kerf] : [ps.width+kerf, ps.height+kerf];
+  if (wa <= fr_w && ha <= fr_h) return {pw_exp:wa, ph_exp:ha, rotated:tryRot};
+  if (ps.can_rotate) {
+    const [wb, hb] = [ha, wa];
+    if (wb <= fr_w && hb <= fr_h) return {pw_exp:wb, ph_exp:hb, rotated:!tryRot};
+  }
+  return null;
+}
+
+// ── find placement ─────────────────────────────────────────────────
+// Scan free rects starting at point_selector % n, wrapping around.
+function findPlacement(free, ps, prefer_rotate, point_selector, kerf) {
+  const n = free.length;
+  if (!n) return null;
+  const start = (n > 0) ? (point_selector % n) : 0;
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n;
+    const fr  = free[idx];
+    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
+    if (fit) return {idx, ...fit};
+  }
+  return null;
+}
+
+// ── mfg cost helpers ───────────────────────────────────────────────
+function setupCost(ctx, axis, pos) {
+  if (!ctx) return 0;
+  if (ctx.axis !== axis) return W_R;
+  if (ctx.pos  !== pos)  return W_D;
+  return 0;
+}
+
+// ctx = {axis:'H'|'V', pos:number} | null  (how the rect was produced)
+// lw, lh = leftover dims (expanded).  vPos = fr.x+pw_exp, hPos = fr.y+ph_exp.
+function mfgCostIncrement(ctx, lw, lh, vPos, hPos, inverse) {
+  if (lw === 0 && lh === 0) return 0;
+  if (lw === 0) return W_C + setupCost(ctx, 'H', hPos);
+  if (lh === 0) return W_C + setupCost(ctx, 'V', vPos);
+  // Two cuts needed; first cut determines axis, second always requires rotation.
+  const hFirst = (lw <= lh) !== inverse;
+  const [firstAxis, firstPos] = hFirst ? ['H', hPos] : ['V', vPos];
+  return W_C + setupCost(ctx, firstAxis, firstPos) + W_C + W_R;
+}
+
+// ── build steps ────────────────────────────────────────────────────
+// Each free rect carries {sheet_idx, x, y, w, h, ctx:{axis,pos}|null}.
+function buildSteps(prob, gn) {
+  const {sheet, pieces, kerf} = prob;
+  const sw = sheet.width, sh = sheet.height;
+
+  let free = [{sheet_idx:0, x:0, y:0, w:sw, h:sh, ctx:null}];
+  let sheets_open = 1;
+  let mfg_cost = 0;
+  const all_placements = [];
+  const steps = [];
+
+  const mkState = () => ({
+    free: clone(free),
+    placements: clone(all_placements),
+    mfg_cost,
+  });
+
+  steps.push({...mkState(), type:'init', geneIdx:-1, chosenIdx:-1, mfgInc:0,
+    text:`<span class="tag t-init">Init</span>Sheet <strong>${sw}&times;${sh}</strong>, kerf&nbsp;<strong>${kerf}</strong>. `+
+         `<strong>${gn.length}</strong> gene(s) in flat genome. One free rect: the whole sheet.`});
+
+  for (let gi = 0; gi < gn.length; gi++) {
+    const gene = gn[gi];
+    const ps   = pieces[gene.piece_idx];
+
+    // --- find ---
+    let found = findPlacement(free, ps, gene.rotate, gene.point_selector, kerf);
+    if (!found) {
+      free.push({sheet_idx:sheets_open, x:0, y:0, w:sw, h:sh, ctx:null});
+      sheets_open++;
+      found = findPlacement(free, ps, gene.rotate, 0, kerf);
+      steps.push({...mkState(), type:'new_sheet', geneIdx:gi, chosenIdx:free.length-1, mfgInc:0,
+        text:`<span class="tag t-new">New sheet</span>Gene&nbsp;${gi} (${ps.width}&times;${ps.height}): `+
+             `nothing fits. Opening sheet&nbsp;<strong>${sheets_open-1}</strong>.`});
+    } else {
+      const scanStart = free.length > 0 ? gene.point_selector % free.length : 0;
+      steps.push({...mkState(), type:'find', geneIdx:gi, chosenIdx:found.idx, mfgInc:0,
+        text:`<span class="tag t-find">Fit</span>Gene&nbsp;${gi} (${ps.width}&times;${ps.height})` +
+             `${gene.rotate?' ↻':''}, ps=${gene.point_selector}: scan from free[<strong>${scanStart}</strong>] `+
+             `&rarr; rect[<strong>${found.idx}</strong>]${found.rotated?' (rotated)':''}.`});
+    }
+
+    // --- place ---
+    const fr     = free[found.idx];
+    const pw_exp = found.pw_exp, ph_exp = found.ph_exp;
+    const pw     = pw_exp - kerf, ph = ph_exp - kerf; // display dims
+    const lw     = fr.w - pw_exp,   lh = fr.h - ph_exp;
+    const vPos   = fr.x + pw_exp,   hPos = fr.y + ph_exp;
+
+    const inc = mfgCostIncrement(fr.ctx, lw, lh, vPos, hPos, gene.inverse);
+    mfg_cost += inc;
+
+    all_placements.push({
+      piece_idx: gene.piece_idx,
+      x: fr.x, y: fr.y,
+      pw, ph, pw_exp, ph_exp,
+      rotated: found.rotated,
+      sheet_idx: fr.sheet_idx,
+    });
+
+    // SLAS split: (lw <= lh) != inverse => H-first; else V-first
+    const hFirst = (lw <= lh) !== gene.inverse;
+    const newFrees = [];
+    if (lw > 0) {
+      const rh = hFirst ? ph_exp : fr.h;
+      newFrees.push({sheet_idx:fr.sheet_idx, x:fr.x+pw_exp, y:fr.y,    w:lw, h:rh, ctx:{axis:'V',pos:vPos}});
+    }
+    if (lh > 0) {
+      const bw = hFirst ? fr.w : pw_exp;
+      newFrees.push({sheet_idx:fr.sheet_idx, x:fr.x,        y:fr.y+ph_exp, w:bw, h:lh, ctx:{axis:'H',pos:hPos}});
+    }
+
+    // Cut lines for canvas (primary = solid, secondary = dashed)
+    const splitLines = [];
+    if (lw > 0 || lh > 0) {
+      if (hFirst) {
+        // Primary: H-cut full width at y=fr.y+ph_exp
+        if (lh > 0) splitLines.push({sheet_idx:fr.sheet_idx, x1:fr.x, y1:fr.y+ph_exp, x2:fr.x+fr.w, y2:fr.y+ph_exp, primary:true, label:'H'});
+        // Secondary: V-cut from fr.y to fr.y+ph_exp at x=fr.x+pw_exp
+        if (lw > 0) splitLines.push({sheet_idx:fr.sheet_idx, x1:fr.x+pw_exp, y1:fr.y, x2:fr.x+pw_exp, y2:fr.y+ph_exp, primary:false, label:'V'});
+      } else {
+        // Primary: V-cut full height at x=fr.x+pw_exp
+        if (lw > 0) splitLines.push({sheet_idx:fr.sheet_idx, x1:fr.x+pw_exp, y1:fr.y, x2:fr.x+pw_exp, y2:fr.y+fr.h, primary:true, label:'V'});
+        // Secondary: H-cut from fr.x to fr.x+pw_exp at y=fr.y+ph_exp
+        if (lh > 0) splitLines.push({sheet_idx:fr.sheet_idx, x1:fr.x, y1:fr.y+ph_exp, x2:fr.x+pw_exp, y2:fr.y+ph_exp, primary:false, label:'H'});
+      }
+    }
+
+    free.splice(found.idx, 1);
+    free.push(...newFrees);
+
+    // Build explain text
+    let splitDesc;
+    if (lw === 0 && lh === 0) {
+      splitDesc = 'Exact fit &mdash; no split needed.';
+    } else {
+      const cond = gene.inverse
+        ? `lw=${lw}, lh=${lh}, <span class="inv-tag">inv</span> &rarr; condition flipped`
+        : `lw=${lw}, lh=${lh}`;
+      const tag  = hFirst
+        ? `<span class="tag t-slas-h">H-first</span>`
+        : `<span class="tag t-slas-v">V-first</span>`;
+      const desc = hFirst
+        ? `right&nbsp;${lw}&times;${ph_exp}, bottom&nbsp;${fr.w}&times;${lh}`
+        : `right&nbsp;${lw}&times;${fr.h}, bottom&nbsp;${pw_exp}&times;${lh}`;
+      splitDesc = `${cond} ${tag} ${desc}.`;
+    }
+    const incText = inc > 0 ? ` &nbsp;mfg&nbsp;+${inc}&nbsp;&rarr;&nbsp;${mfg_cost}` : '';
+
+    steps.push({...mkState(), type:'place', geneIdx:gi, chosenIdx:-1,
+      placement: clone(all_placements[all_placements.length-1]),
+      newFrees: clone(newFrees), splitLines, hFirst, lw, lh, mfgInc:inc,
+      text:`<span class="tag t-place">Place</span>Gene&nbsp;${gi} (${ps.width}&times;${ps.height}) `+
+           `at (${fr.x},${fr.y}).${found.rotated?' Rotated.':''} `+
+           `${splitDesc}${incText ? `<em style="font-size:11px">${incText}</em>` : ''}`});
+  }
+
+  const totalArea = sw * sh * sheets_open;
+  const usedArea  = all_placements.reduce((s, p) => s + p.pw * p.ph, 0);
+  steps.push({...mkState(), type:'done', geneIdx:-1, chosenIdx:-1, mfgInc:0,
+    text:`<span class="tag t-done">Done</span>All&nbsp;<strong>${gn.length}</strong> piece(s) placed on `+
+         `<strong>${sheets_open}</strong> sheet(s). `+
+         `Utilisation:&nbsp;<strong>${(usedArea/totalArea*100).toFixed(1)}%</strong>. `+
+         `Total mfg cost:&nbsp;<strong>${mfg_cost}</strong>.`});
+
+  return steps;
+}
+
+// ── presets ────────────────────────────────────────────────────────
+function problemBasic() {
+  // Sheet 20×15, kerf=0. Three pieces fit perfectly on one sheet.
+  // Piece 0 (12×8): lw=8,lh=7 → V-first split. Piece 1 (7×8): lw=1,lh=7 → H-first split.
+  // Piece 2 (12×7): exact fit.
+  document.getElementById('sw').value   = 20;
+  document.getElementById('sh').value   = 15;
+  document.getElementById('kerf').value = 0;
+  problem = {
+    sheet:  {width:20, height:15},
+    kerf:   0,
+    pieces: [
+      {width:12, height:8,  can_rotate:false},
+      {width:7,  height:8,  can_rotate:false},
+      {width:12, height:7,  can_rotate:false},
+    ],
+  };
+  genome = [
+    {piece_idx:0, rotate:false, point_selector:0, inverse:false},
+    {piece_idx:1, rotate:false, point_selector:0, inverse:false},
+    {piece_idx:2, rotate:false, point_selector:0, inverse:false},
+  ];
+  renderGenome(); initDecoder();
+}
+
+function problemInverse() {
+  // Same 3 pieces, but piece 0 has inverse=true.
+  // Piece 0 (12×8) with inv=true: lw=8,lh=7 → normally V-first; inv flips → H-first.
+  // Right becomes 8×8, bottom becomes 20×7.
+  document.getElementById('sw').value   = 20;
+  document.getElementById('sh').value   = 15;
+  document.getElementById('kerf').value = 0;
+  problem = {
+    sheet:  {width:20, height:15},
+    kerf:   0,
+    pieces: [
+      {width:12, height:8,  can_rotate:false},
+      {width:7,  height:8,  can_rotate:false},
+      {width:12, height:7,  can_rotate:false},
+      {width:6,  height:5,  can_rotate:true},
+    ],
+  };
+  genome = [
+    {piece_idx:0, rotate:false, point_selector:0, inverse:true},  // forced H-first
+    {piece_idx:1, rotate:false, point_selector:0, inverse:false},
+    {piece_idx:2, rotate:false, point_selector:1, inverse:false},
+    {piece_idx:3, rotate:false, point_selector:0, inverse:false},
+  ];
+  renderGenome(); initDecoder();
+}
+
+function randomProblem() {
+  const sw     = parseInt(document.getElementById('sw').value)||20;
+  const sh     = parseInt(document.getElementById('sh').value)||15;
+  const kerf   = parseInt(document.getElementById('kerf').value)||0;
+  const np     = Math.max(1, parseInt(document.getElementById('npieces').value)||5);
+
+  const pieces = [];
+  for (let i = 0; i < np; i++) {
+    const w = Math.max(2, 1 + Math.floor(Math.random() * sw * 0.65));
+    const h = Math.max(2, 1 + Math.floor(Math.random() * sh * 0.65));
+    pieces.push({width:w, height:h, can_rotate: Math.random() > 0.4});
+  }
+  problem = {sheet:{width:sw,height:sh}, kerf, pieces};
+  genome  = shuffle([...Array(np).keys()]).map(i => ({
+    piece_idx:      i,
+    rotate:         Math.random() > 0.5,
+    point_selector: Math.floor(Math.random() * 4),
+    inverse:        Math.random() > 0.8,
+  }));
+  renderGenome(); initDecoder();
+}
+
+// ── render genome row ──────────────────────────────────────────────
+function renderGenome() {
+  const row = document.getElementById('gene-row');
+  row.innerHTML = '';
+  genome.forEach((gene, gi) => {
+    const ps = problem.pieces[gene.piece_idx];
+    const p  = pal(gene.piece_idx);
+    const card = document.createElement('div');
+    card.className = `gene-card pal-${gene.piece_idx % 8}`;
+    card.id = `gc-${gi}`;
+    card.style.borderColor = p.stroke;
+    const flags = [
+      gene.rotate  ? '↻' : '',
+      gene.inverse ? `<span class="inv-tag">inv</span>` : '',
+    ].filter(Boolean).join(' ');
+    card.innerHTML =
+      `<div class="gtype">${ps.width}&times;${ps.height}</div>`+
+      `<div class="ginfo">ps=${gene.point_selector}${flags ? '&nbsp;'+flags : ''}</div>`;
+    row.appendChild(card);
+  });
+}
+
+// ── init decoder ───────────────────────────────────────────────────
+function initDecoder() {
+  if (!problem) { problemBasic(); return; }
+  SCALE = computeScale();
+  steps = buildSteps(problem, genome);
+  stepIdx = 0;
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+  renderStep(0);
+}
+
+// ── render step ────────────────────────────────────────────────────
+function renderStep(idx) {
+  const s = steps[idx]; stepIdx = idx;
+
+  // Gene card highlights
+  genome.forEach((gene, gi) => {
+    const card = document.getElementById(`gc-${gi}`);
+    if (!card) return;
+    const isActive = gi === s.geneIdx;
+    const isDone   = (gi < s.geneIdx) ||
+                     (gi === s.geneIdx && (s.type==='done' || s.type==='place'));
+    card.classList.toggle('active', isActive);
+    card.classList.toggle('done',   isDone && !isActive);
+  });
+
+  // Sheets
+  const sheetsWrap = document.getElementById('sheets-wrap');
+  const spr = Math.max(1, parseInt(document.getElementById('sheets-per-row').value)||2);
+  const sheetCount = Math.max(1,
+    ...s.free.map(f => f.sheet_idx+1),
+    ...s.placements.map(p => p.sheet_idx+1));
+  const W = problem.sheet.width  * SCALE;
+  const H = problem.sheet.height * SCALE;
+
+  sheetsWrap.innerHTML = '';
+  sheetsWrap.style.gridTemplateColumns = `repeat(${spr}, ${W}px)`;
+  sheetsWrap.style.gap = '10px';
+
+  for (let si = 0; si < sheetCount; si++) {
+    const wrap = document.createElement('div'); wrap.className = 'sheet-container';
+    const lbl  = document.createElement('div'); lbl.className = 'sheet-label'; lbl.textContent = 'Sheet ' + si;
+    const cv   = document.createElement('canvas'); cv.className = 'sheet-canvas';
+    cv.width = W; cv.height = H; cv.style.width = W+'px'; cv.style.height = H+'px';
+    drawSheet(cv.getContext('2d'), si, s, W, H);
+    wrap.appendChild(lbl); wrap.appendChild(cv);
+    sheetsWrap.appendChild(wrap);
+  }
+
+  document.getElementById('explain').innerHTML = s.text;
+
+  // Free rect list
+  const fl = document.getElementById('free-list');
+  if (s.free.length === 0) {
+    fl.innerHTML = '<span style="color:#888780">No free rects</span>';
+  } else {
+    fl.innerHTML = s.free.map((fr, i) => {
+      const chosen = (i === s.chosenIdx);
+      const ctxStr = fr.ctx ? `<span class="free-ctx">&larr;&nbsp;${fr.ctx.axis}-cut&nbsp;${fr.ctx.axis==='V'?'x':'y'}=${fr.ctx.pos}</span>` : '';
+      return `<div class="${chosen ? 'free-item chosen' : 'free-item'}">`+
+             `[${i}]&nbsp;sh${fr.sheet_idx}:&nbsp;(${fr.x},${fr.y})&nbsp;${fr.w}&times;${fr.h}`+
+             `${chosen?' <span style="color:#EF9F27">&#x2713;</span>':''}${ctxStr}</div>`;
+    }).join('');
+  }
+
+  // mfg cost
+  document.getElementById('mfg-value').textContent = s.mfg_cost;
+  const incEl = document.getElementById('mfg-detail');
+  incEl.textContent = s.mfgInc > 0 ? `+${s.mfgInc} this step` : '';
+
+  // Progress dots
+  const pr = document.getElementById('progress-row'); pr.innerHTML = '';
+  steps.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'pdot' + (i < idx ? ' done' : i === idx ? ' cur' : '');
+    pr.appendChild(d);
+  });
+  document.getElementById('sc').textContent = `${idx+1} / ${steps.length}`;
+  document.getElementById('btn-prev').disabled = idx === 0;
+  document.getElementById('btn-next').disabled = idx === steps.length-1;
+  document.getElementById('btn-auto').disabled = false;
+}
+
+// ── draw sheet ─────────────────────────────────────────────────────
+function drawSheet(ctx, si, s, W, H) {
+  ctx.fillStyle = '#faf9f7'; ctx.fillRect(0, 0, W, H);
+
+  // Placed pieces
+  s.placements.filter(p => p.sheet_idx === si).forEach(p => {
+    const isJust = s.type === 'place' && s.placement &&
+                   s.placement.sheet_idx === p.sheet_idx &&
+                   s.placement.x === p.x && s.placement.y === p.y;
+    const pc = pal(p.piece_idx);
+    const x = p.x*SCALE, y = p.y*SCALE, w = p.pw*SCALE, h = p.ph*SCALE;
+    ctx.fillStyle   = isJust ? pc.stroke+'44' : pc.fill;
+    ctx.strokeStyle = pc.stroke;
+    ctx.lineWidth   = isJust ? 2.5 : 1;
+    ctx.setLineDash([]);
+    roundRect(ctx, x, y, w, h, Math.min(4, SCALE/4)); ctx.fill(); ctx.stroke();
+    const fs = Math.max(7, Math.min(11, w/5, h/2));
+    ctx.fillStyle = pc.text; ctx.font = `bold ${fs}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (w > fs*2 && h > fs*1.5) {
+      ctx.fillText(`${p.pw}×${p.ph}`, x+w/2, y+h/2);
+      if (p.rotated && h > fs*3) {
+        ctx.font = `${Math.max(6,fs-2)}px sans-serif`;
+        ctx.fillStyle = pc.text+'99';
+        ctx.fillText('↻', x+w/2, y+h/2+fs+1);
+      }
+    }
+  });
+
+  // Free rects
+  s.free.filter(fr => fr.sheet_idx === si).forEach((fr, i) => {
+    const chosen = (i === s.chosenIdx);
+    const x = fr.x*SCALE, y = fr.y*SCALE, w = fr.w*SCALE, h = fr.h*SCALE;
+    ctx.fillStyle   = chosen ? '#EF9F2730' : '#378ADD10';
+    ctx.strokeStyle = chosen ? '#EF9F27'   : '#378ADD55';
+    ctx.lineWidth   = chosen ? 1.5 : 1;
+    ctx.setLineDash(chosen ? [] : [3,3]);
+    roundRect(ctx, x, y, w, h, 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    if (Math.min(w, h) > 18) {
+      const fz = Math.max(7, Math.min(9, w/5));
+      ctx.fillStyle = '#378ADD88'; ctx.font = `${fz}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`${fr.w}×${fr.h}`, x+w/2, y+h/2);
+    }
+  });
+
+  // Split lines (on 'place' step)
+  if (s.splitLines) {
+    s.splitLines.filter(l => l.sheet_idx === si).forEach(l => {
+      ctx.strokeStyle = l.primary ? '#D85A30CC' : '#D85A3066';
+      ctx.lineWidth   = l.primary ? 2 : 1.5;
+      ctx.setLineDash(l.primary ? [] : [5, 3]);
+      ctx.beginPath();
+      ctx.moveTo(l.x1*SCALE, l.y1*SCALE);
+      ctx.lineTo(l.x2*SCALE, l.y2*SCALE);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Label (H or V) near midpoint
+      const mx = (l.x1+l.x2)/2*SCALE, my = (l.y1+l.y2)/2*SCALE;
+      ctx.fillStyle = '#D85A30CC'; ctx.font = `bold ${Math.max(8,SCALE/4)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(l.label, mx + (l.label==='H'?0:6), my + (l.label==='H'?-6:0));
+    });
+  }
+
+  // Sheet border
+  ctx.strokeStyle = '#d3d1c7'; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.strokeRect(0,0,W,H);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);   ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r);     ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// ── navigation ─────────────────────────────────────────────────────
+function goNext() { if (stepIdx < steps.length-1) renderStep(stepIdx+1); }
+function goPrev() { if (stepIdx > 0)              renderStep(stepIdx-1); }
+
+async function toggleAuto() {
+  if (autoRunning) {
+    autoRunning = false;
+    document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+    return;
+  }
+  autoRunning = true;
+  document.getElementById('btn-auto').innerHTML = '&#x23F8; Pause<span class="kbd">Space</span>';
+  while (autoRunning && stepIdx < steps.length-1) {
+    goNext(); await new Promise(r => setTimeout(r, 700));
+  }
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+}
+
+document.addEventListener('keydown', ev => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); goNext(); }
+  if (ev.key === 'ArrowLeft')  { ev.preventDefault(); goPrev(); }
+  if (ev.code === 'Space')     { ev.preventDefault(); toggleAuto(); }
+});
+
+document.getElementById('sheets-per-row').addEventListener('input', () => {
+  if (problem && steps) { SCALE = computeScale(); renderStep(stepIdx); }
+});
+
+setTimeout(() => problemBasic(), 50);
+</script>
+</body>
+</html>
