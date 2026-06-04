@@ -27,9 +27,9 @@ and this combinatorics makes the problem hard:
 ## Distinctive features
 
 - Enforces **guillotine**-cut constraints.
-- Three-level lexicographic **Objective** `(sheets_used, staircase_area, bbox_grouping_penalty)` —
-  minimizes sheet count first, then compacts the last sheet, then groups same-size pieces together
-  for cleaner cut patterns (see [docs/objective.md](docs/objective.md)).
+- Three-level lexicographic **Objective** `(sheets_used, shared_edge_score, leftover_area)` —
+  minimizes sheet count first, then maximizes alignment of pieces along shared guillotine cuts,
+  then minimizes the largest leftover rectangle (see [docs/objective.md](docs/objective.md)).
 - **Kerf** — blade thickness subtracted from each internal cut; sheet boundary edges are exempt.
   Internally baked into piece and sheet dimensions in `expand_problem`.
 - **Margin** — border excluded from all four sheet edges before solving;
