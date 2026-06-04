@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Three-level lexicographic fitness. Lower is better except `shared_edge_score` (maximized).
-///   0. `sheets_used`
-///   1. `shared_edge_score` — weighted adjacent-edge length; higher is better (reversed in `Ord`)
-///   2. `leftover_area`     — largest single leftover rectangle across all sheets
+/// Three-level lexicographic fitness (lower is better overall).
+///
+///   0. `sheets_used`      — primary goal: minimize sheets
+///   1. `shared_edge_score` — higher is better (reversed in `Ord`); rewards aligned cut lines
+///   2. `leftover_area`    — area of the largest single leftover across all sheets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Objective {
     pub sheets_used: usize,
@@ -259,13 +260,20 @@ impl Solution {
         }
     }
 
-    /// Weighted total length of shared boundaries between adjacent placed pieces.
+    /// Weighted total length of shared cut lines between placed pieces (higher = better).
     ///
-    /// For each pair of pieces sharing a boundary segment of length `h`, where
-    /// `e1`/`e2` are the full edge lengths of each piece on that boundary:
-    /// - `h == e1 == e2`: score += 20*h  (full match on both sides)
-    /// - `h == e1 || h == e2`: score += h  (one edge fully included in the other)
-    /// - otherwise: 0  (partial overlap on both sides)
+    /// **Pairwise term** — for each adjacent pair sharing a segment of length `h`
+    /// (`e1`, `e2` = full edge lengths of each piece on that boundary,
+    ///  `d1`, `d2` = their perpendicular dimensions):
+    /// - `h == e1 == e2 && d1 == d2` → `30*h`  (identical pieces, full edge match)
+    /// - `h == e1 == e2`             → `20*h`  (full edge match, different other size)
+    /// - `h == e1 || h == e2`        → `h`     (one edge fully spans the other)
+    /// - otherwise                   → `0`
+    ///
+    /// **Composite term** — for each piece P and each of its 4 edges: if 2+ adjacent
+    /// pieces Q collectively span P's extent within `delta = min_piece_dim − 1`,
+    /// adds `5 * min(P_dim, ΣQ_dim)`. Rewards layouts where a cut line shared by
+    /// multiple small pieces aligns with one larger piece on the opposite side.
     pub fn shared_edge_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         let mut total = 0u64;
