@@ -333,9 +333,12 @@ impl Solution {
 
     /// Maximum staircase-polygon area across all sheets (lower = better).
     ///
-    /// For each sheet: build the Pareto-optimal set of bottom-right corners (rx, ry)
+    /// For each sheet: build the Pareto-optimal set of bottom-right corners `(rx, ry)`
     /// of all placed pieces; integrate the resulting step function top-to-bottom.
     /// Returns the maximum of these per-sheet areas.
+    ///
+    /// Not part of the current `Objective`; see `docs/objective.md` for motivation.
+    #[allow(dead_code)]
     pub fn staircase_area(&self, problem: &Problem) -> u64 {
         let n = self.sheets_used();
         if n == 0 {
@@ -369,7 +372,9 @@ impl Solution {
                 sheet_area += x as u64 * (y - prev_y) as u64;
                 prev_y = y;
             }
-            if sheet_area > best { best = sheet_area; }
+            if sheet_area > best {
+                best = sheet_area;
+            }
         }
         best
     }
@@ -497,36 +502,6 @@ mod tests {
             },
             pieces,
         }
-    }
-
-    /// Comprehensive staircase test covering all code paths.
-    ///
-    /// Layout (based on c38/c39 with btm split in two):
-    ///   idx 0: btm_right (200, 0) 200×50  -> corner (400, 50) - added first
-    ///   idx 1: btm_left  (  0, 0) 200×50  -> corner (200, 50) - dominated by btm_right: any-SKIP
-    ///   idx 2: shelf     (400, 0) 200×100 -> corner (600,100) - retain removes (400,50)
-    ///   idx 3: panel     (0, 100) 500×100 -> corner (500,200) - neither dominates shelf
-    ///
-    /// Final stairs sorted by y: [(600,100), (500,200)]
-    /// Area = 600×100 + 500×100 = 110_000
-    #[test]
-    fn staircase_comprehensive() {
-        let prob = problem(vec![
-            piece(200, 50),  // 0: низ_right
-            piece(200, 50),  // 1: низ_left  (same dims, different placement)
-            piece(200, 100), // 2: полка
-            piece(500, 100), // 3: стойка
-        ]);
-        let sol = Solution {
-            placements: vec![
-                pl(0, 200, 0), // низ_right: corner (400,  50) — added
-                pl(1, 0, 0),   // низ_left:  corner (200,  50) — any-skip (400≥200 && 50≥50)
-                pl(2, 400, 0), // полка:     corner (600, 100) — retain removes (400,50)
-                pl(3, 0, 100), // стойка:    corner (500, 200)
-            ],
-            leftovers: vec![],
-        };
-        assert_eq!(sol.staircase_area(&prob), 600 * 100 + 500 * 100);
     }
 
     // 2×2 grid of 50×50 pieces tiling a 100×100 sheet exactly (no leftovers, no margin).

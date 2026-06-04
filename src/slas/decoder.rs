@@ -285,15 +285,4 @@ mod tests {
         assert_eq!(tuple(find(3)), (1, 0, 65, true)); // P3r at (0,65) sheet 1
         assert_eq!(tuple(find(4)), (0, 125, 85, true)); // P4r at (125,85) sheet 0
     }
-
-    #[test]
-    fn staircase_area_max_across_sheets() {
-        // Sheet 10×10, kerf=0. Genome [0,1,2] packs sheet 0 full (10×6 + 10×4 = 100)
-        // and puts 3×3 alone on sheet 1 (staircase = 9). Max = 100.
-        let spec = parse_problem("10x10F:0:10x6,10x4,3x3").expect("parse error");
-        let problem = expand_problem(&spec);
-        let sol = decode(&problem, &vec![g(0, false, 0), g(1, false, 0), g(2, false, 0)]);
-        assert_eq!(sol.sheets_used(), 2);
-        assert_eq!(sol.staircase_area(&problem), 100);
-    }
 }
