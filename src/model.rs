@@ -377,8 +377,23 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     (pl.x, pl.y, w, h)
 }
 
-fn overlap_weight(h: u64, e1: u64, e2: u64) -> u64 {
-    if h == e1 && h == e2 { 20 * h } else if h == e1 || h == e2 { h } else { 0 }
+/// `h`  — length of the shared boundary segment
+/// `e1`, `e2` — full edge lengths of each piece along the boundary axis
+/// `d1`, `d2` — piece dimensions perpendicular to the boundary (the "other" size)
+///
+/// Weights:
+///   h == e1 == e2 && d1 == d2  →  30*h  (identical pieces fully aligned)
+///   h == e1 == e2              →  20*h  (full match on both sides)
+///   h == e1 || h == e2         →   h    (one edge fully included in the other)
+///   otherwise                  →   0
+fn overlap_weight(h: u64, e1: u64, e2: u64, d1: u64, d2: u64) -> u64 {
+    if h == e1 && h == e2 {
+        if d1 == d2 { 30 * h } else { 20 * h }
+    } else if h == e1 || h == e2 {
+        h
+    } else {
+        0
+    }
 }
 
 fn placement_pair_score(a: &Placement, b: &Placement, problem: &Problem) -> u64 {
@@ -388,14 +403,14 @@ fn placement_pair_score(a: &Placement, b: &Placement, problem: &Problem) -> u64 
         let lo = ay.max(by);
         let hi = (ay + ah).min(by + bh);
         if hi > lo {
-            return overlap_weight((hi - lo) as u64, ah as u64, bh as u64);
+            return overlap_weight((hi - lo) as u64, ah as u64, bh as u64, aw as u64, bw as u64);
         }
     }
     if ay + ah == by || by + bh == ay {
         let lo = ax.max(bx);
         let hi = (ax + aw).min(bx + bw);
         if hi > lo {
-            return overlap_weight((hi - lo) as u64, aw as u64, bw as u64);
+            return overlap_weight((hi - lo) as u64, aw as u64, bw as u64, ah as u64, bh as u64);
         }
     }
     0
