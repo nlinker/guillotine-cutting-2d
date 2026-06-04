@@ -468,14 +468,6 @@ impl CutForest {
         }
         Some(candidates[(selector as usize) % candidates.len()])
     }
-
-    /// Convert the forest to a flat `Vec<CutNode>`.
-    ///
-    /// **Not yet implemented** — returns an empty vec.
-    pub fn to_cut_trees(&self) -> Vec<CutNode> {
-        // TODO: walk arena and reconstruct CutNode trees
-        Vec::new()
-    }
 }
 
 /// Check whether `piece` fits in a `w × h` region, trying preferred orientation first.
