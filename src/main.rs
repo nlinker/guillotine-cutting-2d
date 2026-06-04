@@ -32,6 +32,8 @@ pub(crate) enum Algorithm {
     Glas,
     /// Flat-SLAS genetic algorithm (one gene per physical piece)
     Slas,
+    /// BFDH greedy shelf heuristic (no GA, instant result)
+    Bfdh,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -39,6 +41,7 @@ impl std::fmt::Display for Algorithm {
         match self {
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Slas => write!(f, "slas"),
+            Algorithm::Bfdh => write!(f, "bfdh"),
         }
     }
 }
@@ -286,6 +289,7 @@ fn make_any_handle(
             );
             ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
         }
+        Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
     }
 }
 
@@ -339,31 +343,30 @@ fn run_calc_with_sink(
 
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
-    let any_handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
 
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
+            run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_any_handle(any_handle, spec, &mut sink, sink_interval_ms)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
         }
     }
@@ -477,6 +480,21 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
+    if algorithm == Algorithm::Bfdh {
+        let problem = cutting::expand::expand_problem(&spec);
+        let flat_sol = cutting::heuristic::bfdh_solve(&problem);
+        let objective = flat_sol.eval(&problem);
+        let sol_spec = cutting::expand::shrink_solution(&flat_sol, &spec);
+        let cut_lengths = sol_spec.cut_lengths(&spec);
+        sink.send(&ProgressMessage::Done {
+            seed: 0,
+            sheets_used: objective.sheets_used,
+            cut_lengths,
+            solution: sol_spec,
+            pieces: spec.piespecs.clone(),
+        })?;
+        return Ok(());
+    }
     let any = make_any_handle(
         Arc::clone(&spec),
         Arc::clone(&cfg),

@@ -79,7 +79,11 @@
     <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
-    <label><input type="checkbox" id="use-glas" checked> GLAS</label>
+    <label>Algorithm <select id="algorithm">
+      <option value="glas" selected>GLAS</option>
+      <option value="slas">SLAS</option>
+      <option value="bfdh">BFDH</option>
+    </select></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -310,7 +314,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('gens',     document.getElementById('gens').value);
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
-  params.set('algorithm', document.getElementById('use-glas').checked ? 'glas' : 'slas');
+  params.set('algorithm', document.getElementById('algorithm').value);
 
   es = new EventSource('/stream?' + params);
 
@@ -352,6 +356,15 @@ document.getElementById('cancel').addEventListener('click', () => {
   if (es) { es.close(); es = null; }
   document.getElementById('status').textContent = 'cancelled';
   document.getElementById('cancel').style.display = 'none';
+});
+
+const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
+document.getElementById('algorithm').addEventListener('change', (e) => {
+  const disabled = e.target.value === 'bfdh';
+  gaOnlyIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
 });
 </script>
 </body>
