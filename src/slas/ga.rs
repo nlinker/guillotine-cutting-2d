@@ -54,7 +54,7 @@ pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Indi
     ga::run_ga(&decoder, config, rng)
 }
 
-/// Multi-threaded SLAS GA. Takes a `ProblemSpec` (expanded internally).
+/// Multithreaded SLAS GA. Takes a `ProblemSpec` (expanded internally).
 pub fn run_ga_mt(
     spec: Arc<ProblemSpec>,
     config: Arc<GaConfig>,

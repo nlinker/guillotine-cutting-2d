@@ -80,7 +80,7 @@ pub fn build_cut_tree(problem: &Problem, placements: &[Placement]) -> Result<Vec
 
     (0..n_sheets)
         .map(|sheet_idx| {
-            let sheet_placements: Vec<PlacedPiece> = placements
+            let sheet_placements = placements
                 .iter()
                 .filter(|p| p.sheet_idx == sheet_idx)
                 .map(|p| {
@@ -98,7 +98,7 @@ pub fn build_cut_tree(problem: &Problem, placements: &[Placement]) -> Result<Vec
                         ph,
                     }
                 })
-                .collect();
+                .collect::<Vec<PlacedPiece>>();
             let rect = Rect {
                 x: 0,
                 y: 0,
@@ -146,11 +146,11 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
 
     // Collect candidate H-cut positions: y-coordinates of all piece top/bottom edges
     // that are strictly inside the rect (i.e. rect.y < cut_y < rect.y + rect.h).
-    let mut h_cuts: Vec<u32> = pieces
+    let mut h_cuts = pieces
         .iter()
         .flat_map(|p| [p.y, p.bottom()])
         .filter(|&y| y > rect.y && y < rect.y + rect.h)
-        .collect();
+        .collect::<Vec<u32>>();
     h_cuts.sort_unstable();
     h_cuts.dedup();
 
@@ -191,11 +191,11 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
     }
 
     // Collect candidate V-cut positions.
-    let mut v_cuts: Vec<u32> = pieces
+    let mut v_cuts = pieces
         .iter()
         .flat_map(|p| [p.x, p.right()])
         .filter(|&x| x > rect.x && x < rect.x + rect.w)
-        .collect();
+        .collect::<Vec<u32>>();
     v_cuts.sort_unstable();
     v_cuts.dedup();
 
@@ -450,14 +450,14 @@ impl CutForest {
         selector: u32,
         min_fit: u32,
     ) -> Option<(usize, u32, u32, bool)> {
-        let candidates: Vec<(usize, u32, u32, bool)> = (0..self.free_leaves.len())
+        let candidates = (0..self.free_leaves.len())
             .filter_map(|free_pos| {
                 let node = &self.nodes[self.free_leaves[free_pos]];
                 let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
                 let fits = (node.w / pw).max(node.h / ph);
                 if fits >= min_fit { Some((free_pos, pw, ph, rotated)) } else { None }
             })
-            .collect();
+            .collect::<Vec<(usize, u32, u32, bool)>>();
         if candidates.is_empty() {
             return None;
         }

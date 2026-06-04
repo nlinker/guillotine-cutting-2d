@@ -42,7 +42,7 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
 /// Each `PlacementSpec.piespec_idx` (type) is mapped to a flat piece index using the
 /// spec. Copies of the same type are assigned flat indices in spec order.
 pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
-    let type_to_flat_start: Vec<usize> = spec
+    let type_to_flat_start = spec
         .piespecs
         .iter()
         .scan(0usize, |acc, ps| {
@@ -50,7 +50,7 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
             *acc += ps.count as usize;
             Some(start)
         })
-        .collect();
+        .collect::<Vec<usize>>();
     let mut type_used: Vec<usize> = vec![0; spec.piespecs.len()];
     let placements = sol
         .placements
@@ -67,7 +67,7 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
                 rotated: pl.rotated,
             }
         })
-        .collect();
+        .collect::<Vec<Placement>>();
     Solution {
         placements,
         leftovers: sol.leftovers.clone(),
@@ -114,13 +114,13 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
 /// to restore physical sheet coordinates.
 pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
     let m = spec.margin;
-    let flat_to_type: Vec<usize> = spec
+    let flat_to_type = spec
         .piespecs
         .iter()
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))
-        .collect();
-    let mut placements: Vec<PlacementSpec> = sol
+        .collect::<Vec<usize>>();
+    let mut placements = sol
         .placements
         .iter()
         .map(|pl| PlacementSpec {
@@ -130,7 +130,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
             y: pl.y + m,
             rotated: pl.rotated,
         })
-        .collect();
+        .collect::<Vec<PlacementSpec>>();
     placements.sort_by_key(|pl| (pl.sheet_idx, pl.x, pl.y));
     let leftovers = sol
         .leftovers

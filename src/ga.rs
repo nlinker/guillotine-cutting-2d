@@ -5,7 +5,7 @@
         atomic::{AtomicBool, Ordering},
     },
 };
-
+use std::thread::ScopedJoinHandle;
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -233,7 +233,7 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
 /// Returns the `n_elite` individuals with the lowest objective (lower is better),
 /// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
 pub fn select_elite<G: Clone>(individuals: &[Individual<G>], n_elite: usize) -> Vec<Individual<G>> {
-    let mut ranked: Vec<&Individual<G>> = individuals.iter().collect();
+    let mut ranked = individuals.iter().collect::<Vec<&Individual<G>>>();
     ranked.sort_unstable_by_key(|ind| ind.objective);
     ranked.into_iter().take(n_elite).cloned().collect()
 }
@@ -278,12 +278,12 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
     let (handle, ctx) = ga_channel::<D::Genome>(progress_interval);
     std::thread::spawn(move || {
         let n = seeds.len();
-        let bests: Vec<Mutex<Option<Individual<D::Genome>>>> = (0..n).map(|_| Mutex::new(None)).collect();
+        let bests = (0..n).map(|_| Mutex::new(None)).collect::<Vec<Mutex<Option<Individual<D::Genome>>>>>();
         let barrier1 = Barrier::new(n);
         let barrier2 = Barrier::new(n);
         let d = &*decoder;
         let c = &*config;
-        let mut results: Vec<(u64, Individual<D::Genome>)> = std::thread::scope(|s| {
+        let mut results = std::thread::scope(|s| {
             seeds
                 .iter()
                 .enumerate()
@@ -306,10 +306,10 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
                         (seed, individual)
                     })
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<ScopedJoinHandle<_>>>()
                 .into_iter()
                 .map(|h| h.join().expect("GA thread panicked"))
-                .collect()
+                .collect::<Vec<(u64, Individual<D::Genome>)>>()
         });
         results.sort_by_key(|(_, ind)| ind.objective);
         ctx.tx.send(GaEvent::Done(results)).ok();
@@ -325,14 +325,14 @@ fn init_population<D: GaDecoder, R: Rng>(
 ) -> Vec<Individual<D::Genome>> {
     let seeds = decoder.seed_genomes(config);
     let n_seeds = seeds.len().min(size);
-    let mut pop: Vec<Individual<D::Genome>> = seeds
+    let mut pop = seeds
         .into_iter()
         .take(n_seeds)
         .map(|genome| {
             let objective = decoder.eval(&genome);
             Individual { genome, objective }
         })
-        .collect();
+        .collect::<Vec<_>>();
     pop.extend((n_seeds..size).map(|_| {
         let genome = decoder.random_genome(config, rng);
         let objective = decoder.eval(&genome);

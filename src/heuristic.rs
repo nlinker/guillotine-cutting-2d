@@ -16,13 +16,13 @@ pub fn bfdh_solve(problem: &Problem) -> Solution {
     let sw = problem.sheet.width;
     let sh = problem.sheet.height;
 
-    let mut items: Vec<(usize, u32, u32)> = (0..problem.pieces.len())
+    let mut items = (0..problem.pieces.len())
         .map(|i| {
             let p = &problem.pieces[i];
             if p.can_rotate && p.width > p.height { (i, p.height, p.width) }
             else { (i, p.width, p.height) }
         })
-        .collect();
+        .collect::<Vec<(usize, u32, u32)>>();
     items.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
 
     let mut placements: Vec<Placement> = Vec::with_capacity(items.len());

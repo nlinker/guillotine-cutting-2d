@@ -53,7 +53,7 @@ fn main() {
     let spec = parse_problem(PROBLEM).expect("parse error");
     let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
     let cfg = ga_cfg();
-    let seeds: Vec<u64> = (0..N_PARALLEL as u64).collect();
+    let seeds = (0..N_PARALLEL as u64).collect::<Vec<_>>();
 
     println!("Problem  : {PROBLEM}");
     println!(

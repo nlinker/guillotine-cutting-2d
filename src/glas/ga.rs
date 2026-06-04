@@ -270,7 +270,7 @@ pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_thr
             let kb = (pb.width.max(pb.height), pb.width * pb.height);
             kb.cmp(&ka)
         });
-        let genes: Vec<Gene> = sorted
+        let genes = sorted
             .into_iter()
             .map(|type_idx| {
                 let ps = &spec.piespecs[type_idx];
@@ -282,7 +282,7 @@ pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_thr
                     inverses: std::iter::repeat_n(false, count).collect(),
                 }
             })
-            .collect();
+            .collect::<Vec<Gene>>();
         genome.push(genes);
     }
     genome
@@ -309,7 +309,7 @@ fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_t
             let j = (rng.next_u64() as usize) % indices.len().max(1);
             indices.swap(i, j);
         }
-        let genes: Vec<Gene> = indices
+        let genes = indices
             .into_iter()
             .map(|type_idx| {
                 let count = spec.piespecs[type_idx].count as usize;
@@ -320,7 +320,7 @@ fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_t
                     inverses: (0..count).map(|_| rng.next_u64() & 1 != 0).collect(),
                 }
             })
-            .collect();
+            .collect::<Vec<Gene>>();
         genome.push(genes);
     }
     genome
@@ -470,16 +470,16 @@ mod tests {
             0.0,
             &mut Xoshiro256StarStar::seed_from_u64(5),
         );
-        let orig_sels: Vec<u32> = orig
+        let orig_sels = orig
             .iter()
             .flat_map(|c| c.iter())
             .flat_map(|g| g.selectors.iter().copied())
-            .collect();
-        let new_sels: Vec<u32> = genome
+            .collect::<Vec<u32>>();
+        let new_sels = genome
             .iter()
             .flat_map(|c| c.iter())
             .flat_map(|g| g.selectors.iter().copied())
-            .collect();
+            .collect::<Vec<u32>>();
         assert!(orig_sels.iter().zip(&new_sels).all(|(o, n)| o != n));
     }
 

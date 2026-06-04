@@ -18,7 +18,7 @@ type FreeList = SmallVec<[FreeRect; 16]>;
 /// differ from the original cut tree — but gives the GA a warm start with the
 /// correct piece grouping and rotation preferences.
 pub fn encode(solution: &Solution, problem: &Problem) -> Genome {
-    let mut order: Vec<usize> = (0..solution.placements.len()).collect();
+    let mut order = (0..solution.placements.len()).collect::<Vec<usize>>();
     order.sort_unstable_by_key(|&i| {
         let p = &solution.placements[i];
         (p.sheet_idx, p.x, p.y)
