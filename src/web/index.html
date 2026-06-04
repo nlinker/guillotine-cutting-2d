@@ -87,6 +87,7 @@
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
+    <span id="sheets-live" style="display:none; color:#888">sheets: <b id="sheets-val">—</b></span>
   </div>
 </form>
 
@@ -321,6 +322,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
   es.addEventListener('progress', (ev) => {
     const d = JSON.parse(ev.data);
     addPoint(d.generation, d.secondary_objective);
+    document.getElementById('sheets-val').textContent = d.sheets_used;
+    document.getElementById('sheets-live').style.display = 'inline';
   });
 
   es.addEventListener('done', (ev) => {
@@ -334,6 +337,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.sheets_used, d.seed);
     es.close(); es = null;
     document.getElementById('status').textContent = '';
+    document.getElementById('sheets-live').style.display = 'none';
     document.getElementById('cancel').style.display = 'none';
   });
 
@@ -342,6 +346,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       '<p class="error">' + ev.data + '</p>';
     es.close(); es = null;
     document.getElementById('status').textContent = '';
+    document.getElementById('sheets-live').style.display = 'none';
     document.getElementById('cancel').style.display = 'none';
   });
 
@@ -355,6 +360,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
 document.getElementById('cancel').addEventListener('click', () => {
   if (es) { es.close(); es = null; }
   document.getElementById('status').textContent = 'cancelled';
+  document.getElementById('sheets-live').style.display = 'none';
   document.getElementById('cancel').style.display = 'none';
 });
 
