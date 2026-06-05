@@ -34,6 +34,10 @@ pub(crate) enum Algorithm {
     Slas,
     /// BFDH greedy shelf heuristic (no GA, instant result)
     Bfdh,
+    /// GBAF greedy guillotine heuristic — Best-Area-Fit with SLAS split (no GA, instant result)
+    Gbaf,
+    /// Simple greedy heuristic — NFDH with in-row gap-fill (no GA, instant result)
+    Simple,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -42,6 +46,8 @@ impl std::fmt::Display for Algorithm {
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Slas => write!(f, "slas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
+            Algorithm::Gbaf => write!(f, "gbaf"),
+            Algorithm::Simple => write!(f, "simple"),
         }
     }
 }
@@ -290,6 +296,8 @@ fn make_any_handle(
             ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
+        Algorithm::Gbaf => unreachable!("Gbaf is handled before make_any_handle"),
+        Algorithm::Simple => unreachable!("Simple is handled before make_any_handle"),
     }
 }
 
@@ -480,9 +488,13 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    if algorithm == Algorithm::Bfdh {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Gbaf | Algorithm::Simple) {
         let problem = cutting::expand::expand_problem(&spec);
-        let flat_sol = cutting::heuristic::bfdh_solve(&problem);
+        let flat_sol = match algorithm {
+            Algorithm::Gbaf => cutting::heuristic::gbaf_solve(&problem),
+            Algorithm::Simple => cutting::heuristic::simple_solve(&problem),
+            _ => cutting::heuristic::bfdh_solve(&problem),
+        };
         let objective = flat_sol.eval(&problem);
         let sol_spec = cutting::expand::shrink_solution(&flat_sol, &spec);
         let cut_lengths = sol_spec.cut_lengths(&spec);

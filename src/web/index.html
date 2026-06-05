@@ -83,6 +83,8 @@
       <option value="glas" selected>GLAS</option>
       <option value="slas">SLAS</option>
       <option value="bfdh">BFDH</option>
+      <option value="gbaf">GBAF</option>
+      <option value="simple">Simple</option>
     </select></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
@@ -366,7 +368,7 @@ document.getElementById('cancel').addEventListener('click', () => {
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 document.getElementById('algorithm').addEventListener('change', (e) => {
-  const disabled = e.target.value === 'bfdh';
+  const disabled = ['bfdh', 'gbaf', 'simple'].includes(e.target.value);
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = disabled;
