@@ -80,12 +80,14 @@
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <label>Algorithm <select id="algorithm">
-      <option value="glas" selected>GLAS</option>
+      <option value="simple" selected>Simple</option>
+      <option value="glas">GLAS</option>
       <option value="slas">SLAS</option>
       <option value="bfdh">BFDH</option>
       <option value="gbaf">GBAF</option>
-      <option value="simple">Simple</option>
+      <option value="beam">Beam</option>
     </select></label>
+    <label>Beam width <input type="number" id="beam-width" value="16" min="1" max="256" disabled></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -318,6 +320,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
   params.set('algorithm', document.getElementById('algorithm').value);
+  if (document.getElementById('algorithm').value === 'beam')
+    params.set('beam_width', document.getElementById('beam-width').value || '16');
 
   es = new EventSource('/stream?' + params);
 
@@ -368,11 +372,14 @@ document.getElementById('cancel').addEventListener('click', () => {
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 document.getElementById('algorithm').addEventListener('change', (e) => {
-  const disabled = ['bfdh', 'gbaf', 'simple'].includes(e.target.value);
+  const isGA = ['glas', 'slas'].includes(e.target.value);
+  const isBeam = e.target.value === 'beam';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = disabled;
+    if (el) el.disabled = !isGA;
   });
+  const bwEl = document.getElementById('beam-width');
+  if (bwEl) bwEl.disabled = !isBeam;
 });
 </script>
 </body>

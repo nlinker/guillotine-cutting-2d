@@ -212,7 +212,7 @@ pub struct Problem {
 
 /// Position of a placed piece in a flat solution.
 /// `piece_idx` is the 0-based index into `Problem::pieces` (flat).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placement {
     pub sheet_idx: usize,
     pub piece_idx: usize,

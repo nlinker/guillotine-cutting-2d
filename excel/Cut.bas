@@ -898,7 +898,7 @@ Private Sub SetupAlgorithmValidation()
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="glas,slas,bfdh,gbaf,simple"
+             Formula1:="simple,glas,slas,bfdh,gbaf,beam"
     End With
 End Sub
 
