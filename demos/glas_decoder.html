@@ -392,7 +392,8 @@ function buildSteps(problem, genome) {
     const ps = piespecs[ti];
 
     while (placed_counts[ti] < ps.count) {
-      const placed = placed_counts[ti];
+      const placed    = placed_counts[ti];
+      const remaining = ps.count - placed;
       const sel    = (gene.selectors && gene.selectors[placed]) || 0;
       const inv    = (gene.inverses  && gene.inverses[placed])  || false;
       const bp     = inv ? 'TlV' : 'TlH';
@@ -435,7 +436,6 @@ function buildSteps(problem, genome) {
 
       // Place batch — choose horizontal or vertical strip (whichever fits more pieces)
       const fr  = free[found.idx];
-      const remaining = ps.count - placed;
       const cnt_h = Math.min(Math.floor(fr.w / found.pw_exp), remaining);
       const cnt_v = Math.min(Math.floor(fr.h / found.ph_exp), remaining);
       const vertical = cnt_v > cnt_h;
