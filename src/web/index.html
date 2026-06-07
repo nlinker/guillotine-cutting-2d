@@ -99,7 +99,7 @@
   <canvas id="chart" height="60"></canvas>
 </div>
 <div id="layout-wrap">
-  <h3>Layout</h3>
+  <h3>Layout <label style="font-weight: normal"><input type="checkbox" id="draw-kerf"> draw with kerf</label></h3>
   <div id="layout"></div>
 </div>
 <div id="results"></div>
@@ -242,7 +242,14 @@ function buildPlacementsTable(solution, pieces, elapsed, sheets, seed) {
 }
 
 // == layout SVG ================================================================
-function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
+// drawKerf=false: pieces drawn at true size (w, h); adjacent pieces show their
+//   actual kerf gap (their placement coordinates already differ by w + kerf).
+// drawKerf=true: pieces (and the sheet outline) are inflated by kerf to
+//   (w + kerf, h + kerf) so that adjacent pieces sit flush against each other,
+//   visually "absorbing" the cut width into each piece's footprint. The sheet
+//   is inflated the same way so boundary pieces (kerf-exempt on that edge)
+//   still align with the sheet edge instead of overflowing it.
+function drawLayout(solution, pieces, sheetW, sheetH, kerf, drawKerf, rowColor) {
   const container = document.getElementById('layout');
   container.innerHTML = '';
   const placements = solution.placements;
@@ -251,12 +258,15 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
   let nSheets = 0;
   for (const pl of placements) { if (pl.sheet_idx >= nSheets) nSheets = pl.sheet_idx + 1; }
 
+  const pad = drawKerf ? kerf : 0;
+  const effSheetW = sheetW + pad, effSheetH = sheetH + pad;
+
   const COLS = 2, GAP = 8, LABEL_H = 16;
   const nRows = Math.ceil(nSheets / COLS);
   const cw = 900;
   const sdw = (cw - GAP * (COLS - 1)) / COLS;
-  const scale = sdw / sheetW;
-  const sdh = sheetH * scale;
+  const scale = sdw / effSheetW;
+  const sdh = effSheetH * scale;
   const cellH = sdh + LABEL_H + GAP;
   const svgH = nRows * cellH - GAP;
 
@@ -274,8 +284,8 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
 
   for (const pl of placements) {
     const pc = pieces[pl.piespec_idx];
-    const pw = pl.rotated ? pc.height : pc.width;
-    const ph = pl.rotated ? pc.width  : pc.height;
+    const pw = (pl.rotated ? pc.height : pc.width) + pad;
+    const ph = (pl.rotated ? pc.width  : pc.height) + pad;
     const col = pl.sheet_idx % COLS, row = Math.floor(pl.sheet_idx / COLS);
     const ox = col * (sdw + GAP), oy = row * cellH;
     const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
@@ -293,7 +303,15 @@ function drawLayout(solution, pieces, sheetW, sheetH, rowColor) {
 // == form submit ===============================================================
 const seedInput      = document.getElementById('seed');
 const randomSeedChk  = document.getElementById('random-seed');
+const drawKerfChk    = document.getElementById('draw-kerf');
 let lastSpecs = null;
+let lastLayout = null; // { solution, pieces, sheetW, sheetH, kerf, rowColor }
+
+drawKerfChk.addEventListener('change', () => {
+  if (!lastLayout) return;
+  const { solution, pieces, sheetW, sheetH, kerf, rowColor } = lastLayout;
+  drawLayout(solution, pieces, sheetW, sheetH, kerf, drawKerfChk.checked, rowColor);
+});
 
 document.getElementById('form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -336,7 +354,9 @@ document.getElementById('form').addEventListener('submit', (e) => {
     const d = JSON.parse(ev.data);
     if (d.solution) {
       const rowColor = buildRowColors(d.pieces);
-      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, rowColor);
+      const kerf = Number(document.getElementById('kerf').value);
+      lastLayout = { solution: d.solution, pieces: d.pieces, sheetW: d.sheet_w, sheetH: d.sheet_h, kerf, rowColor };
+      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, kerf, drawKerfChk.checked, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
