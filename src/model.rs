@@ -275,7 +275,7 @@ impl Solution {
     /// The raw sum can be very large (`O(sheet_dim^2)` per run), so it is divided by
     /// `100^2 = 10_000` and rounded to the nearest integer to keep values manageable.
     ///
-    /// `O(n log n)` per sheet — cheaper than the pairwise `O(n^2)` `shared_edge_score`.
+    /// `O(n log n)` per sheet (sort + merge).
     pub fn cut_line_concentration_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         let sheet_w = problem.sheet.width;
@@ -309,38 +309,6 @@ impl Solution {
             total += sum_squared_runs_by_coordinate(&mut h_edges);
         }
         (total + 5_000) / 10_000
-    }
-
-    /// Weighted total length of shared cut lines between placed pieces (higher = better).
-    ///
-    /// **Pairwise term** — for each adjacent pair sharing a segment of length `h`
-    /// (`e1`, `e2` = full edge lengths of each piece on that boundary,
-    ///  `d1`, `d2` = their perpendicular dimensions):
-    /// - `h == e1 == e2 && d1 == d2` → `30*h`  (identical pieces, full edge match)
-    /// - `h == e1 == e2`             → `20*h`  (full edge match, different other size)
-    /// - `h == e1 || h == e2`        → `h`     (one edge fully spans the other)
-    /// - otherwise                   → `0`
-    ///
-    /// **Composite term** — for each piece P and each of its 4 edges: if 2+ adjacent
-    /// pieces Q collectively span P's extent within `delta = min_piece_dim − 1`,
-    /// adds `5 * min(P_dim, ΣQ_dim)`. Rewards layouts where a cut line shared by
-    /// multiple small pieces aligns with one larger piece on the opposite side.
-    ///
-    /// Currently unused — superseded by `cut_line_concentration_score` in `Objective`,
-    /// but kept around as we may revisit it. See `docs/objective.md`.
-    #[allow(dead_code)]
-    pub fn shared_edge_score(&self, problem: &Problem) -> u64 {
-        let n_sheets = self.sheets_used();
-        let mut total = 0u64;
-        for sheet in 0..n_sheets {
-            let pls = self.placements.iter().filter(|p| p.sheet_idx == sheet).collect::<Vec<&Placement>>();
-            for i in 0..pls.len() {
-                for j in (i + 1)..pls.len() {
-                    total += placement_pair_score(pls[i], pls[j], problem);
-                }
-            }
-        }
-        total
     }
 
     /// Area of the largest single leftover rectangle across all sheets (lower = better).
@@ -467,45 +435,6 @@ fn sum_squared_runs_by_coordinate(edges: &mut [(u32, u32, u32)]) -> u64 {
     let len = (hi - lo) as u64;
     total += len * len;
     total
-}
-
-/// `h`  — length of the shared boundary segment
-/// `e1`, `e2` — full edge lengths of each piece along the boundary axis
-/// `d1`, `d2` — piece dimensions perpendicular to the boundary (the "other" size)
-///
-/// Weights:
-///   h == e1 == e2 && d1 == d2  →  30*h  (identical pieces fully aligned)
-///   h == e1 == e2              →  20*h  (full match on both sides)
-///   h == e1 || h == e2         →   h    (one edge fully included in the other)
-///   otherwise                  →   0
-fn overlap_weight(h: u64, e1: u64, e2: u64, d1: u64, d2: u64) -> u64 {
-    if h == e1 && h == e2 {
-        if d1 == d2 { 30 * h } else { 20 * h }
-    } else if h == e1 || h == e2 {
-        h
-    } else {
-        0
-    }
-}
-
-fn placement_pair_score(a: &Placement, b: &Placement, problem: &Problem) -> u64 {
-    let (ax, ay, aw, ah) = placement_rect(a, problem);
-    let (bx, by, bw, bh) = placement_rect(b, problem);
-    if ax + aw == bx || bx + bw == ax {
-        let lo = ay.max(by);
-        let hi = (ay + ah).min(by + bh);
-        if hi > lo {
-            return overlap_weight((hi - lo) as u64, ah as u64, bh as u64, aw as u64, bw as u64);
-        }
-    }
-    if ay + ah == by || by + bh == ay {
-        let lo = ax.max(bx);
-        let hi = (ax + aw).min(bx + bw);
-        if hi > lo {
-            return overlap_weight((hi - lo) as u64, aw as u64, bw as u64, ah as u64, bh as u64);
-        }
-    }
-    0
 }
 
 /// Check that no piece exceeds the sheet and no two pieces on the same sheet overlap

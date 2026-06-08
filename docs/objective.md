@@ -83,56 +83,17 @@ the "few long, reusable lines" intuition that drives manufacturability — fewer
 repositions, more pieces cut per pass.
 
 It is also `O(n log n)` per sheet (sort + merge), cheaper than the pairwise `O(n²)`
-loop that the previous metric (`shared_edge_score`, see below) used.
-
-See `docs/plans/cut-line-concentration-score.md` for the original brainstorm.
+loop that the previous metric (`shared_edge_score`) used — see
+`docs/plans/cut-line-concentration-score.md` for the original brainstorm and the
+comparison that motivated the replacement (that metric was pairwise and local, so a
+chaotic region could rack up nonzero scores from incidental local matches, and it
+could not tell "several pairwise matches on the same coordinate — one continuous,
+reusable cut line" from "several unrelated short cuts that add up to a similar total").
 
 ## How is it being computed?
 
 Computed from `Solution::placements` after decoding (piece dimensions are in the
 expanded flat coordinate system where kerf is already absorbed, so adjacent pieces touch directly).
-
----
-
-## shared_edge_score (implemented, not used in Objective)
-
-`Solution::shared_edge_score` is the metric `layout_score` replaced — kept around
-(`#[allow(dead_code)]`) in case we want to revisit it.
-
-It is **pairwise and local**: `O(n²)` per sheet, looping over every pair of pieces and
-scoring each shared boundary segment independently. This made it racy — a chaotic
-region could rack up nonzero pairwise scores from incidental local matches that rival
-the sum from a clean grid — and blind to the difference between "several pairwise
-matches that lie on the same coordinate, i.e. one continuous, reusable cut line" and
-"several unrelated short cuts that happen to add up to a similar total". `layout_score`
-was designed specifically to fix these two weaknesses; see
-`docs/plans/cut-line-concentration-score.md` for the comparison that motivated the
-change.
-
-### Pairwise term
-
-For every pair of pieces on the same sheet that share a boundary segment of length `h`:
-
-- `e1`, `e2` — full edge lengths of each piece along the shared boundary axis
-- `d1`, `d2` — their dimensions perpendicular to that boundary
-
-| Condition                      | Score                                        |
-|--------------------------------|----------------------------------------------|
-| `h == e1 == e2` and `d1 == d2` | `30 · h` — identical pieces, edges flush     |
-| `h == e1 == e2`                | `20 · h` — edges flush, different other size |
-| `h == e1` or `h == e2`         | `h` — one edge fully spans the other         |
-| otherwise                      | `0` — partial overlap on both sides          |
-
-```
-  30·h case (d1==d2)       20·h case               1·h case (h==e2)
-  ┌─────────┐ ┌─────────┐  ┌───────────┐ ┌──────┐  ┌────────────┐ ┌────┐
-  │         │ │         │  │           │ │      │  │            │ │    │
-  │  pw×ph  │ │  pw×ph  │  │   pw×ph   │ │pw×p2 │  │   pw×ph    │ │pw2 │
-  │         │ │         │  │           │ │      │  │            │ │×p2 │
-  └─────────┘ └─────────┘  └───────────┘ └──────┘  └────────────┘ │    │
-                                                                  └────┘
-  h=ph=e1=e2, d1=d2=pw     h=ph=e1=e2, pw≠pw2      h=ph=e1, h<e2=p2
-```
 
 ---
 
