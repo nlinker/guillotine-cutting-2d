@@ -16,9 +16,9 @@ const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/1
 const N_SEEDS: usize = 100;
 
 /// Ideal: 2 sheets, staircase <= 400x400 on last sheet.
-const IDEAL_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, shared_edge_score: 0 };
+const IDEAL_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, layout_score: 0 };
 /// 1-piece threshold: 2 sheets, staircase <= 495x495 on last sheet.
-const ONE_PIECE_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, shared_edge_score: 0 };
+const ONE_PIECE_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, layout_score: 0 };
 
 struct Variant {
     name: &'static str,
@@ -27,7 +27,7 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = Objective { sheets_used: usize::MAX, leftover_area: u64::MAX, shared_edge_score: 0 };
+    let mut best_obj: Objective = Objective { sheets_used: usize::MAX, leftover_area: u64::MAX, layout_score: 0 };
     let mut sum_sheets: usize = 0;
     let mut sum_bbox: u64 = 0;
     let mut ideal_count = 0usize;

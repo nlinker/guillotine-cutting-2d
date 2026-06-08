@@ -1,16 +1,19 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
 /// Three-level lexicographic fitness (lower is better overall).
 ///
-///   0. `sheets_used`      — primary goal: minimize sheets
-///   1. `shared_edge_score` — higher is better (reversed in `Ord`); rewards aligned cut lines
-///   2. `leftover_area`    — area of the largest single leftover across all sheets
+///   0. `sheets_used`   — primary goal: minimize sheets
+///   1. `layout_score`  — higher is better (reversed in `Ord`); rewards regular,
+///      "technological" layouts with concentrated cut lines (see `cut_line_concentration_score`)
+///   2. `leftover_area` — area of the largest single leftover across all sheets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Objective {
     pub sheets_used: usize,
-    pub shared_edge_score: u64,
+    pub layout_score: u64,
     pub leftover_area: u64,
 }
 
@@ -24,7 +27,7 @@ impl Ord for Objective {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.sheets_used
             .cmp(&other.sheets_used)
-            .then(other.shared_edge_score.cmp(&self.shared_edge_score))
+            .then(other.layout_score.cmp(&self.layout_score))
             .then(self.leftover_area.cmp(&other.leftover_area))
     }
 }
@@ -32,7 +35,7 @@ impl Ord for Objective {
 impl Objective {
     /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
     /// Change the body here to switch what is displayed — no other files need updating.
-    pub fn secondary(&self) -> u64 { self.shared_edge_score }
+    pub fn secondary(&self) -> u64 { self.layout_score }
 }
 
 /// Stock sheet - all sheets in the problem are identical.
@@ -251,13 +254,58 @@ impl Solution {
 
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return Objective { sheets_used: 0, leftover_area: 0, shared_edge_score: 0 };
+            return Objective { sheets_used: 0, leftover_area: 0, layout_score: 0 };
         }
         Objective {
             sheets_used: self.sheets_used(),
             leftover_area: self.leftover_area(),
-            shared_edge_score: self.shared_edge_score(problem),
+            layout_score: self.cut_line_concentration_score(problem),
         }
+    }
+
+    /// Cut-line concentration score (higher = better) — rewards regular, "technological"
+    /// layouts where internal cuts align into a few long, reusable lines rather than
+    /// many short, misaligned ones (one fence setting → many pieces per pass).
+    ///
+    /// For each sheet: take every internal edge of every placed piece (edges on the
+    /// sheet boundary are exempt, same as the kerf rule), group vertical edges by `x`
+    /// and horizontal edges by `y`, merge overlapping/adjacent spans within each group
+    /// into disjoint runs, and sum `length^2` per run. Squaring rewards concentrating
+    /// a fixed amount of cut length into few long lines over spreading it across many
+    /// short ones (Herfindahl-style). See `docs/plans/cut-line-concentration-score.md`.
+    ///
+    /// The raw sum can be very large (`O(sheet_dim^2)` per run), so it is divided by
+    /// `100^2 = 10_000` and rounded to the nearest integer to keep values manageable.
+    ///
+    /// `O(n log n)` per sheet — cheaper than the pairwise `O(n^2)` `shared_edge_score`.
+    pub fn cut_line_concentration_score(&self, problem: &Problem) -> u64 {
+        let n_sheets = self.sheets_used();
+        let sheet_w = problem.sheet.width;
+        let sheet_h = problem.sheet.height;
+        let mut total = 0u64;
+        for sheet in 0..n_sheets {
+            let mut by_x: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+            let mut by_y: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+                let (x, y, w, h) = placement_rect(pl, problem);
+                if x > 0 {
+                    by_x.entry(x).or_default().push((y, y + h));
+                }
+                if x + w < sheet_w {
+                    by_x.entry(x + w).or_default().push((y, y + h));
+                }
+                if y > 0 {
+                    by_y.entry(y).or_default().push((x, x + w));
+                }
+                if y + h < sheet_h {
+                    by_y.entry(y + h).or_default().push((x, x + w));
+                }
+            }
+            for spans in by_x.values_mut().chain(by_y.values_mut()) {
+                total += merged_squared_length_sum(spans);
+            }
+        }
+        (total + 5_000) / 10_000
     }
 
     /// Weighted total length of shared cut lines between placed pieces (higher = better).
@@ -274,6 +322,10 @@ impl Solution {
     /// pieces Q collectively span P's extent within `delta = min_piece_dim − 1`,
     /// adds `5 * min(P_dim, ΣQ_dim)`. Rewards layouts where a cut line shared by
     /// multiple small pieces aligns with one larger piece on the opposite side.
+    ///
+    /// Currently unused — superseded by `cut_line_concentration_score` in `Objective`,
+    /// but kept around as we may revisit it. See `docs/objective.md`.
+    #[allow(dead_code)]
     pub fn shared_edge_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         let mut total = 0u64;
@@ -384,6 +436,30 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     let p = &problem.pieces[pl.piece_idx];
     let (w, h) = if pl.rotated { (p.height, p.width) } else { (p.width, p.height) };
     (pl.x, pl.y, w, h)
+}
+
+/// Sorts `spans` by start, merges overlapping/adjacent intervals into disjoint runs,
+/// and returns the sum of `length^2` over those runs.
+fn merged_squared_length_sum(spans: &mut [(u32, u32)]) -> u64 {
+    spans.sort_unstable();
+    let mut total = 0u64;
+    let mut iter = spans.iter();
+    let Some(&(mut lo, mut hi)) = iter.next() else {
+        return 0;
+    };
+    for &(s, e) in iter {
+        if s <= hi {
+            hi = hi.max(e);
+        } else {
+            let len = (hi - lo) as u64;
+            total += len * len;
+            lo = s;
+            hi = e;
+        }
+    }
+    let len = (hi - lo) as u64;
+    total += len * len;
+    total
 }
 
 /// `h`  — length of the shared boundary segment

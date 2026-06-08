@@ -1,13 +1,13 @@
 # Objective function
 
 The fitness of a solution is a three-level lexicographic tuple — **lower is better**
-(except `shared_edge_score`, which is maximised and therefore reversed in `Ord`):
+(except `layout_score`, which is maximised and therefore reversed in `Ord`):
 
-| Level | Field               | Direction    | Meaning                                                                                                                                                                             |
-|-------|---------------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1     | `sheets_used`       | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
-| 2     | `shared_edge_score` | **maximize** | Weighted total length of shared cut lines between adjacent pieces (see below). Higher means pieces align along common guillotine cuts — easier to cut and fewer fence repositions.  |
-| 3     | `leftover_area`     | minimize     | Area of the largest single leftover rectangle across all sheets. Prefers solutions where waste is concentrated in one big reusable offcut rather than scattered in many small ones. |
+| Level | Field           | Direction    | Meaning                                                                                                                                                                             |
+|-------|-----------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1     | `sheets_used`   | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
+| 2     | `layout_score`  | **maximize** | Cut-line concentration score (see below). Higher means internal cuts align into a few long, reusable lines — easier to cut and fewer fence repositions.                            |
+| 3     | `leftover_area` | minimize     | Area of the largest single leftover rectangle across all sheets. Prefers solutions where waste is concentrated in one big reusable offcut rather than scattered in many small ones. |
 
 ---
 
@@ -33,12 +33,12 @@ Computed as `max(fr.w * fr.h)` over `Solution::leftovers`.
 
 ---
 
-## shared_edge_score
+## layout_score (cut_line_concentration_score)
 
 A guillotine cut is a single straight line across the full width (or height) of a
 rectangular region. In practice this means one fence setting on a panel saw. When
-pieces of the same size line up along a common cut, the operator makes one pass and
-gets multiple pieces — no fence repositioning needed between them.
+several pieces line up along a common cut, the operator makes one pass and gets
+multiple pieces — no fence repositioning needed between them.
 
 The objective therefore needs to distinguish two solutions that use the same number
 of sheets and leave the same amount of waste but differ in *how* pieces are grouped:
@@ -55,17 +55,59 @@ of sheets and leave the same amount of waste but differ in *how* pieces are grou
   align across full width.            across the whole sheet.
 ```
 
-In the good layout every internal cut line is shared by multiple pieces on both sides:
-the horizontal cut is full-width and the vertical cuts repeat at the same positions in
-both rows. `shared_edge_score` is high because `h == e1 == e2` (full flush match) on
-every boundary and `d1 == d2` (same-size bonus) between same-type neighbours.
-
-In the bad layout pieces of different sizes alternate, so no cut line is reusable
-across rows. The score is low despite identical sheet count and waste.
-
 `leftover_area` alone cannot distinguish these two layouts — it only sees waste
-rectangles. `shared_edge_score` is the tiebreaker that drives the GA toward
-manufacturable groupings.
+rectangles. `layout_score` is the tiebreaker that drives the GA toward manufacturable,
+"technological" groupings.
+
+### How it is computed
+
+For each sheet:
+
+1. Take every internal edge of every placed piece (edges lying on the sheet boundary
+   are exempt — the same exemption the kerf computation uses).
+2. Group vertical edges by their `x` coordinate, horizontal edges by their `y`
+   coordinate — each group is a candidate single cut line.
+3. Within each group, sort the covered spans and merge overlapping/adjacent ones into
+   disjoint runs (a continuous run is one cut the saw can make in a single pass).
+4. Add `length²` for every merged run.
+
+The result is summed across all sheets, divided by `100² = 10_000` and rounded to the
+nearest integer to keep the numbers in a manageable range.
+
+Squaring is the key: for a fixed total amount of cut length, concentrating it into one
+long run scores far higher than spreading it across many short ones (Herfindahl-style
+concentration). In the good layout above, the horizontal cut spans the full sheet width
+in one run; in the bad layout the same total length is fragmented into several short,
+misaligned runs that score much lower when squared individually. This rewards exactly
+the "few long, reusable lines" intuition that drives manufacturability — fewer fence
+repositions, more pieces cut per pass.
+
+It is also `O(n log n)` per sheet (sort + merge), cheaper than the pairwise `O(n²)`
+loop that the previous metric (`shared_edge_score`, see below) used.
+
+See `docs/plans/cut-line-concentration-score.md` for the original brainstorm.
+
+## How is it being computed?
+
+Computed from `Solution::placements` after decoding (piece dimensions are in the
+expanded flat coordinate system where kerf is already absorbed, so adjacent pieces touch directly).
+
+---
+
+## shared_edge_score (implemented, not used in Objective)
+
+`Solution::shared_edge_score` is the metric `layout_score` replaced — kept around
+(`#[allow(dead_code)]`) in case we want to revisit it.
+
+It is **pairwise and local**: `O(n²)` per sheet, looping over every pair of pieces and
+scoring each shared boundary segment independently. This made it racy — a chaotic
+region could rack up nonzero pairwise scores from incidental local matches that rival
+the sum from a clean grid — and blind to the difference between "several pairwise
+matches that lie on the same coordinate, i.e. one continuous, reusable cut line" and
+"several unrelated short cuts that happen to add up to a similar total". `layout_score`
+was designed specifically to fix these two weaknesses; see
+`docs/plans/cut-line-concentration-score.md` for the comparison that motivated the
+change.
 
 ### Pairwise term
 
@@ -91,11 +133,6 @@ For every pair of pieces on the same sheet that share a boundary segment of leng
                                                                   └────┘
   h=ph=e1=e2, d1=d2=pw     h=ph=e1=e2, pw≠pw2      h=ph=e1, h<e2=p2
 ```
-
-## How is it being computed?
-
-Computed from `Solution::placements` after decoding (piece dimensions are in the
-expanded flat coordinate system where kerf is already absorbed, so adjacent pieces touch directly).
 
 ---
 

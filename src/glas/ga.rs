@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, shared_edge_score: 0 };
+        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
