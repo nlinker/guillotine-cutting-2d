@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
@@ -283,27 +281,32 @@ impl Solution {
         let sheet_w = problem.sheet.width;
         let sheet_h = problem.sheet.height;
         let mut total = 0u64;
+        // (coordinate, span_lo, span_hi) triples, grouped by sorting rather than
+        // hashing — this is the GA's hot path (called once per individual per
+        // generation), and a sort over a couple dozen small tuples beats the
+        // allocation/hashing overhead of a HashMap<u32, Vec<_>> per sheet.
+        let mut v_edges: Vec<(u32, u32, u32)> = Vec::new();
+        let mut h_edges: Vec<(u32, u32, u32)> = Vec::new();
         for sheet in 0..n_sheets {
-            let mut by_x: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
-            let mut by_y: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+            v_edges.clear();
+            h_edges.clear();
             for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
                 let (x, y, w, h) = placement_rect(pl, problem);
                 if x > 0 {
-                    by_x.entry(x).or_default().push((y, y + h));
+                    v_edges.push((x, y, y + h));
                 }
                 if x + w < sheet_w {
-                    by_x.entry(x + w).or_default().push((y, y + h));
+                    v_edges.push((x + w, y, y + h));
                 }
                 if y > 0 {
-                    by_y.entry(y).or_default().push((x, x + w));
+                    h_edges.push((y, x, x + w));
                 }
                 if y + h < sheet_h {
-                    by_y.entry(y + h).or_default().push((x, x + w));
+                    h_edges.push((y + h, x, x + w));
                 }
             }
-            for spans in by_x.values_mut().chain(by_y.values_mut()) {
-                total += merged_squared_length_sum(spans);
-            }
+            total += sum_squared_runs_by_coordinate(&mut v_edges);
+            total += sum_squared_runs_by_coordinate(&mut h_edges);
         }
         (total + 5_000) / 10_000
     }
@@ -438,23 +441,27 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     (pl.x, pl.y, w, h)
 }
 
-/// Sorts `spans` by start, merges overlapping/adjacent intervals into disjoint runs,
-/// and returns the sum of `length^2` over those runs.
-fn merged_squared_length_sum(spans: &mut [(u32, u32)]) -> u64 {
-    spans.sort_unstable();
+/// `edges` are `(coordinate, span_lo, span_hi)` triples — e.g. all internal vertical
+/// edges with their `x` coordinate and the `[y, y+h)` span they cover. Sorts by
+/// `(coordinate, span_lo, span_hi)`. Then within each group of equal `coordinate` merges
+/// overlapping/adjacent spans into disjoint runs (each run is one cut the saw can make
+/// in a single pass) and sums `length^2` over all runs in all groups.
+fn sum_squared_runs_by_coordinate(edges: &mut [(u32, u32, u32)]) -> u64 {
+    edges.sort_unstable();
     let mut total = 0u64;
-    let mut iter = spans.iter();
-    let Some(&(mut lo, mut hi)) = iter.next() else {
+    let mut iter = edges.iter();
+    let Some(&(mut coord, mut lo, mut hi)) = iter.next() else {
         return 0;
     };
-    for &(s, e) in iter {
-        if s <= hi {
-            hi = hi.max(e);
-        } else {
+    for &(c, s, e) in iter {
+        if c != coord || s > hi {
             let len = (hi - lo) as u64;
             total += len * len;
+            coord = c;
             lo = s;
             hi = e;
+        } else {
+            hi = hi.max(e);
         }
     }
     let len = (hi - lo) as u64;
