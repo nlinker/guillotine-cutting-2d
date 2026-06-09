@@ -24,13 +24,6 @@
   #pieces-table input[type=number] { width: 4.5em; }
   .rm-btn { background: none; border: none; color: #c00; cursor: pointer; font-size: 1em; padding: 0 .2em; }
 
-  /* results table (from server) */
-  #results table { border-collapse: collapse; width: 100%; margin: .8em 0; }
-  #results th, #results td { border: 1px solid #ccc; padding: 4px 8px; }
-  #results th { background: #f0f0f0; text-align: center; }
-  #results td { text-align: right; }
-  #results td:last-child { text-align: left; }
-
   pre { background: #f8f8f8; padding: 1em; overflow-x: auto; }
   h3 { margin: .6em 0 .2em; }
   #chart-wrap { margin: .4em 0; display: none; }
@@ -44,9 +37,8 @@
     button:hover { background: #2e2e2e; }
     .rm-btn { background: none; border: none; color: #f07070; }
     #status { color: #999; }
-    #pieces-table th, #results th { background: #222; }
+    #pieces-table th { background: #222; }
     #pieces-table th, #pieces-table td { border-color: #404040; }
-    #results th, #results td { border-color: #404040; }
     pre { background: #1a1a1a; color: #ddd; }
     h2, h3 { color: #eee; }
   }
@@ -101,6 +93,10 @@
 <div id="layout-wrap">
   <h3>Layout <label style="font-weight: normal"><input type="checkbox" id="draw-kerf"> draw with kerf</label></h3>
   <div id="layout"></div>
+</div>
+<div class="row">
+  <button type="button" id="copy-genome" style="display:none">&#x1F4CB; Copy genome JSON</button>
+  <span id="copy-genome-status"></span>
 </div>
 <div id="results"></div>
 
@@ -215,30 +211,21 @@ function buildRowColors(specs) {
 
 
 // == placements table =========================================================
-function buildPlacementsTable(solution, pieces, elapsed, sheets, seed) {
-  let html = `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), seed: ${seed}</p>`;
-  html += '<table><thead><tr>'
-        + '<th>Sheet</th><th>Piece</th><th>X</th><th>Y</th>'
-        + '<th>W</th><th>H</th><th>Rot</th>'
-        + '</tr></thead><tbody>';
-  const sorted = [...solution.placements].sort((a, b) =>
-    a.sheet_idx !== b.sheet_idx ? a.sheet_idx - b.sheet_idx :
-    a.x !== b.x ? a.x - b.x : a.y - b.y
-  );
-  for (const pl of sorted) {
-    const pc = pieces[pl.piespec_idx];
-    const pw = pl.rotated ? pc.height : pc.width;
-    const ph = pl.rotated ? pc.width  : pc.height;
-    html += `<tr>`
-          + `<td>${pl.sheet_idx}</td>`
-          + `<td style="text-align:left">${pc.name || '#' + pl.piespec_idx}</td>`
-          + `<td>${pl.x}</td><td>${pl.y}</td>`
-          + `<td>${pw}</td><td>${ph}</td>`
-          + `<td>${pl.rotated ? 'yes' : ''}</td>`
-          + `</tr>`;
-  }
-  html += '</tbody></table>';
-  return html;
+// Copies {problem: {sheet, kerf, piespecs}, genome} to the clipboard so it can
+// be pasted into demos/glas_decoder.html for step-by-step inspection.
+function copyGenomeJson(d, statusEl) {
+  const kerf = Number(document.getElementById('kerf').value) || 0;
+  const payload = {
+    problem: { sheet: { width: d.sheet_w, height: d.sheet_h }, kerf, piespecs: d.pieces },
+    genome: d.genome,
+  };
+  navigator.clipboard.writeText(JSON.stringify(payload))
+    .then(() => { statusEl.textContent = 'Copied!'; })
+    .catch(err => { statusEl.textContent = 'Copy failed: ' + err; });
+}
+
+function buildResultSummary(elapsed, sheets, seed) {
+  return `<p><b>Done in ${elapsed.toFixed(1)}s</b> - ${sheets} sheet(s), seed: ${seed}</p>`;
 }
 
 // == layout SVG ================================================================
@@ -318,6 +305,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
   if (es) { es.close(); es = null; }
   document.getElementById('results').innerHTML = '';
   document.getElementById('layout-wrap').style.display = 'none';
+  document.getElementById('copy-genome').style.display = 'none';
+  document.getElementById('copy-genome-status').textContent = '';
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
   initChart();
@@ -360,7 +349,16 @@ document.getElementById('form').addEventListener('submit', (e) => {
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =
-      buildPlacementsTable(d.solution, d.pieces, d.elapsed_secs, d.sheets_used, d.seed);
+      buildResultSummary(d.elapsed_secs, d.sheets_used, d.seed);
+    const copyBtn = document.getElementById('copy-genome');
+    const copyStatus = document.getElementById('copy-genome-status');
+    copyStatus.textContent = '';
+    if (d.genome) {
+      copyBtn.style.display = '';
+      copyBtn.onclick = () => copyGenomeJson(d, copyStatus);
+    } else {
+      copyBtn.style.display = 'none';
+    }
     es.close(); es = null;
     document.getElementById('status').textContent = '';
     document.getElementById('sheets-live').style.display = 'none';

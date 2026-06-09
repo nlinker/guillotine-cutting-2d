@@ -225,7 +225,7 @@ enum AnyEvent {
         lazy: LazyDecode,
     },
     Done {
-        results: Vec<(u64, Objective, LazyDecode)>,
+        results: Vec<(u64, Objective, LazyDecode, Option<serde_json::Value>)>,
     },
 }
 
@@ -239,7 +239,7 @@ struct AnyHandle {
 /// wrapping each genome in a lazy closure produced by `decode`.
 fn ga_handle_to_any<G, F>(mut handle: ga::GaHandle<G>, decode: F) -> AnyHandle
 where
-    G: Clone + Send + 'static,
+    G: Clone + Send + serde::Serialize + 'static,
     F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
 {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
@@ -260,7 +260,13 @@ where
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, f) = (ind.genome, decode.clone());
-                            (seed, ind.objective, LazyDecode(Box::new(move |spec| f(&genome, spec))))
+                            let genome_json = serde_json::to_value(&genome).ok();
+                            (
+                                seed,
+                                ind.objective,
+                                LazyDecode(Box::new(move |spec| f(&genome, spec))),
+                                genome_json,
+                            )
                         })
                         .collect(),
                 },
@@ -470,7 +476,7 @@ fn run_with_any_handle(
                     .ok();
                 }
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (best_seed, best_obj, lazy) = results.remove(0);
+                let (best_seed, best_obj, lazy, genome_json) = results.remove(0);
                 let sol = lazy.decode(&spec);
                 let cut_lengths = sol.cut_lengths(&spec);
                 sink.send(&ProgressMessage::Done {
@@ -479,6 +485,7 @@ fn run_with_any_handle(
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
+                    genome: genome_json,
                 })
                 .ok();
                 break;
@@ -516,6 +523,7 @@ pub(crate) fn run_with_sink_any(
             cut_lengths,
             solution: sol_spec,
             pieces: spec.piespecs.clone(),
+            genome: None,
         })?;
         return Ok(());
     }
@@ -562,7 +570,7 @@ fn run_calc_render(
             Some(AnyEvent::Progress { .. }) => {}
             Some(AnyEvent::Done { mut results }) => {
                 eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (_, _, lazy) = results.remove(0);
+                let (_, _, lazy, _) = results.remove(0);
                 let sol = lazy.decode(&spec);
                 print!("{}", render_svg(&spec, &sol)?);
                 break;

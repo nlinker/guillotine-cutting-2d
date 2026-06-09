@@ -441,6 +441,56 @@ impl CutForest {
         None
     }
 
+    /// Like [`find_fitting_leaf`], but restricted to leaves on `sheet_idx`.
+    pub fn find_fitting_leaf_on_sheet(
+        &self,
+        piece: &Piece,
+        prefer_rotate: bool,
+        selector: u32,
+        sheet_idx: usize,
+    ) -> Option<(usize, u32, u32, bool)> {
+        let candidates: Vec<_> = (0..self.free_leaves.len())
+            .filter_map(|free_pos| {
+                let node = &self.nodes[self.free_leaves[free_pos]];
+                if node.sheet_idx != sheet_idx {
+                    return None;
+                }
+                let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
+                Some((free_pos, pw, ph, rotated))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        Some(candidates[(selector as usize) % candidates.len()])
+    }
+
+    /// Like [`find_fitting_leaf_min_batch`], but restricted to leaves on `sheet_idx`.
+    pub fn find_fitting_leaf_min_batch_on_sheet(
+        &self,
+        piece: &Piece,
+        prefer_rotate: bool,
+        selector: u32,
+        min_fit: u32,
+        sheet_idx: usize,
+    ) -> Option<(usize, u32, u32, bool)> {
+        let candidates: Vec<_> = (0..self.free_leaves.len())
+            .filter_map(|free_pos| {
+                let node = &self.nodes[self.free_leaves[free_pos]];
+                if node.sheet_idx != sheet_idx {
+                    return None;
+                }
+                let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
+                let fits = (node.w / pw).max(node.h / ph);
+                if fits >= min_fit { Some((free_pos, pw, ph, rotated)) } else { None }
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        Some(candidates[(selector as usize) % candidates.len()])
+    }
+
     /// Like [`find_fitting_leaf`], but only considers leaves where the batch count
     /// `max(fr_w / pw, fr_h / ph)` is >= `min_fit`. Returns `None` if no such leaf exists.
     pub fn find_fitting_leaf_min_batch(

@@ -212,7 +212,8 @@
     <span class="scale-info" id="scale-info">1 unit = 32 px</span>
   </div>
   <button onclick="randomProblem()">&#x1F3B2; Random</button>
-  <button onclick="problemGlf15()">GLF 15</button>
+  <button onclick="importGenomeFromClipboard()">&#x1F4CB; Import from clipboard</button>
+  <span id="import-status"></span>
 </div>
 
 <div class="genome-wrap">
@@ -269,7 +270,6 @@ const pal     = i => PALETTES[i % PALETTES.length];
 const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
 const clone   = x => JSON.parse(JSON.stringify(x));
 const CLASS_NAMES = ['Large','Medium','Small'];
-const CLASS_INITIALS = ['L','M','S'];
 
 let problem = null, genome = null, steps = null, stepIdx = -1, autoRunning = false;
 let SCALE = 32;
@@ -280,8 +280,11 @@ function computeScale() {
   const sw  = parseInt(document.getElementById('sw').value)||12;
   const lw  = document.getElementById('left').offsetWidth || 500;
   const avail = lw - (spr-1)*10;
-  const scale = Math.max(4, Math.floor(avail / spr / sw));
-  document.getElementById('scale-info').textContent = `1 unit = ${scale} px`;
+  // Clamp to a small positive floor (not 4px/unit) - real-world problems use
+  // sheet dimensions in the thousands, where 4px/unit would blow up the canvas.
+  const scale = Math.max(0.05, avail / spr / sw);
+  document.getElementById('scale-info').textContent =
+    `1 unit = ${scale < 1 ? scale.toFixed(3) : Math.floor(scale)} px`;
   return scale;
 }
 
@@ -527,37 +530,47 @@ function buildRandomGenome(piespecs, sw, sh) {
   });
 }
 
-// ── GLF 15 demo ────────────────────────────────────────────────────
-// Sheet 15×35, kerf=0. 5 piece types classified: types 0-1 → Large, 2-4 → Small.
-function problemGlf15() {
-  document.getElementById('sw').value   = 15;
-  document.getElementById('sh').value   = 35;
-  document.getElementById('kerf').value = 0;
-  problem = {
-    sheet: {width:15, height:35},
-    kerf: 0,
-    piespecs: [
-      {width:12, height:3,  count:2, can_rotate:false}, // type 0 — Large
-      {width:3,  height:12, count:2, can_rotate:false}, // type 1 — Large
-      {width:4,  height:8,  count:4, can_rotate:true},  // type 2 — Small
-      {width:5,  height:7,  count:4, can_rotate:true},  // type 3 — Small
-      {width:4,  height:6,  count:4, can_rotate:true},  // type 4 — Small
-    ],
-  };
-  // Genome: Large=[0,1], Medium=[], Small=[2,3,4].
-  // Selectors and inverses zeroed → canonical TlH placement.
-  genome = [
-    [
-      {type_idx:0, rotate:false, selectors:[0,0],       inverses:[false,false]},
-      {type_idx:1, rotate:false, selectors:[0,0],       inverses:[false,false]},
-    ],
-    [], // no medium types in this problem
-    [
-      {type_idx:2, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
-      {type_idx:3, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
-      {type_idx:4, rotate:false, selectors:[0,0,0,0],   inverses:[false,false,false,false]},
-    ],
-  ];
+// ── Genome import ──────────────────────────────────────────────────
+// Pastes a {problem: {sheet, kerf, piespecs}, genome} object copied from the
+// web UI's "Copy genome JSON" button (see src/web/index.html) and replays the
+// real decode of that genome here, step by step.
+function showImportStatus(msg, isError) {
+  const el = document.getElementById('import-status');
+  el.textContent = msg;
+  el.style.color = isError ? '#c0392b' : '';
+}
+
+function showImportError(msg) {
+  showImportStatus(msg, true);
+}
+
+async function importGenomeFromClipboard() {
+  let raw;
+  try { raw = await navigator.clipboard.readText(); }
+  catch (e) { return showImportError('Clipboard read failed: ' + e.message); }
+
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch (e) { return showImportError('Invalid JSON: ' + e.message); }
+
+  const { problem: p, genome: g } = payload || {};
+  if (!p || !p.piespecs || !p.sheet || !Array.isArray(g))
+    return showImportError('Expected { problem: {sheet, kerf, piespecs}, genome }');
+  if (g.length !== CLASS_NAMES.length)
+    return showImportError(`genome must have ${CLASS_NAMES.length} classes (Large/Medium/Small)`);
+  for (const cls of g) for (const gene of cls) {
+    const ps = p.piespecs[gene.type_idx];
+    if (!ps) return showImportError(`Unknown type_idx=${gene.type_idx}`);
+    if (gene.selectors.length !== ps.count || gene.inverses.length !== ps.count)
+      return showImportError(`type_idx=${gene.type_idx}: selectors/inverses must have length ${ps.count}`);
+  }
+
+  document.getElementById('sw').value   = p.sheet.width;
+  document.getElementById('sh').value   = p.sheet.height;
+  document.getElementById('kerf').value = p.kerf || 0;
+  showImportStatus('Loaded.', false);
+  problem = { sheet: p.sheet, kerf: p.kerf || 0, piespecs: p.piespecs };
+  genome  = g;
   renderGenome();
   initDecoder();
 }
@@ -599,7 +612,7 @@ function renderGenome() {
         card.style.borderColor = p.stroke;
         card.innerHTML =
           `<div class="gtype">${ps.width}×${ps.height}</div>`+
-          `<div class="ginfo">×${ps.count} [${CLASS_INITIALS[ci]}]${gene.rotate?' ↻':''}</div>`+
+          `<div class="ginfo">×${ps.count}${gene.rotate?' ↻':''}</div>`+
           `<div class="gprog" id="gp-${fi}"></div>`;
         genesDiv.appendChild(card);
       });
@@ -776,7 +789,7 @@ document.getElementById('sheets-per-row').addEventListener('input', ()=>{
   if(problem&&steps){ SCALE=computeScale(); renderStep(stepIdx); }
 });
 
-setTimeout(()=>{ problemGlf15(); }, 50);
+setTimeout(()=>{ randomProblem(); }, 50);
 </script>
 </body>
 </html>

@@ -27,6 +27,8 @@ pub enum ProgressMessage {
         cut_lengths: Vec<u64>,
         solution: SolutionSpec,
         pieces: Vec<PieceSpec>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        genome: Option<serde_json::Value>,
     },
     Error {
         message: String,

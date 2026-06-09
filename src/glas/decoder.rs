@@ -85,6 +85,10 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
             debug_assert_eq!(gene.selectors.len(), count);
             debug_assert_eq!(gene.inverses.len(), count);
 
+            // Prefer the sheet used by the previous batch of this type so that
+            // all copies of one type stay as close together as possible.
+            let mut last_sheet: Option<usize> = None;
+
             while next[gene.type_idx] < end_idx {
                 // placed = copies of this type already placed = index into selectors/inverses
                 let placed = count - (end_idx - next[gene.type_idx]);
@@ -99,18 +103,27 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                 let sw = problem.sheet.width;
                 let sh = problem.sheet.height;
                 let found = if remaining > 1 {
-                    forest
-                        .find_fitting_leaf_min_batch(piece, gene.rotate, ps, 2)
+                    // 1. same sheet, batch >= 2
+                    last_sheet
+                        .and_then(|sid| forest.find_fitting_leaf_min_batch_on_sheet(piece, gene.rotate, ps, 2, sid))
+                        // 2. any sheet, batch >= 2
+                        .or_else(|| forest.find_fitting_leaf_min_batch(piece, gene.rotate, ps, 2))
+                        // 3. any sheet, single
                         .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
                         .or_else(|| {
                             forest.open_new_sheet(sw, sh);
                             forest.find_fitting_leaf(piece, gene.rotate, ps)
                         })
                 } else {
-                    forest.find_fitting_leaf(piece, gene.rotate, ps).or_else(|| {
-                        forest.open_new_sheet(sw, sh);
-                        forest.find_fitting_leaf(piece, gene.rotate, ps)
-                    })
+                    // 1. same sheet
+                    last_sheet
+                        .and_then(|sid| forest.find_fitting_leaf_on_sheet(piece, gene.rotate, ps, sid))
+                        // 2. any sheet
+                        .or_else(|| forest.find_fitting_leaf(piece, gene.rotate, ps))
+                        .or_else(|| {
+                            forest.open_new_sheet(sw, sh);
+                            forest.find_fitting_leaf(piece, gene.rotate, ps)
+                        })
                 };
 
                 let Some((free_pos, pw, ph, rotated)) = found else {
@@ -126,6 +139,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
                     let node = &forest.nodes[forest.free_leaves[free_pos]];
                     (node.w, node.h, node.sheet_idx)
                 };
+                last_sheet = Some(sheet_idx);
                 let count_h = (fr_w / pw).min(remaining as u32) as usize;
                 let count_v = (fr_h / ph).min(remaining as u32) as usize;
                 let vertical = count_v > count_h;
