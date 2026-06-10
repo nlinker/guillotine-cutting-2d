@@ -36,7 +36,7 @@ Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: rando
 Private Const CFG_SEED_CELL      As String = "N1"  ' base random seed (--seed)
 Private Const CFG_GENS_CELL      As String = "N2"  ' generations per run (--gens)
 Private Const CFG_POP_CELL       As String = "N3"  ' population size (--pop)
-Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' decoder algorithm: glas or slas
+Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' algorithm: simple/glas/slas/bfdh/gbaf/beam/jylanki
 Private Const CFG_LARGE_AREA_CELL     As String = "N5"  ' large_area_threshold (0 = auto)
 Private Const CFG_LONG_DIM_CELL       As String = "N6"  ' long_dim_threshold   (0 = auto)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
@@ -898,7 +898,7 @@ Private Sub SetupAlgorithmValidation()
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="simple,glas,slas,bfdh,gbaf,beam"
+             Formula1:="simple,glas,slas,bfdh,gbaf,beam,jylanki"
     End With
 End Sub
 
