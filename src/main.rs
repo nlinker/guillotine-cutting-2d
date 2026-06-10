@@ -114,7 +114,7 @@ enum Command {
         #[arg(long, default_value = "glas")]
         algorithm: Algorithm,
         /// Beam width for --algorithm beam (number of states kept per step)
-        #[arg(long, default_value_t = 16)]
+        #[arg(long, default_value_t = 256)]
         beam_width: usize,
         /// Min side length (px) for a piece to be "long"; 0 = auto (sheet_max * 0.3)
         #[arg(long, default_value_t = 0)]

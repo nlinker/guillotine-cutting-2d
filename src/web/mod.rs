@@ -60,7 +60,7 @@ fn default_progress() -> usize {
     50
 }
 fn default_beam_width() -> usize {
-    16
+    256
 }
 
 const INDEX_HTML: &str = include_str!("index.html");

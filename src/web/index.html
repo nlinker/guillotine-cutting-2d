@@ -80,7 +80,7 @@
       <option value="beam">Beam</option>
       <option value="jylanki">Jylanki</option>
     </select></label>
-    <label>Beam width <input type="number" id="beam-width" value="16" min="1" max="256" disabled></label>
+    <label>Beam width <input type="number" id="beam-width" value="256" min="1" max="256" disabled></label>
     <label>GLF steps <input type="number" id="glf-steps" value="0" min="0" max="100" disabled></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
@@ -330,7 +330,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('progress', document.getElementById('progress').value);
   params.set('algorithm', document.getElementById('algorithm').value);
   if (document.getElementById('algorithm').value === 'beam')
-    params.set('beam_width', document.getElementById('beam-width').value || '16');
+    params.set('beam_width', document.getElementById('beam-width').value || '256');
   const glfSteps = parseInt(document.getElementById('glf-steps').value) || 0;
   if (glfSteps > 0)
     params.set('glf_steps', glfSteps);
