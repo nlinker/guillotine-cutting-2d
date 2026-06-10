@@ -159,12 +159,23 @@ pub(crate) fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Opti
 /// When `inverse` is true the direction is flipped: `lw <= lh` picks vertical instead.
 /// Piece dimensions already include kerf (baked in by `expand_problem`), so splits are flush.
 pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, inverse: bool) -> FreePair {
+    let lw = fr.w - pw;
+    let lh = fr.h - ph;
+    // equivalent to (!inverse && lw <= lh) || (inverse && lw > lh)
+    split_directional(fr, pw, ph, (lw <= lh) != inverse)
+}
+
+/// Split `fr` after placing a `pw × ph` piece at its top-left origin, with an
+/// explicit cut direction. `horizontal` means the full-span cut runs horizontally:
+/// the bottom child gets the full rect width and the right child the piece height
+/// (first diagram); otherwise the right child gets the full height (second diagram).
+/// Children with a zero side are omitted.
+pub(crate) fn split_directional(fr: &FreeRect, pw: u32, ph: u32, horizontal: bool) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
     let lw = fr.w - pw;
     let lh = fr.h - ph;
     let mut out = SmallVec::new();
-    // equivalent to (!inverse && lw <= lh) || (inverse && lw > lh)
-    if (lw <= lh) != inverse {
+    if horizontal {
         // right child: narrow (piece height); bottom child: full width
         // ┌──────────┬──────────┐
         // │  piece   │  right   │
