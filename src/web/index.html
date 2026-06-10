@@ -80,6 +80,7 @@
       <option value="beam">Beam</option>
     </select></label>
     <label>Beam width <input type="number" id="beam-width" value="16" min="1" max="256" disabled></label>
+    <label>GLF steps <input type="number" id="glf-steps" value="0" min="0" max="100" disabled></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -329,6 +330,9 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('algorithm', document.getElementById('algorithm').value);
   if (document.getElementById('algorithm').value === 'beam')
     params.set('beam_width', document.getElementById('beam-width').value || '16');
+  const glfSteps = parseInt(document.getElementById('glf-steps').value) || 0;
+  if (glfSteps > 0)
+    params.set('glf_steps', glfSteps);
 
   es = new EventSource('/stream?' + params);
 
@@ -389,16 +393,21 @@ document.getElementById('cancel').addEventListener('click', () => {
 });
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
-document.getElementById('algorithm').addEventListener('change', (e) => {
-  const isGA = ['glas', 'slas'].includes(e.target.value);
-  const isBeam = e.target.value === 'beam';
+function applyAlgorithmState(value) {
+  const isGA = ['glas', 'slas'].includes(value);
+  const isBeam = value === 'beam';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = !isGA;
   });
   const bwEl = document.getElementById('beam-width');
   if (bwEl) bwEl.disabled = !isBeam;
-});
+  const glfEl = document.getElementById('glf-steps');
+  if (glfEl) glfEl.disabled = value !== 'glas';
+}
+const algSelect = document.getElementById('algorithm');
+algSelect.addEventListener('change', (e) => applyAlgorithmState(e.target.value));
+applyAlgorithmState(algSelect.value);
 </script>
 </body>
 </html>

@@ -346,6 +346,58 @@ impl CutForest {
         sheet_idx
     }
 
+    /// Create a forest pre-seeded with `used_heights.len()` GLF sheets.
+    ///
+    /// Each sheet gets up to two free rects around the GLF-placed bounding box
+    /// `(0, 0, used_w, used_h)`:
+    ///   - bottom: `(0, used_h, sw, sh - used_h)`
+    ///   - right:  `(used_w, 0, sw - used_w, used_h)`
+    ///
+    /// Either (or both) is omitted if degenerate (zero width/height).
+    /// `used_widths[i]` is clamped to `sw` (and `used_heights[i]` to `sh`) for safety.
+    /// Sheet dimensions `sw` and `sh` must be kerf-expanded (as returned by `expand_problem`).
+    pub fn from_preplaced_sheets(sw: u32, sh: u32, used_heights: &[u32], used_widths: &[u32]) -> Self {
+        let mut forest = CutForest {
+            nodes: Vec::new(),
+            roots: Vec::new(),
+            free_leaves: Vec::new(),
+        };
+        for (sheet_idx, (&used_h, &used_w)) in used_heights.iter().zip(used_widths).enumerate() {
+            let used_h = used_h.min(sh);
+            let used_w = used_w.min(sw);
+            let free_h = sh - used_h;
+            let free_w = sw - used_w;
+
+            let bottom_idx = forest.nodes.len();
+            forest.nodes.push(ForestNode {
+                x: 0,
+                y: used_h,
+                w: sw,
+                h: free_h,
+                sheet_idx,
+                kind: ForestNodeKind::Free,
+            });
+            forest.roots.push(bottom_idx);
+            if free_h > 0 {
+                forest.free_leaves.push(bottom_idx);
+            }
+
+            if free_w > 0 && used_h > 0 {
+                let right_idx = forest.nodes.len();
+                forest.nodes.push(ForestNode {
+                    x: used_w,
+                    y: 0,
+                    w: free_w,
+                    h: used_h,
+                    sheet_idx,
+                    kind: ForestNodeKind::Free,
+                });
+                forest.free_leaves.push(right_idx);
+            }
+        }
+        forest
+    }
+
     /// Number of sheets currently open.
     pub fn sheets_open(&self) -> usize {
         self.roots.len()

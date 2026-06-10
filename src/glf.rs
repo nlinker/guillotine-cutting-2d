@@ -556,8 +556,10 @@ fn decode_split(ranges: &[u32], mut idx: usize) -> Vec<u32> {
     result
 }
 
-#[allow(dead_code)]
-fn estimate_table_size(pieces: &[Piece], indices: &[usize]) -> usize {
+/// Estimate the GLF DP table size (number of subsets) for the given piece set,
+/// without building the table. Grows multiplicatively as `prod (count_i + 1)`
+/// over distinct `(width, height, can_rotate)` types.
+pub(crate) fn estimate_table_size(pieces: &[Piece], indices: &[usize]) -> usize {
     let mut counts: HashMap<(u32, u32, bool), usize> = HashMap::new();
     for &idx in indices {
         let p = &pieces[idx];

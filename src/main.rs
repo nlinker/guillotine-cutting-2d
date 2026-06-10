@@ -286,6 +286,7 @@ fn make_any_handle(
     seeds: Vec<u64>,
     progress_interval: usize,
     algorithm: Algorithm,
+    glf_steps: usize,
 ) -> AnyHandle {
     match algorithm {
         Algorithm::Slas => {
@@ -299,14 +300,24 @@ fn make_any_handle(
             ga_handle_to_any(handle, |g, spec| cutting::slas::decoder::decode_spec(spec, g))
         }
         Algorithm::Glas => {
-            let handle = glas_ga::run_ga_mt(
+            let glf_pr = if glf_steps > 0 {
+                Some(std::sync::Arc::new(cutting::glas::glf_preplace::glf_preplace(&spec, glf_steps)))
+            } else {
+                None
+            };
+            let handle = glas_ga::run_ga_mt_glf(
                 Arc::clone(&spec),
                 Arc::clone(&cfg),
                 seeds,
                 progress_interval,
                 progress_interval,
+                glf_pr.clone(),
             );
-            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
+            let decode_pr = glf_pr;
+            ga_handle_to_any(handle, move |g, spec| match &decode_pr {
+                Some(pr) => cutting::glas::decoder::decode_spec_with_preplace_result(spec, g, pr),
+                None => cutting::glas::decoder::decode_spec(spec, g),
+            })
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Gbaf => unreachable!("Gbaf is handled before make_any_handle"),
@@ -370,26 +381,26 @@ fn run_calc_with_sink(
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width)
+            run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width, 0)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width, 0)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width, 0)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width)
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms, beam_width, 0)
             }
         }
     }
@@ -505,6 +516,7 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
     beam_width: usize,
+    glf_steps: usize,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(algorithm, Algorithm::Bfdh | Algorithm::Gbaf | Algorithm::Simple | Algorithm::Beam) {
         let problem = cutting::expand::expand_problem(&spec);
@@ -533,6 +545,7 @@ pub(crate) fn run_with_sink_any(
         seeds.to_vec(),
         progress_interval,
         algorithm,
+        glf_steps,
     );
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
@@ -563,7 +576,7 @@ fn run_calc_render(
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();
-    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
+    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm, 0);
     loop {
         match handle.rx.blocking_recv() {
             None => break,
