@@ -79,6 +79,7 @@
       <option value="gbaf">GBAF</option>
       <option value="beam">Beam</option>
       <option value="jylanki">Jylanki</option>
+      <option value="groupsub">GroupSub</option>
     </select></label>
     <label>Beam width <input type="number" id="beam-width" value="256" min="1" max="256" disabled></label>
     <button type="submit">Solve</button>
@@ -92,7 +93,7 @@
   <canvas id="chart" height="60"></canvas>
 </div>
 <div id="layout-wrap">
-  <h3>Layout <label style="font-weight: normal"><input type="checkbox" id="draw-kerf"> draw with kerf</label></h3>
+  <h3>Layout <label style="font-weight: normal"><input type="checkbox" id="draw-kerf" checked> draw with kerf</label></h3>
   <div id="layout"></div>
 </div>
 <div class="row">
@@ -295,10 +296,12 @@ const drawKerfChk    = document.getElementById('draw-kerf');
 let lastSpecs = null;
 let lastLayout = null; // { solution, pieces, sheetW, sheetH, kerf, rowColor }
 
+// Checked = kerf gaps are visible (pieces at true size), i.e. the inverse of
+// drawLayout's drawKerf flag, which inflates pieces to swallow the gaps.
 drawKerfChk.addEventListener('change', () => {
   if (!lastLayout) return;
   const { solution, pieces, sheetW, sheetH, kerf, rowColor } = lastLayout;
-  drawLayout(solution, pieces, sheetW, sheetH, kerf, drawKerfChk.checked, rowColor);
+  drawLayout(solution, pieces, sheetW, sheetH, kerf, !drawKerfChk.checked, rowColor);
 });
 
 document.getElementById('form').addEventListener('submit', (e) => {
@@ -346,7 +349,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
       const rowColor = buildRowColors(d.pieces);
       const kerf = Number(document.getElementById('kerf').value);
       lastLayout = { solution: d.solution, pieces: d.pieces, sheetW: d.sheet_w, sheetH: d.sheet_h, kerf, rowColor };
-      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, kerf, drawKerfChk.checked, rowColor);
+      drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, kerf, !drawKerfChk.checked, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';
     }
     document.getElementById('results').innerHTML =

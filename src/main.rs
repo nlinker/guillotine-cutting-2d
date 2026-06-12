@@ -42,6 +42,8 @@ pub(crate) enum Algorithm {
     Simple,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
+    /// GroupSub: strips filled with piece groups via exact 1D knapsack DP (no GA, instant result)
+    Groupsub,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -54,6 +56,7 @@ impl std::fmt::Display for Algorithm {
             Algorithm::Simple => write!(f, "simple"),
             Algorithm::Beam => write!(f, "beam"),
             Algorithm::Jylanki => write!(f, "jylanki"),
+            Algorithm::Groupsub => write!(f, "groupsub"),
         }
     }
 }
@@ -326,6 +329,7 @@ fn make_any_handle(
         Algorithm::Simple => unreachable!("Simple is handled before make_any_handle"),
         Algorithm::Beam => unreachable!("Beam is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
+        Algorithm::Groupsub => unreachable!("Groupsub is handled before make_any_handle"),
     }
 }
 
@@ -558,7 +562,12 @@ pub(crate) fn run_with_sink_any(
 ) -> Result<(), Box<dyn Error>> {
     if matches!(
         algorithm,
-        Algorithm::Bfdh | Algorithm::Gbaf | Algorithm::Simple | Algorithm::Beam | Algorithm::Jylanki
+        Algorithm::Bfdh
+            | Algorithm::Gbaf
+            | Algorithm::Simple
+            | Algorithm::Beam
+            | Algorithm::Jylanki
+            | Algorithm::Groupsub
     ) {
         let problem = cutting::expand::expand_problem(&spec);
         let flat_sol = match algorithm {
@@ -566,6 +575,7 @@ pub(crate) fn run_with_sink_any(
             Algorithm::Simple => cutting::heuristic::simple_solve(&problem),
             Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
+            Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),
             _ => cutting::heuristic::bfdh_solve(&problem),
         };
         let objective = flat_sol.eval(&problem);
@@ -602,7 +612,12 @@ fn run_calc_render(
 ) -> Result<(), Box<dyn Error>> {
     if matches!(
         algorithm,
-        Algorithm::Bfdh | Algorithm::Gbaf | Algorithm::Simple | Algorithm::Beam | Algorithm::Jylanki
+        Algorithm::Bfdh
+            | Algorithm::Gbaf
+            | Algorithm::Simple
+            | Algorithm::Beam
+            | Algorithm::Jylanki
+            | Algorithm::Groupsub
     ) {
         let problem = cutting::expand::expand_problem(spec);
         let flat_sol = match algorithm {
@@ -610,6 +625,7 @@ fn run_calc_render(
             Algorithm::Simple => cutting::heuristic::simple_solve(&problem),
             Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
+            Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),
             _ => cutting::heuristic::bfdh_solve(&problem),
         };
         let sol_spec = cutting::expand::shrink_solution(&flat_sol, spec);
