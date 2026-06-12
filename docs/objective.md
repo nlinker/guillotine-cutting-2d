@@ -6,7 +6,7 @@ The fitness of a solution is a three-level lexicographic tuple — **lower is be
 | Level | Field           | Direction    | Meaning                                                                                                                                                                             |
 |-------|-----------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1     | `sheets_used`   | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
-| 2     | `layout_score`  | **maximize** | Cut-line concentration score (see below). Higher means internal cuts align into a few long, reusable lines — easier to cut and fewer fence repositions.                            |
+| 2     | `layout_score`  | **maximize** | Cut-line concentration score + strip-structure score (see below). Higher means internal cuts align into a few long, reusable lines and pieces stack into mono-width strips — easier to cut and fewer fence repositions. |
 | 3     | `leftover_area` | minimize     | Area of the largest single leftover rectangle across all sheets. Prefers solutions where waste is concentrated in one big reusable offcut rather than scattered in many small ones. |
 
 ---
@@ -94,6 +94,40 @@ reusable cut line" from "several unrelated short cuts that add up to a similar t
 
 Computed from `Solution::placements` after decoding (piece dimensions are in the
 expanded flat coordinate system where kerf is already absorbed, so adjacent pieces touch directly).
+
+---
+
+## layout_score, part 2 (strip_structure_score)
+
+The concentration score is blind to *what* lines up along a cut: a strip of pieces
+sharing a common side and an incidental alignment of unrelated pieces score the same.
+The strip-structure component closes that gap. It rewards **mono-width strips** — stacks
+of pieces sharing the same `[x, x+w)` interval laid flush in `y` (plus the symmetric
+horizontal runs). Such a strip is ripped with a single fence setting and then chopped
+to length, even when the pieces inside it differ — the "block" structure of the
+GroupSub decoder (Faizrakhmanov et al., 2014; see
+`docs/plans/12_strip-structure-score.md`).
+
+### How it is computed
+
+For each sheet, group placements by their cross-axis interval (`(x, w)` for vertical
+runs, `(y, h)` for horizontal), merge flush spans into runs (kerf is absorbed into the
+expanded dimensions, so "flush" is exact coordinate equality), and add `length²` per
+run. Same merge helper, same `/10_000` scaling as the concentration score.
+
+Squaring is again essential — and here a linear sum would be not just weaker but
+*useless*: every placement belongs to exactly one run per orientation, so the total run
+length is invariant for a fixed piece set; only the superadditive square distinguishes
+consolidated strips from scattered singletons.
+
+A k×m grid of identical w×h pieces scores along both axes at once,
+`k·(m·h)² + m·(k·w)²` — the global maximum for that piece set — which is exactly the
+incentive that drives the GA toward grids of identical pieces. Mixed pieces sharing a
+width still earn partial credit, giving the GA a smoother gradient than an
+identical-pieces-only reward.
+
+The two components are summed: `layout_score = concentration + STRIP_WEIGHT · strip`,
+with `STRIP_WEIGHT = 1` (both are squared-length sums on the same scale).
 
 ---
 

@@ -6,7 +6,8 @@ use crate::cut_tree::build_cut_tree;
 ///
 ///   0. `sheets_used`   — primary goal: minimize sheets
 ///   1. `layout_score`  — higher is better (reversed in `Ord`); rewards regular,
-///      "technological" layouts with concentrated cut lines (see `cut_line_concentration_score`)
+///      "technological" layouts: concentrated cut lines plus mono-width strips
+///      (see `cut_line_concentration_score` and `strip_structure_score`)
 ///   2. `leftover_area` — area of the largest single leftover across all sheets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Objective {
@@ -33,7 +34,9 @@ impl Ord for Objective {
 impl Objective {
     /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
     /// Change the body here to switch what is displayed — no other files need updating.
-    pub fn secondary(&self) -> u64 { self.layout_score }
+    pub fn secondary(&self) -> u64 {
+        self.layout_score
+    }
 }
 
 /// Stock sheet - all sheets in the problem are identical.
@@ -240,6 +243,11 @@ pub struct Solution {
     pub leftovers: Vec<FreeRect>,
 }
 
+/// Weight of `strip_structure_score` relative to `cut_line_concentration_score` in
+/// `layout_score`. Both are squared-length sums on the same `/10_000` scale, so 1 is
+/// the natural starting point; calibrate on `generator` instances if needed.
+const STRIP_WEIGHT: u64 = 1;
+
 impl Solution {
     pub fn sheets_used(&self) -> usize {
         self.placements
@@ -252,12 +260,17 @@ impl Solution {
 
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
-            return Objective { sheets_used: 0, leftover_area: 0, layout_score: 0 };
+            return Objective {
+                sheets_used: 0,
+                leftover_area: 0,
+                layout_score: 0,
+            };
         }
         Objective {
             sheets_used: self.sheets_used(),
             leftover_area: self.leftover_area(),
-            layout_score: self.cut_line_concentration_score(problem),
+            layout_score: self.cut_line_concentration_score(problem)
+                + STRIP_WEIGHT * self.strip_structure_score(problem),
         }
     }
 
@@ -307,6 +320,41 @@ impl Solution {
             }
             total += sum_squared_runs_by_coordinate(&mut v_edges);
             total += sum_squared_runs_by_coordinate(&mut h_edges);
+        }
+        (total + 5_000) / 10_000
+    }
+
+    /// Strip-structure score (higher = better) — rewards mono-width strips: stacks of
+    /// pieces sharing the same `[x, x+w)` interval laid flush in `y` (and symmetric
+    /// horizontal runs). Such a strip is ripped with one fence setting and then chopped
+    /// to length, even when the pieces inside it differ. A k x m grid of identical
+    /// pieces scores along both axes at once: `k*(m*h)^2 + m*(k*w)^2`.
+    ///
+    /// Sum of `run_length^2` over all flush runs in both orientations. Squaring is
+    /// essential: every placement belongs to exactly one run per orientation, so the
+    /// linear sum of run lengths is invariant for a fixed piece set and carries no
+    /// signal; the superadditive square rewards consolidation (Herfindahl-style, same
+    /// units and `/10_000` scale as `cut_line_concentration_score`).
+    ///
+    /// Kerf is baked into expanded piece dimensions, so "flush" is exact coordinate
+    /// equality. See `docs/plans/12_strip-structure-score.md`.
+    pub fn strip_structure_score(&self, problem: &Problem) -> u64 {
+        let n_sheets = self.sheets_used();
+        let mut total = 0u64;
+        // Keyed by the strip's cross-axis interval; buffers reused across sheets
+        // (GA hot path, same rationale as cut_line_concentration_score).
+        let mut v_runs: Vec<((u32, u32), u32, u32)> = Vec::new();
+        let mut h_runs: Vec<((u32, u32), u32, u32)> = Vec::new();
+        for sheet in 0..n_sheets {
+            v_runs.clear();
+            h_runs.clear();
+            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+                let (x, y, w, h) = placement_rect(pl, problem);
+                v_runs.push(((x, w), y, y + h));
+                h_runs.push(((y, h), x, x + w));
+            }
+            total += sum_squared_runs_by_coordinate(&mut v_runs);
+            total += sum_squared_runs_by_coordinate(&mut h_runs);
         }
         (total + 5_000) / 10_000
     }
@@ -405,7 +453,11 @@ impl Solution {
 
 fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     let p = &problem.pieces[pl.piece_idx];
-    let (w, h) = if pl.rotated { (p.height, p.width) } else { (p.width, p.height) };
+    let (w, h) = if pl.rotated {
+        (p.height, p.width)
+    } else {
+        (p.width, p.height)
+    };
     (pl.x, pl.y, w, h)
 }
 
@@ -414,7 +466,10 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
 /// `(coordinate, span_lo, span_hi)`. Then within each group of equal `coordinate` merges
 /// overlapping/adjacent spans into disjoint runs (each run is one cut the saw can make
 /// in a single pass) and sums `length^2` over all runs in all groups.
-fn sum_squared_runs_by_coordinate(edges: &mut [(u32, u32, u32)]) -> u64 {
+///
+/// Generic over the grouping key: `cut_line_concentration_score` groups by a single
+/// cut coordinate (u32), `strip_structure_score` by a cross-axis interval ((u32, u32)).
+fn sum_squared_runs_by_coordinate<K: Copy + Ord>(edges: &mut [(K, u32, u32)]) -> u64 {
     edges.sort_unstable();
     let mut total = 0u64;
     let mut iter = edges.iter();
@@ -685,5 +740,83 @@ mod tests {
             ],
         };
         assert_eq!(sol.cut_lengths(&spec), vec![445]);
+    }
+
+    fn flat_problem(sheet_w: u32, sheet_h: u32, dims: &[(u32, u32)]) -> Problem {
+        Problem {
+            sheet: Sheet {
+                width: sheet_w,
+                height: sheet_h,
+            },
+            pieces: dims
+                .iter()
+                .map(|&(w, h)| Piece {
+                    name: String::new(),
+                    width: w,
+                    height: h,
+                    can_rotate: false,
+                })
+                .collect(),
+        }
+    }
+
+    fn place(piece_idx: usize, x: u32, y: u32) -> Placement {
+        Placement {
+            sheet_idx: 0,
+            piece_idx,
+            x,
+            y,
+            rotated: false,
+        }
+    }
+
+    // 2x2 grid of 400x400 pieces: 2 vertical runs of 800 + 2 horizontal runs of 800
+    // = 4 * 800^2 = 2_560_000 -> /10^4 = 256. The same pieces scattered (no flush
+    // contacts) give 8 singleton runs of 400 = 8 * 400^2 = 1_280_000 -> 128.
+    #[test]
+    fn strip_score_grid_beats_scattered() {
+        let problem = flat_problem(1000, 1000, &[(400, 400); 4]);
+        let grid = Solution {
+            placements: vec![place(0, 0, 0), place(1, 400, 0), place(2, 0, 400), place(3, 400, 400)],
+            leftovers: vec![],
+        };
+        let scattered = Solution {
+            placements: vec![place(0, 0, 0), place(1, 600, 0), place(2, 0, 600), place(3, 600, 600)],
+            leftovers: vec![],
+        };
+        assert_eq!(grid.strip_structure_score(&problem), 256);
+        assert_eq!(scattered.strip_structure_score(&problem), 128);
+    }
+
+    // A column of equal-width pieces with different heights laid flush merges into one
+    // vertical run (1000^2) + 3 horizontal singletons (3 * 400^2) = 1_480_000 -> 148.
+    // The same pieces scattered keep separate vertical runs: 300^2 + 500^2 + 200^2
+    // + the same horizontal singletons = 860_000 -> 86.
+    #[test]
+    fn strip_score_mono_width_mixed_heights() {
+        let problem = flat_problem(1000, 1000, &[(400, 300), (400, 500), (400, 200)]);
+        let flush = Solution {
+            placements: vec![place(0, 0, 0), place(1, 0, 300), place(2, 0, 800)],
+            leftovers: vec![],
+        };
+        let scattered = Solution {
+            placements: vec![place(0, 0, 0), place(1, 500, 400), place(2, 50, 750)],
+            leftovers: vec![],
+        };
+        assert_eq!(flush.strip_structure_score(&problem), 148);
+        assert_eq!(scattered.strip_structure_score(&problem), 86);
+    }
+
+    // Stacked pieces of different widths share x but not the cross interval, so they
+    // stay separate vertical runs: 300^2 + 500^2 + horizontal singletons 400^2 + 300^2
+    // = 590_000 -> 59 (no merge bonus).
+    #[test]
+    fn strip_runs_require_equal_width() {
+        let problem = flat_problem(1000, 1000, &[(400, 300), (300, 500)]);
+        let stacked = Solution {
+            placements: vec![place(0, 0, 0), place(1, 0, 300)],
+            leftovers: vec![],
+        };
+        assert_eq!(stacked.strip_structure_score(&problem), 59);
     }
 }
