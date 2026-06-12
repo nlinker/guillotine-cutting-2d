@@ -40,8 +40,6 @@ struct SolveParams {
     algorithm: crate::Algorithm,
     #[serde(default = "default_beam_width")]
     beam_width: usize,
-    #[serde(default)]
-    glf_steps: usize,
 }
 
 fn default_seed() -> u64 {
@@ -128,7 +126,17 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             };
             let algorithm = params.algorithm;
             std::thread::spawn(move || {
-                crate::run_with_sink_any(problem, cfg, &seeds, params.progress, algorithm, &mut sink, 0, params.beam_width, params.glf_steps).ok();
+                crate::run_with_sink_any(
+                    problem,
+                    cfg,
+                    &seeds,
+                    params.progress,
+                    algorithm,
+                    &mut sink,
+                    0,
+                    params.beam_width,
+                )
+                .ok();
             });
         }
     }

@@ -299,7 +299,6 @@ fn make_any_handle(
     seeds: Vec<u64>,
     progress_interval: usize,
     algorithm: Algorithm,
-    glf_steps: usize,
 ) -> AnyHandle {
     match algorithm {
         Algorithm::Slas => {
@@ -313,26 +312,14 @@ fn make_any_handle(
             ga_handle_to_any(handle, |g, spec| cutting::slas::decoder::decode_spec(spec, g))
         }
         Algorithm::Glas => {
-            let glf_pr = if glf_steps > 0 {
-                Some(std::sync::Arc::new(cutting::glas::glf_preplace::glf_preplace(
-                    &spec, glf_steps,
-                )))
-            } else {
-                None
-            };
-            let handle = glas_ga::run_ga_mt_glf(
+            let handle = glas_ga::run_ga_mt(
                 Arc::clone(&spec),
                 Arc::clone(&cfg),
                 seeds,
                 progress_interval,
                 progress_interval,
-                glf_pr.clone(),
             );
-            let decode_pr = glf_pr;
-            ga_handle_to_any(handle, move |g, spec| match &decode_pr {
-                Some(pr) => cutting::glas::decoder::decode_spec_with_preplace_result(spec, g, pr),
-                None => cutting::glas::decoder::decode_spec(spec, g),
-            })
+            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Gbaf => unreachable!("Gbaf is handled before make_any_handle"),
@@ -406,7 +393,6 @@ fn run_calc_with_sink(
                 &mut sink,
                 sink_interval_ms,
                 beam_width,
-                0,
             )
         }
         _ => {
@@ -423,7 +409,6 @@ fn run_calc_with_sink(
                     &mut sink,
                     sink_interval_ms,
                     beam_width,
-                    0,
                 )
             }
             #[cfg(unix)]
@@ -439,7 +424,6 @@ fn run_calc_with_sink(
                     &mut sink,
                     sink_interval_ms,
                     beam_width,
-                    0,
                 )
             }
             #[cfg(not(any(windows, unix)))]
@@ -455,7 +439,6 @@ fn run_calc_with_sink(
                     &mut sink,
                     sink_interval_ms,
                     beam_width,
-                    0,
                 )
             }
         }
@@ -572,7 +555,6 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
     beam_width: usize,
-    glf_steps: usize,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(
         algorithm,
@@ -605,7 +587,6 @@ pub(crate) fn run_with_sink_any(
         seeds.to_vec(),
         progress_interval,
         algorithm,
-        glf_steps,
     );
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
@@ -640,14 +621,7 @@ fn run_calc_render(
     let spec = Arc::new(spec.clone());
     let cfg = Arc::new(cfg.clone());
     let t0 = Instant::now();
-    let mut handle = make_any_handle(
-        Arc::clone(&spec),
-        Arc::clone(&cfg),
-        seeds,
-        progress_interval,
-        algorithm,
-        0,
-    );
+    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
     loop {
         match handle.rx.blocking_recv() {
             None => break,

@@ -52,32 +52,6 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
     expand::shrink_solution(&sol, spec)
 }
 
-/// Like [`decode_spec`] but with GLF pre-placement.
-///
-/// `genome` must be for `pr.remaining_spec`, not the original spec.
-/// The result is a `SolutionSpec` in the ORIGINAL spec's coordinate space.
-pub fn decode_spec_with_preplace_result(
-    spec: &ProblemSpec,
-    genome: &Genome,
-    pr: &crate::glas::glf_preplace::GlfPreplaceResult,
-) -> crate::model::SolutionSpec {
-    use crate::model::{Placement, Solution};
-    let remaining_problem = expand::expand_problem(&pr.remaining_spec);
-    let sw = remaining_problem.sheet.width;
-    let sh = remaining_problem.sheet.height;
-    let initial_forest = CutForest::from_preplaced_sheets(sw, sh, &pr.used_heights, &pr.used_widths);
-    let rem_sol = decode_with_forest(&remaining_problem, &pr.remaining_spec, genome, initial_forest);
-    let mut combined = pr.placements.clone();
-    for pl in &rem_sol.placements {
-        combined.push(Placement {
-            piece_idx: pr.remaining_to_original[pl.piece_idx],
-            ..*pl
-        });
-    }
-    let full_sol = Solution { placements: combined, leftovers: rem_sol.leftovers };
-    expand::shrink_solution(&full_sol, spec)
-}
-
 /// Decode a group genome into a flat `Solution`.
 ///
 /// For each gene the decoder places all pieces of the given type one batch at a time:
@@ -94,7 +68,7 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
 
 /// Like [`decode`] but starts from an already-initialized [`CutForest`].
 ///
-/// Use when some sheets are pre-seeded (e.g. from GLF pre-placement).
+/// Use when some sheets are pre-seeded from a partial solution.
 /// GLAS opens additional sheets starting at `initial_forest.sheets_open()`.
 pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome, mut forest: CutForest) -> Solution {
     debug_assert_eq!(genome.iter().map(|c| c.len()).sum::<usize>(), spec.piespecs.len());
@@ -219,10 +193,7 @@ pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome
         })
         .collect();
 
-    Solution {
-        placements,
-        leftovers,
-    }
+    Solution { placements, leftovers }
 }
 
 #[cfg(test)]

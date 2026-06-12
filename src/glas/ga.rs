@@ -1,72 +1,37 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
 use rand::Rng;
 
 pub use crate::ga::{GaEvent, GaHandle, ProgressEvent, select_elite, tournament_select};
 use crate::{
-    cut_tree::CutForest,
     expand::expand_problem,
     ga::{self, GaConfig, GaDecoder},
-    glas::{
-        decoder::{Gene, Genome, decode, decode_with_forest},
-        glf_preplace::GlfPreplaceResult,
-    },
-    model::{Objective, Placement, PieceSpec, Problem, ProblemSpec, Solution},
+    glas::decoder::{Gene, Genome, decode},
+    model::{Objective, PieceSpec, Problem, ProblemSpec},
 };
 
 /// Concrete individual type for the GLAS decoder.
 pub type Individual = crate::ga::Individual<Genome>;
 
-/// Optional GLF pre-placement data held by `GlasDecoder`.
-struct GlfSupport {
-    preresult: Arc<GlfPreplaceResult>,
-    remaining_spec: Arc<ProblemSpec>,
-    remaining_problem: Arc<Problem>,
-}
-
 /// GLAS GA decoder. Owns the spec (for genome generation) and the expanded problem.
 pub struct GlasDecoder {
     pub spec: Arc<ProblemSpec>,
     pub problem: Arc<Problem>,
-    glf: Option<GlfSupport>,
-}
-
-impl GlasDecoder {
-    fn active_spec(&self) -> &ProblemSpec {
-        self.glf.as_ref().map_or(&self.spec, |g| &g.remaining_spec)
-    }
 }
 
 impl GaDecoder for GlasDecoder {
     type Genome = Genome;
 
     fn random_genome<R: Rng>(&self, config: &GaConfig, rng: &mut R) -> Genome {
-        make_genome(self.active_spec(), config.long_dim_threshold, config.large_area_threshold, rng)
+        make_genome(&self.spec, config.long_dim_threshold, config.large_area_threshold, rng)
     }
 
     fn eval(&self, genome: &Genome) -> Objective {
-        match &self.glf {
-            None => decode(&self.problem, &self.spec, genome).eval(&self.problem),
-            Some(glf) => {
-                let sw = self.problem.sheet.width;
-                let sh = self.problem.sheet.height;
-                let initial_forest =
-                    CutForest::from_preplaced_sheets(sw, sh, &glf.preresult.used_heights, &glf.preresult.used_widths);
-                let rem_sol = decode_with_forest(&glf.remaining_problem, &glf.remaining_spec, genome, initial_forest);
-                let mut combined: Vec<Placement> = glf.preresult.placements.clone();
-                for pl in &rem_sol.placements {
-                    combined.push(Placement {
-                        piece_idx: glf.preresult.remaining_to_original[pl.piece_idx],
-                        ..*pl
-                    });
-                }
-                Solution { placements: combined, leftovers: rem_sol.leftovers }.eval(&self.problem)
-            }
-        }
+        decode(&self.problem, &self.spec, genome).eval(&self.problem)
     }
 
     fn crossover<R: Rng>(&self, p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
-        ox_crossover(p1, p2, self.active_spec().piespecs.len(), rng)
+        ox_crossover(p1, p2, self.spec.piespecs.len(), rng)
     }
 
     fn mutate<R: Rng>(&self, genome: &mut Genome, config: &GaConfig, rng: &mut R) {
@@ -82,7 +47,7 @@ impl GaDecoder for GlasDecoder {
     }
 
     fn seed_genomes(&self, config: &GaConfig) -> Vec<Genome> {
-        let g = greedy_genome(self.active_spec(), config.long_dim_threshold, config.large_area_threshold);
+        let g = greedy_genome(&self.spec, config.long_dim_threshold, config.large_area_threshold);
         vec![g]
     }
 }
@@ -92,7 +57,6 @@ pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, 
     let decoder = GlasDecoder {
         spec: Arc::new(spec.clone()),
         problem: Arc::new(problem.clone()),
-        glf: None,
     };
     ga::run_ga(&decoder, config, rng)
 }
@@ -105,29 +69,8 @@ pub fn run_ga_mt(
     progress_interval: usize,
     migration_interval: usize,
 ) -> GaHandle<Genome> {
-    run_ga_mt_glf(spec, config, seeds, progress_interval, migration_interval, None)
-}
-
-/// Multi-threaded GLAS GA with optional GLF pre-placement.
-///
-/// When `glf_preresult` is `Some`, the GA optimizes genomes for the REMAINING pieces
-/// (after GLF). The `eval` function combines GLF placements with GLAS placements and
-/// scores the full solution against the original `spec`.
-pub fn run_ga_mt_glf(
-    spec: Arc<ProblemSpec>,
-    config: Arc<GaConfig>,
-    seeds: Vec<u64>,
-    progress_interval: usize,
-    migration_interval: usize,
-    glf_preresult: Option<Arc<GlfPreplaceResult>>,
-) -> GaHandle<Genome> {
     let problem = Arc::new(expand_problem(&spec));
-    let glf = glf_preresult.map(|pr| GlfSupport {
-        remaining_problem: Arc::new(expand_problem(&pr.remaining_spec)),
-        remaining_spec: Arc::new(pr.remaining_spec.clone()),
-        preresult: pr,
-    });
-    let decoder = Arc::new(GlasDecoder { spec, problem, glf });
+    let decoder = Arc::new(GlasDecoder { spec, problem });
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
@@ -567,7 +510,11 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, layout_score: 0 };
+        let o = |la| crate::model::Objective {
+            sheets_used: 0,
+            leftover_area: la,
+            layout_score: 0,
+        };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
@@ -576,11 +523,18 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let o = |la| crate::model::Objective { sheets_used: 0, leftover_area: la, layout_score: 0 };
+        let o = |la| crate::model::Objective {
+            sheets_used: 0,
+            leftover_area: la,
+            layout_score: 0,
+        };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
-        assert_eq!((elite[0].objective.sheets_used, elite[0].objective.leftover_area), (0, 10));
+        assert_eq!(
+            (elite[0].objective.sheets_used, elite[0].objective.leftover_area),
+            (0, 10)
+        );
     }
 
     // --- OX crossover ---
@@ -662,7 +616,6 @@ mod tests {
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
             problem: Arc::new(problem),
-            glf: None,
         };
         let cfg = small_config();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
@@ -681,7 +634,6 @@ mod tests {
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
             problem: Arc::new(problem),
-            glf: None,
         };
         let cfg = small_config();
         let g1 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
