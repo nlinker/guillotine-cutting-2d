@@ -14,7 +14,6 @@ use cutting::{
     parse::parse_problem,
     parse_json::parse_problem_json,
     render::render_svg,
-    slas::ga as slas_ga,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
@@ -30,16 +29,12 @@ pub(crate) enum Algorithm {
     /// Group-SLAS genetic algorithm (one gene per piece type)
     #[default]
     Glas,
-    /// Flat-SLAS genetic algorithm (one gene per physical piece)
-    Slas,
     /// BFDH greedy shelf heuristic (no GA, instant result)
     Bfdh,
-    /// GBAF greedy guillotine heuristic — Best-Area-Fit with SLAS split (no GA, instant result)
-    Gbaf,
     /// Beam search over guillotine cut trees (no GA, instant result)
     Beam,
-    /// Simple greedy heuristic — NFDH with in-row gap-fill (no GA, instant result)
-    Simple,
+    /// NFDH greedy heuristic — Next-Fit Decreasing Height with in-row gap-fill (no GA, instant result)
+    Nfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
     /// GroupSub: strips filled with piece groups via exact 1D knapsack DP (no GA, instant result)
@@ -50,10 +45,8 @@ impl std::fmt::Display for Algorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Algorithm::Glas => write!(f, "glas"),
-            Algorithm::Slas => write!(f, "slas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
-            Algorithm::Gbaf => write!(f, "gbaf"),
-            Algorithm::Simple => write!(f, "simple"),
+            Algorithm::Nfdh => write!(f, "nfdh"),
             Algorithm::Beam => write!(f, "beam"),
             Algorithm::Jylanki => write!(f, "jylanki"),
             Algorithm::Groupsub => write!(f, "groupsub"),
@@ -304,16 +297,6 @@ fn make_any_handle(
     algorithm: Algorithm,
 ) -> AnyHandle {
     match algorithm {
-        Algorithm::Slas => {
-            let handle = slas_ga::run_ga_mt(
-                Arc::clone(&spec),
-                Arc::clone(&cfg),
-                seeds,
-                progress_interval,
-                progress_interval,
-            );
-            ga_handle_to_any(handle, |g, spec| cutting::slas::decoder::decode_spec(spec, g))
-        }
         Algorithm::Glas => {
             let handle = glas_ga::run_ga_mt(
                 Arc::clone(&spec),
@@ -325,8 +308,7 @@ fn make_any_handle(
             ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
-        Algorithm::Gbaf => unreachable!("Gbaf is handled before make_any_handle"),
-        Algorithm::Simple => unreachable!("Simple is handled before make_any_handle"),
+        Algorithm::Nfdh => unreachable!("Nfdh is handled before make_any_handle"),
         Algorithm::Beam => unreachable!("Beam is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
         Algorithm::Groupsub => unreachable!("Groupsub is handled before make_any_handle"),
@@ -562,17 +544,11 @@ pub(crate) fn run_with_sink_any(
 ) -> Result<(), Box<dyn Error>> {
     if matches!(
         algorithm,
-        Algorithm::Bfdh
-            | Algorithm::Gbaf
-            | Algorithm::Simple
-            | Algorithm::Beam
-            | Algorithm::Jylanki
-            | Algorithm::Groupsub
+        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Beam | Algorithm::Jylanki | Algorithm::Groupsub
     ) {
         let problem = cutting::expand::expand_problem(&spec);
         let flat_sol = match algorithm {
-            Algorithm::Gbaf => cutting::heuristic::gbaf_solve(&problem),
-            Algorithm::Simple => cutting::heuristic::simple_solve(&problem),
+            Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
             Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
             Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),
@@ -612,17 +588,11 @@ fn run_calc_render(
 ) -> Result<(), Box<dyn Error>> {
     if matches!(
         algorithm,
-        Algorithm::Bfdh
-            | Algorithm::Gbaf
-            | Algorithm::Simple
-            | Algorithm::Beam
-            | Algorithm::Jylanki
-            | Algorithm::Groupsub
+        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Beam | Algorithm::Jylanki | Algorithm::Groupsub
     ) {
         let problem = cutting::expand::expand_problem(spec);
         let flat_sol = match algorithm {
-            Algorithm::Gbaf => cutting::heuristic::gbaf_solve(&problem),
-            Algorithm::Simple => cutting::heuristic::simple_solve(&problem),
+            Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
             Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
             Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),

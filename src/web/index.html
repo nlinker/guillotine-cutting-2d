@@ -72,11 +72,9 @@
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <label>Algorithm <select id="algorithm">
-      <option value="simple" selected>Simple</option>
+      <option value="nfdh" selected>NFDH</option>
       <option value="glas">GLAS</option>
-      <option value="slas">SLAS</option>
       <option value="bfdh">BFDH</option>
-      <option value="gbaf">GBAF</option>
       <option value="beam">Beam</option>
       <option value="jylanki">Jylanki</option>
       <option value="groupsub">GroupSub</option>
@@ -394,7 +392,7 @@ document.getElementById('cancel').addEventListener('click', () => {
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 function applyAlgorithmState(value) {
-  const isGA = ['glas', 'slas'].includes(value);
+  const isGA = ['glas'].includes(value);
   const isBeam = value === 'beam';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);

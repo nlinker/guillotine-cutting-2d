@@ -36,7 +36,7 @@ Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: rando
 Private Const CFG_SEED_CELL      As String = "N1"  ' base random seed (--seed)
 Private Const CFG_GENS_CELL      As String = "N2"  ' generations per run (--gens)
 Private Const CFG_POP_CELL       As String = "N3"  ' population size (--pop)
-Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' algorithm: simple/glas/slas/bfdh/gbaf/beam/jylanki/groupsub
+Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' algorithm: nfdh/glas/bfdh/beam/jylanki/groupsub
 Private Const CFG_LARGE_AREA_CELL     As String = "N5"  ' large_area_threshold (0 = auto)
 Private Const CFG_LONG_DIM_CELL       As String = "N6"  ' long_dim_threshold   (0 = auto)
 Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
@@ -517,6 +517,8 @@ Public Sub RunCut()
     Dim sAlgorithm As String: sAlgorithm = "glas"
     If ws.Range(CFG_ALGORITHM_CELL).Value <> "" Then _
         sAlgorithm = LCase(Trim(CStr(ws.Range(CFG_ALGORITHM_CELL).Value)))
+    ' Dropdown stores "code - Russian description"; keep only the code for the CLI.
+    If InStr(sAlgorithm, " - ") > 0 Then sAlgorithm = Trim(Left(sAlgorithm, InStr(sAlgorithm, " - ") - 1))
     Dim nLargeArea As Long: nLargeArea = 0
     If ws.Range(CFG_LARGE_AREA_CELL).Value <> "" Then nLargeArea = CLng(ws.Range(CFG_LARGE_AREA_CELL).Value)
     Dim nLongDim As Long: nLongDim = 0
@@ -898,7 +900,7 @@ Private Sub SetupAlgorithmValidation()
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="simple,glas,slas,bfdh,gbaf,beam,jylanki,groupsub"
+             Formula1:="nfdh - Следующий подходящий,glas - Генетический алгоритм,bfdh - Лучший подходящий,beam - Лучевой поиск,jylanki - Эвристика Джиланки,groupsub - Группировка по ширине (DP)"
     End With
 End Sub
 

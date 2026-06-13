@@ -165,14 +165,14 @@ pub fn gbaf_solve(problem: &Problem) -> Solution {
     }
 }
 
-/// Standalone multi-sheet Simple solver (NFDH with in-row gap-fill).
+/// Standalone multi-sheet NFDH solver (Next-Fit Decreasing Height with in-row gap-fill).
 ///
 /// Mirrors the VBA algorithm from `tmp/Module1.bas` (`dim_ras` sub):
 /// sort pieces by height descending, place left-to-right in a single active
 /// row; when the current piece does not fit, gap-fill the remaining row width
 /// with any smaller unplaced piece that does fit, then advance to the next
 /// row. Opens a new sheet when the piece would exceed the sheet height.
-pub fn simple_solve(problem: &Problem) -> Solution {
+pub fn nfdh_solve(problem: &Problem) -> Solution {
     let sw = problem.sheet.width;
     let sh = problem.sheet.height;
 
