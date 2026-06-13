@@ -900,7 +900,7 @@ Private Sub SetupAlgorithmValidation()
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="nfdh - Следующий подходящий,glas - Генетический алгоритм,bfdh - Лучший подходящий,beam - Лучевой поиск,jylanki - Эвристика Джиланки,groupsub - Группировка по ширине (DP)"
+             Formula1:="glas - Генетический алгоритм,nfdh - Следующий подходящий,bfdh - Лучший подходящий,beam - Лучевой поиск,jylanki - Эвристика Джиланки,groupsub - Группировка по ширине (DP)"
     End With
 End Sub
 
