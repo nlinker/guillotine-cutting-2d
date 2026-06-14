@@ -148,22 +148,56 @@ pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome
                     (node.w, node.h, node.sheet_idx)
                 };
                 last_sheet = Some(sheet_idx);
-                let count_h = (fr_w / pw).min(remaining as u32) as usize;
-                let count_v = (fr_h / ph).min(remaining as u32) as usize;
-                let vertical = count_v > count_h;
-                let (count, cw, ch) = if vertical {
-                    (count_v, pw, ph * count_v as u32)
+
+                // Grid geometry: try filling complete rows (cols fixed by fr_w/pw)
+                // and complete columns (rows fixed by fr_h/ph); pick whichever
+                // leaves the smaller "hole" in the partial last row/column
+                // (row-major wins ties). Degenerates to a 1xN strip when
+                // cols==1, rows==1, or the grid divides remaining exactly.
+                let cols = fr_w / pw;
+                let rows = fr_h / ph;
+                let grid_n = (rows * cols).min(remaining as u32);
+
+                let rows_full = grid_n / cols;
+                let extra_row = grid_n % cols;
+                let cw_row = if rows_full >= 1 { cols * pw } else { extra_row * pw };
+                let ch_row = (rows_full + (extra_row > 0) as u32) * ph;
+                let hole_row_area = if extra_row > 0 && rows_full >= 1 {
+                    (cw_row - extra_row * pw) * ph
                 } else {
-                    (count_h, pw * count_h as u32, ph)
+                    0
+                };
+
+                let cols_full = grid_n / rows;
+                let extra_col = grid_n % rows;
+                let ch_col = if cols_full >= 1 { rows * ph } else { extra_col * ph };
+                let cw_col = (cols_full + (extra_col > 0) as u32) * pw;
+                let hole_col_area = if extra_col > 0 && cols_full >= 1 {
+                    pw * (ch_col - extra_col * ph)
+                } else {
+                    0
+                };
+
+                let row_major = hole_row_area <= hole_col_area;
+                let (cw, ch, grid_cols, grid_lines_full, extra) = if row_major {
+                    (cw_row, ch_row, cols, rows_full, extra_row)
+                } else {
+                    (cw_col, ch_col, rows, cols_full, extra_col)
                 };
 
                 // Apply blueprint: splits the leaf, returns batch origin.
                 let (batch_x, batch_y) = forest.apply_blueprint(free_pos, cw, ch, bp);
 
-                // Place all pieces in the strip (left-to-right or top-to-bottom).
-                let mut cursor = if vertical { batch_y } else { batch_x };
-                for _ in 0..count {
-                    let (x, y) = if vertical { (batch_x, cursor) } else { (cursor, batch_y) };
+                // Place the grid: row-major fills left-to-right then top-to-bottom;
+                // column-major fills top-to-bottom then left-to-right.
+                for i in 0..grid_n {
+                    let line = i / grid_cols;
+                    let pos = i % grid_cols;
+                    let (x, y) = if row_major {
+                        (batch_x + pos * pw, batch_y + line * ph)
+                    } else {
+                        (batch_x + line * pw, batch_y + pos * ph)
+                    };
                     placements.push(Placement {
                         sheet_idx,
                         piece_idx: next[gene.type_idx],
@@ -171,8 +205,27 @@ pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome
                         y,
                         rotated,
                     });
-                    cursor += if vertical { ph } else { pw };
                     next[gene.type_idx] += 1;
+                }
+
+                // Register the hole left by a partial last row/column, if any.
+                if extra > 0 && grid_lines_full >= 1 {
+                    let (hx, hy, hw, hh) = if row_major {
+                        (
+                            batch_x + extra * pw,
+                            batch_y + grid_lines_full * ph,
+                            cw - extra * pw,
+                            ph,
+                        )
+                    } else {
+                        (
+                            batch_x + grid_lines_full * pw,
+                            batch_y + extra * ph,
+                            pw,
+                            ch - extra * ph,
+                        )
+                    };
+                    forest.push_free_leaf(sheet_idx, hx, hy, hw, hh);
                 }
             }
         }
@@ -282,10 +335,9 @@ mod tests {
     #[test]
     fn four_pieces_two_rows() {
         // Sheet 200×200, kerf=0. One type: 4 pieces 100×100.
-        // Batch 1: strip fr_w=200, pw=100 → 2 pieces, cw=200, ch=100. TlH: bottom=(0,100,200,100).
-        //   p0=(0,0), p1=(100,0).
-        // Batch 2: fr=(0,100,200,100). strip → 2 pieces, cw=200, ch=100. TlH exact fit.
-        //   p2=(0,100), p3=(100,100).
+        // cols=2, rows=2, grid_n=4. Both orientations give cw=200, ch=200, hole=0
+        // (rows_full==cols_full==2, extra==0) → one batch, a 2x2 grid filling the sheet.
+        //   p0=(0,0), p1=(100,0), p2=(0,100), p3=(100,100).
         let spec = parse_problem("200x200F:0:100x100/4").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 4)]];
@@ -300,13 +352,15 @@ mod tests {
     }
 
     #[test]
-    fn five_pieces_vertical_then_horizontal() {
+    fn five_pieces_form_grid_with_corner_hole() {
         // Sheet 300×400, kerf=0. One type: 5 pieces 100×100.
-        // Batch 1: fr (0,0,300×400). count_h=3, count_v=4 → vertical strip (4 pieces).
-        //   cw=100, ch=400. TlH: right=(100,0,200,400). bottom=none (lh=0).
-        //   p0=(0,0), p1=(0,100), p2=(0,200), p3=(0,300).
-        // Batch 2: fr=(100,0,200×400), remaining=1. count_h=min(2,1)=1, count_v=min(4,1)=1 → horizontal.
-        //   cw=100, ch=100. TlH: right=(200,0,100,100), bottom=(100,100,200,300). p4=(100,0).
+        // fr=(0,0,300,400): cols=3, rows=4, grid_n=min(5,12)=5.
+        // row-major: rows_full=1, extra_row=2 → cw=300, ch=200, hole=(300-200)*100=10000.
+        // column-major: cols_full=1, extra_col=1 → cw=200, ch=400, hole=100*(400-100)=30000.
+        // row-major wins (smaller hole) → single batch, cw=300, ch=200.
+        // TlH: right=none (lw=0), bottom=(0,200,300,200).
+        // Grid (row-major, 3 cols): p0=(0,0), p1=(100,0), p2=(200,0), p3=(0,100), p4=(100,100).
+        // Corner hole = (200,100,100,100), pushed as an extra free leaf.
         let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 5)]];
@@ -315,10 +369,49 @@ mod tests {
         assert_eq!(sol.placements.len(), 5);
         let f = |idx: usize| sol.placements.iter().find(|p| p.piece_idx == idx).unwrap();
         assert_eq!((f(0).x, f(0).y), (0, 0));
-        assert_eq!((f(1).x, f(1).y), (0, 100));
-        assert_eq!((f(2).x, f(2).y), (0, 200));
-        assert_eq!((f(3).x, f(3).y), (0, 300));
-        assert_eq!((f(4).x, f(4).y), (100, 0));
+        assert_eq!((f(1).x, f(1).y), (100, 0));
+        assert_eq!((f(2).x, f(2).y), (200, 0));
+        assert_eq!((f(3).x, f(3).y), (0, 100));
+        assert_eq!((f(4).x, f(4).y), (100, 100));
+
+        let errors = crate::model::validate_solution(&problem, &sol);
+        assert!(errors.is_empty(), "{errors:?}");
+
+        let bottom = sol
+            .leftovers
+            .iter()
+            .find(|r| (r.x, r.y, r.w, r.h) == (0, 200, 300, 200))
+            .expect("bottom leftover from the outer split");
+        assert_eq!(bottom.sheet_idx, 0);
+        let hole = sol
+            .leftovers
+            .iter()
+            .find(|r| (r.x, r.y, r.w, r.h) == (200, 100, 100, 100))
+            .expect("corner hole left by the partial grid row");
+        assert_eq!(hole.sheet_idx, 0);
+    }
+
+    #[test]
+    fn matrix_batch_hole_is_reused_by_next_gene() {
+        // Sheet 300×400, kerf=0. Type 0: 5×(100×100) — same grid-with-hole as
+        // `five_pieces_form_grid_with_corner_hole`, leaving free leaves
+        // [bottom=(0,200,300,200), hole=(200,100,100,100)] (in that order).
+        // Type 1: 1×(100×100r) — rotatable, so it stays a separate piece spec
+        // after normalization despite matching type 0's dimensions.
+        // selectors[0]=1 → find_fitting_leaf starts at free_pos=1, which is
+        // the hole; the piece fits it exactly (no leftover).
+        let spec = parse_problem("300x400F:0:100x100/5,100x100/1r").expect("parse");
+        let problem = expand_problem(&spec);
+        let mut genome = vec![vec![gg(0, 5), gg(1, 1)]];
+        genome[0][1].selectors[0] = 1;
+        let sol = decode(&problem, &spec, &genome);
+        assert_eq!(sol.sheets_used(), 1);
+        assert_eq!(sol.placements.len(), 6);
+        let p5 = sol.placements.iter().find(|p| p.piece_idx == 5).unwrap(); // type_1
+        assert_eq!((p5.x, p5.y, p5.sheet_idx), (200, 100, 0));
+
+        let errors = crate::model::validate_solution(&problem, &sol);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]

@@ -467,6 +467,25 @@ impl CutForest {
         (batch_x, batch_y)
     }
 
+    /// Register an additional free leaf not produced by `apply_blueprint`
+    /// (used for the "hole" left by a partial grid row/column in matrix
+    /// batches). No-op if degenerate (`w == 0 || h == 0`).
+    pub fn push_free_leaf(&mut self, sheet_idx: usize, x: u32, y: u32, w: u32, h: u32) {
+        if w == 0 || h == 0 {
+            return;
+        }
+        let idx = self.nodes.len();
+        self.nodes.push(ForestNode {
+            x,
+            y,
+            w,
+            h,
+            sheet_idx,
+            kind: ForestNodeKind::Free,
+        });
+        self.free_leaves.push(idx);
+    }
+
     /// Scan free leaves starting at `selector % |free_leaves|` (wrapping) and return the first
     /// that fits `piece`.
     ///
