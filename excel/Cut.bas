@@ -49,12 +49,13 @@ Private Const CANVAS_RANGE     As String = "I8:N8"  ' top row of canvas; left co
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 
-Private Const STMT_HEADER_ROW   As Long   = 2   ' row 1 is the merged "LDSP (N listov)" title
-Private Const STMT_DATA_ROW     As Long   = 3   ' first data row
-Private Const STMT_BLOCK_COLS   As Long   = 6   ' Панель, N п/п, Длина, Ширина, Кол-во, Примечание
-Private Const STMT_LEFT_COL     As Long   = 1   ' A
-Private Const STMT_RIGHT_COL    As Long   = 8   ' H (G = 1-column gap)
-Private Const STMT_SHAPE_PREFIX As String = "stmt_edge_"
+Private Const EXTRACT_SHEET_NAME As String = "Extract"  ' may become a cell-driven value later
+
+Private Const EXTR_LEFT_CELL  As String = "A2"  ' header row of the left block (data starts one row below)
+Private Const EXTR_RIGHT_CELL As String = "H2"  ' header row of the right block (G = 1-column gap)
+Private Const EXTR_COLS       As Long   = 6     ' Панель, N п/п, Длина, Ширина, Кол-во, Примечание
+
+Private Const EXTR_SHAPE_PREFIX As String = "extr_edge_"
 #If VBA7 Then
     Private Const INVALID_HANDLE As LongPtr = -1
 #Else
@@ -405,39 +406,51 @@ Private Function RuStr(ParamArray codes() As Variant) As String
     RuStr = s
 End Function
 
-' Name of the statement sheet ("Выписка"), used as its own identifier for
-' the idempotent get-or-create lookup in PrepareStatement.
-Private Function StmtSheetName() As String
-    StmtSheetName = RuStr(&H412, &H44B, &H43F, &H438, &H441, &H43A, &H430)
+Private Function ExtrLeftCol(ws As Worksheet) As Long
+    ExtrLeftCol = ws.Range(EXTR_LEFT_CELL).Column
 End Function
 
-' Creates (or updates, if it already exists) the "Выписка" sheet: a merged
-' title row (A1:M1, "ЛДСП (N листов)") followed by a two-block table listing
-' every piece. Each piece occupies a pair of rows: the first (Панель, N п/п,
-' Длина, Ширина, Кол-во, Примечание) and, directly below it, an edge-banding
-' bar under Длина/Ширина (none/single/double for 0/1/2+ edges). Re-running is
-' idempotent: the same sheet is reused and the Примечание column is left
-' untouched.
-Public Sub PrepareStatement()
+Private Function ExtrRightCol(ws As Worksheet) As Long
+    ExtrRightCol = ws.Range(EXTR_RIGHT_CELL).Column
+End Function
+
+Private Function ExtrHeaderRow(ws As Worksheet) As Long
+    ExtrHeaderRow = ws.Range(EXTR_LEFT_CELL).Row
+End Function
+
+Private Function ExtrDataRow(ws As Worksheet) As Long
+    ExtrDataRow = ExtrHeaderRow(ws) + 1
+End Function
+
+' Returns the EXTRACT_SHEET_NAME sheet, creating a blank one if it doesn't
+' exist yet. Formatting (column widths, fonts, borders, header text) is not
+' set up here -- the sheet itself is the template, edited by hand in Excel.
+Private Function GetOrCreateExtractSheet(wsIn As Worksheet) As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets(EXTRACT_SHEET_NAME)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Sheets.Add(After:=wsIn)
+        ws.Name = EXTRACT_SHEET_NAME
+    End If
+    Set GetOrCreateExtractSheet = ws
+End Function
+
+' Fills in the "Extract" template sheet from the current piece table: the
+' sheet count in the A1 title, the two-block table of pieces (Панель, N п/п,
+' Длина, Ширина, Кол-во), the per-piece edge-banding bars, and the per-pair
+' grid border. Static formatting (column widths, fonts, header text, etc.) is
+' owned by the template and is never modified here. Re-running is idempotent:
+' the same sheet is reused and the Примечание column is left untouched.
+Public Sub PrepareExtract()
     Dim wsIn As Worksheet
     Set wsIn = ThisWorkbook.Sheets(SHEET_NAME)
 
     Dim wsOut As Worksheet
-    Dim isNew As Boolean: isNew = False
-    On Error Resume Next
-    Set wsOut = ThisWorkbook.Sheets(StmtSheetName())
-    On Error GoTo 0
-    If wsOut Is Nothing Then
-        Set wsOut = ThisWorkbook.Sheets.Add(After:=wsIn)
-        wsOut.Name = StmtSheetName()
-        isNew = True
-        ' Column widths must be final before any shapes are positioned below,
-        ' otherwise xlMoveAndSize scales their coordinates when the columns
-        ' are later resized, eating into DrawEdgeBar's inset.
-        SetupStatementLayout wsOut
-    End If
+    Set wsOut = GetOrCreateExtractSheet(wsIn)
 
-    WriteStatementTitle wsOut, wsIn
+    UpdateExtractTitle wsOut, wsIn
 
     Dim names() As String, widths() As Long, heights() As Long
     Dim cnts() As Long, ews() As Long, ehs() As Long
@@ -448,34 +461,36 @@ Public Sub PrepareStatement()
 
     ' Each piece takes a (data row, bar row) pair; find how many such pairs
     ' the sheet currently has, so a shrinking list also clears its old tail.
+    Dim leftCol As Long, rightCol As Long, dataRow0 As Long
+    leftCol = ExtrLeftCol(wsOut)
+    rightCol = ExtrRightCol(wsOut)
+    dataRow0 = ExtrDataRow(wsOut)
+
     Dim lastL As Long, lastR As Long, prevPairsL As Long, prevPairsR As Long
-    lastL = wsOut.Cells(wsOut.Rows.Count, STMT_LEFT_COL + 1).End(xlUp).Row
-    lastR = wsOut.Cells(wsOut.Rows.Count, STMT_RIGHT_COL + 1).End(xlUp).Row
-    prevPairsL = 0: If lastL >= STMT_DATA_ROW Then prevPairsL = (lastL - STMT_DATA_ROW) \ 2 + 1
-    prevPairsR = 0: If lastR >= STMT_DATA_ROW Then prevPairsR = (lastR - STMT_DATA_ROW) \ 2 + 1
+    lastL = wsOut.Cells(wsOut.Rows.Count, leftCol + 1).End(xlUp).Row
+    lastR = wsOut.Cells(wsOut.Rows.Count, rightCol + 1).End(xlUp).Row
+    prevPairsL = 0: If lastL >= dataRow0 Then prevPairsL = (lastL - dataRow0) \ 2 + 1
+    prevPairsR = 0: If lastR >= dataRow0 Then prevPairsR = (lastR - dataRow0) \ 2 + 1
 
     Dim maxPairs As Long: maxPairs = half
     If prevPairsL > maxPairs Then maxPairs = prevPairsL
     If prevPairsR > maxPairs Then maxPairs = prevPairsR
 
-    ClearStatementBlock wsOut, STMT_LEFT_COL, maxPairs
-    ClearStatementBlock wsOut, STMT_RIGHT_COL, maxPairs
-    ClearShapesByPrefix wsOut, STMT_SHAPE_PREFIX
-
-    WriteStatementHeader wsOut, STMT_LEFT_COL
-    WriteStatementHeader wsOut, STMT_RIGHT_COL
+    ClearStatementBlock wsOut, leftCol, dataRow0, maxPairs
+    ClearStatementBlock wsOut, rightCol, dataRow0, maxPairs
+    ClearShapesByPrefix wsOut, EXTR_SHAPE_PREFIX
 
     Dim r As Long, leftIdx As Long, rightIdx As Long, dataRow As Long
     For r = 1 To half
-        dataRow = STMT_DATA_ROW + (r - 1) * 2
+        dataRow = dataRow0 + (r - 1) * 2
         leftIdx = r
         rightIdx = r + half
         If leftIdx <= n Then
-            FillStatementRow wsOut, STMT_LEFT_COL, dataRow, leftIdx, _
+            FillStatementRow wsOut, leftCol, dataRow, leftIdx, _
                 names(leftIdx), widths(leftIdx), heights(leftIdx), cnts(leftIdx), ews(leftIdx), ehs(leftIdx)
         End If
         If rightIdx <= n Then
-            FillStatementRow wsOut, STMT_RIGHT_COL, dataRow, rightIdx, _
+            FillStatementRow wsOut, rightCol, dataRow, rightIdx, _
                 names(rightIdx), widths(rightIdx), heights(rightIdx), cnts(rightIdx), ews(rightIdx), ehs(rightIdx)
         End If
     Next r
@@ -524,53 +539,36 @@ End Function
 ' from a shrinking list lose their border too; FillStatementRow reapplies it
 ' for pairs that are still in use). The edge-bar line shapes are cleared
 ' separately via ClearShapesByPrefix.
-Private Sub ClearStatementBlock(ws As Worksheet, col As Long, maxPairs As Long)
+Private Sub ClearStatementBlock(ws As Worksheet, col As Long, dataRow0 As Long, maxPairs As Long)
     If maxPairs <= 0 Then Exit Sub
-    Dim lastRow As Long: lastRow = STMT_DATA_ROW + maxPairs * 2 - 1
-    ws.Range(ws.Cells(STMT_DATA_ROW, col), ws.Cells(lastRow, col + STMT_BLOCK_COLS - 2)).ClearContents
-    ws.Range(ws.Cells(STMT_DATA_ROW, col), ws.Cells(lastRow, col + STMT_BLOCK_COLS - 1)).Borders.LineStyle = xlNone
+    Dim lastRow As Long: lastRow = dataRow0 + maxPairs * 2 - 1
+    ws.Range(ws.Cells(dataRow0, col), ws.Cells(lastRow, col + EXTR_COLS - 2)).ClearContents
+    ws.Range(ws.Cells(dataRow0, col), ws.Cells(lastRow, col + EXTR_COLS - 1)).Borders.LineStyle = xlNone
 End Sub
 
-' Writes the merged title row A1:M1 -- "LDSP (N listov)" where N is the number
-' of sheets used (Sheet1!R4, OUT_SHEETS_CELL). Run on every call so it stays
-' in sync with the latest result.
-Private Sub WriteStatementTitle(ws As Worksheet, wsIn As Worksheet)
+' Updates the sheet count in the A1 title, preserving any user-written
+' description text. If A1 is empty, writes "(N листов)."; if it already ends
+' with a "(<count> <word starting with "лист">)[.]" pattern, only the count
+' is replaced; otherwise "(N листов)." is appended to the existing text.
+Private Sub UpdateExtractTitle(ws As Worksheet, wsIn As Worksheet)
     Dim sheetsUsed As Variant: sheetsUsed = wsIn.Range(OUT_SHEETS_CELL).Value
 
-    Dim titleRng As Range
-    Set titleRng = ws.Range(ws.Cells(1, STMT_LEFT_COL), ws.Cells(1, STMT_RIGHT_COL + STMT_BLOCK_COLS - 1))
-    titleRng.Merge
+    Dim cell As Range: Set cell = ws.Range("A1")
+    Dim cur As String: cur = CStr(cell.Value)
+    Dim root As String: root = RuStr(&H43B, &H438, &H441, &H442)            ' "лист"
+    Dim wordListov As String: wordListov = root & RuStr(&H43E, &H432)       ' "листов"
 
-    With titleRng
-        .Value = RuStr(&H41B, &H414, &H421, &H41F) & " (" & CStr(sheetsUsed) & " " & _
-                 RuStr(&H43B, &H438, &H441, &H442, &H43E, &H432) & ")"
-        .Font.Bold = True
-        .Font.Size = 12
-        .HorizontalAlignment = xlHAlignCenter
-        .VerticalAlignment = xlVAlignCenter
-    End With
-End Sub
+    Dim re As Object
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "\(\d+(\s+" & root & "[^)]*)\)(\.?)\s*$"
 
-' Writes the (vertical, bold, centered) header row for one block.
-Private Sub WriteStatementHeader(ws As Worksheet, col As Long)
-    Dim headers(0 To 5) As String
-    headers(0) = RuStr(&H41F, &H430, &H43D, &H435, &H43B, &H44C)               ' Панель
-    headers(1) = "N " & RuStr(&H43F) & "/" & RuStr(&H43F)                      ' N п/п
-    headers(2) = RuStr(&H414, &H43B, &H438, &H43D, &H430)                      ' Длина
-    headers(3) = RuStr(&H428, &H438, &H440, &H438, &H43D, &H430)               ' Ширина
-    headers(4) = RuStr(&H41A, &H43E, &H43B) & "-" & RuStr(&H432, &H43E)        ' Кол-во
-    headers(5) = RuStr(&H41F, &H440, &H438, &H43C, &H435, &H447, &H430, &H43D, &H438, &H435) ' Примечание
-
-    Dim i As Long
-    For i = 0 To 5
-        With ws.Cells(STMT_HEADER_ROW, col + i)
-            .Value = headers(i)
-            .Font.Bold = True
-            .Orientation = 90
-            .HorizontalAlignment = xlHAlignCenter
-            .VerticalAlignment = xlVAlignCenter
-        End With
-    Next i
+    If Trim(cur) = "" Then
+        cell.Value = "(" & CStr(sheetsUsed) & " " & wordListov & ")."
+    ElseIf re.Test(cur) Then
+        cell.Value = re.Replace(cur, "(" & CStr(sheetsUsed) & "$1)$2")
+    Else
+        cell.Value = cur & " (" & CStr(sheetsUsed) & " " & wordListov & ")."
+    End If
 End Sub
 
 ' Writes the data row of one piece (row = dataRow) and the edge-banding
@@ -578,20 +576,17 @@ End Sub
 Private Sub FillStatementRow(ws As Worksheet, col As Long, dataRow As Long, idx As Long, _
                               pieceName As String, w As Long, h As Long, cnt As Long, _
                               ew As Long, eh As Long)
-    With ws.Cells(dataRow, col)
-        .NumberFormat = "@"  ' keep names like "1-11" as text, not a date
-        .Value = pieceName
-    End With
+    ws.Cells(dataRow, col).Value = pieceName  ' template column is pre-formatted as text
     ws.Cells(dataRow, col + 1).Value = idx
     ws.Cells(dataRow, col + 2).Value = w
     ws.Cells(dataRow, col + 3).Value = h
     ws.Cells(dataRow, col + 4).Value = cnt
 
     Dim barRow As Long: barRow = dataRow + 1
-    DrawEdgeBar ws, ws.Cells(barRow, col + 2), ew, STMT_SHAPE_PREFIX & barRow & "_" & (col + 2)
-    DrawEdgeBar ws, ws.Cells(barRow, col + 3), eh, STMT_SHAPE_PREFIX & barRow & "_" & (col + 3)
+    DrawEdgeBar ws, ws.Cells(barRow, col + 2), ew, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 2)
+    DrawEdgeBar ws, ws.Cells(barRow, col + 3), eh, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 3)
 
-    SetThinOutlineBorder ws.Range(ws.Cells(dataRow, col), ws.Cells(barRow, col + STMT_BLOCK_COLS - 1))
+    SetThinOutlineBorder ws.Range(ws.Cells(dataRow, col), ws.Cells(barRow, col + EXTR_COLS - 1))
 End Sub
 
 ' Draws a horizontal line shape across the vertical middle of cellRng (equal
@@ -619,67 +614,13 @@ Private Sub DrawEdgeBar(ws As Worksheet, cellRng As Range, count As Long, shapeN
 End Sub
 
 ' Removes all shapes on `ws` whose name starts with `prefix` (the
-' previously-drawn edge-banding bars), so PrepareStatement can redraw them
+' previously-drawn edge-banding bars), so PrepareExtract can redraw them
 ' from scratch on every run.
 Private Sub ClearShapesByPrefix(ws As Worksheet, prefix As String)
     Dim i As Long
     For i = ws.Shapes.Count To 1 Step -1
         If Left(ws.Shapes(i).Name, Len(prefix)) = prefix Then ws.Shapes(i).Delete
     Next i
-End Sub
-
-' One-time column-width / header-row-height setup, applied only when the
-' "Выписка" sheet is first created.
-Private Sub SetupStatementLayout(ws As Worksheet)
-    Dim colWidths(1 To 5) As Double
-    colWidths(1) = 4: colWidths(2) = 6
-    colWidths(3) = 6: colWidths(4) = 6: colWidths(5) = 24
-
-    Dim i As Long
-    For i = 1 To 5
-        ws.Columns(STMT_LEFT_COL + i).ColumnWidth = colWidths(i)
-        ws.Columns(STMT_RIGHT_COL + i).ColumnWidth = colWidths(i)
-    Next i
-    ws.Columns(STMT_RIGHT_COL - 1).ColumnWidth = 3  ' gap column
-
-    SetColumnWidthPx ws.Columns(STMT_LEFT_COL), 200    ' Панель
-    SetColumnWidthPx ws.Columns(STMT_RIGHT_COL), 200
-
-    ws.Columns(STMT_LEFT_COL).NumberFormat = "@"   ' Панель: avoid "1-11" -> date
-    ws.Columns(STMT_RIGHT_COL).NumberFormat = "@"
-
-    ws.Rows(STMT_HEADER_ROW).RowHeight = 60
-
-    SetThinGridBorder ws.Range(ws.Cells(STMT_HEADER_ROW, STMT_LEFT_COL), ws.Cells(STMT_HEADER_ROW, STMT_LEFT_COL + STMT_BLOCK_COLS - 1))
-    SetThinGridBorder ws.Range(ws.Cells(STMT_HEADER_ROW, STMT_RIGHT_COL), ws.Cells(STMT_HEADER_ROW, STMT_RIGHT_COL + STMT_BLOCK_COLS - 1))
-End Sub
-
-' Sets a column's width to approximately `px` pixels. ColumnWidth is in
-' character units whose pixel size depends on the workbook's default font, so
-' this scales ColumnWidth by the ratio between the target and actual
-' (Range.Width, in points) widths until it converges. The 0.375 factor is
-' calibrated empirically (the textbook 96 DPI 0.75pt/px factor renders 2x too
-' wide in this workbook).
-Private Sub SetColumnWidthPx(col As Range, px As Double)
-    Dim targetPt As Double: targetPt = px * 0.375
-    col.ColumnWidth = targetPt
-    Dim guard As Long
-    For guard = 1 To 5
-        If Abs(col.Width - targetPt) < 0.5 Then Exit For
-        col.ColumnWidth = col.ColumnWidth * targetPt / col.Width
-    Next guard
-End Sub
-
-' Applies a thin border around and between the cells of `rng` (e.g. the
-' Панель..Примечание header row of one block).
-Private Sub SetThinGridBorder(rng As Range)
-    Dim idx As Variant
-    For Each idx In Array(xlEdgeLeft, xlEdgeTop, xlEdgeRight, xlEdgeBottom, xlInsideVertical)
-        With rng.Borders(idx)
-            .LineStyle = xlContinuous
-            .Weight = xlThin
-        End With
-    Next idx
 End Sub
 
 ' Applies a thin border around the outer edge of `rng` only, with no internal
