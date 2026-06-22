@@ -1,35 +1,60 @@
 # Objective function
 
 The fitness of a solution is a three-level lexicographic tuple — **lower is better**
-(except `layout_score`, which is maximised and therefore reversed in `Ord`):
+(except `layout_score` and `drop_consolidation_score`, which are maximised and
+therefore reversed in `Ord`):
 
-| Level | Field           | Direction    | Meaning                                                                                                                                                                             |
-|-------|-----------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1     | `sheets_used`   | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
-| 2     | `layout_score`  | **maximize** | Cut-line concentration score + strip-structure score (see below). Higher means internal cuts align into a few long, reusable lines and pieces stack into mono-width strips — easier to cut and fewer fence repositions. |
-| 3     | `leftover_area` | minimize     | Area of the largest single leftover rectangle across all sheets. Prefers solutions where waste is concentrated in one big reusable offcut rather than scattered in many small ones. |
+| Level | Field                      | Direction    | Meaning                                                                                                                                                                             |
+|-------|----------------------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1     | `sheets_used`              | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
+| 2     | `layout_score`             | **maximize** | Cut-line concentration score + strip-structure score (see below). Higher means internal cuts align into a few long, reusable lines and pieces stack into mono-width strips — easier to cut and fewer fence repositions. |
+| 3     | `drop_consolidation_score` | **maximize** | Sum of squared areas of the disjoint free-region partition, computed straight from `placements`. Rewards a few large, reusable offcuts over many small scattered scraps.            |
 
 ---
 
-## leftover_area
+## drop_consolidation_score
 
-`Solution::leftover_area` returns the area of the **single largest** unused rectangle
-across all sheets — not the total waste. The intent: a large contiguous offcut is
-commercially reusable (can be fed back into the stock), while the same area fragmented
-into many small scraps is not. By minimising the largest offcut the GA is nudged toward
-using that space for pieces rather than leaving a big gap.
+`Solution::drop_consolidation_score` re-derives the free (unused) region from
+`placements` alone — it does **not** read `Solution.leftovers` (the `FreeRect`
+bookkeeping a decoder happens to produce while placing pieces). This matters because
+guillotine free-space decomposition is not unique: SLAS, GLAS, BFDH, ... can each split
+an identical final set of `placements` into differently-shaped `FreeRect` lists, so
+`Solution.leftovers` is not comparable as a single currency across algorithms — the
+same property that motivates computing `layout_score` from `placements` (see
+"How is it being computed?" below).
+
+For each sheet, the free region is partitioned into a canonical, disjoint set of
+horizontal strips (y-band boundaries are every placement's top/bottom edge plus
+`0`/`sheet.height`; within a band, the placements that fully span it block their
+`x`-interval, and the complement gives that band's free `x`-intervals). Each free
+rectangle's `area²` is summed across the whole solution.
+
+Squaring is what rewards consolidation: merging two adjacent free rectangles of areas
+`a` and `b` into one of area `a+b` strictly increases the sum
+(`(a+b)² > a² + b²` for `a, b > 0`), so a single big reusable offcut always scores
+higher than the same waste fragmented into several small ones — no tunable weight
+needed to express that preference.
 
 ```
-  Low leftover_area (better)          High leftover_area (worse)
-  ┌─────────┬─────────┬─────────┐    ┌─────────┬─────────┬─────────┐
-  │    A    │    A    │    A    │    │    A    │    A    │ leftover│
-  ├─────────┼─────────┼─────────┤    │         │         │  (big)  │
-  │    B    │    B    │ scrap   │    ├─────────┼─────────┘         │
-  └─────────┴─────────┴─────────┘    │    B    │                   │
-  Many tiny scraps, largest is small └─────────┴───────────────────┘
+  High drop_consolidation_score (better)   Low drop_consolidation_score (worse)
+  ┌─────────┬─────────┬─────────┐         ┌─────────┬─────────┬─────────┐
+  │    A    │    A    │ leftover│         │    A    │    A    │    A    │
+  │         │         │  (big)  │         ├─────────┼─────────┼─────────┤
+  ├─────────┼─────────┘         │         │    B    │    B    │ scrap   │
+  │    B    │                   │         └─────────┴─────────┴─────────┘
+  └─────────┴───────────────────┘         Many tiny scraps, none reusable
 ```
 
-Computed as `max(fr.w * fr.h)` over `Solution::leftovers`.
+Idea and partition algorithm ported from a sibling `bin-packing` project's
+`two_d::drops::usable_drop_metrics` (sum-of-squares half only; its `min_usable_side`
+filter and its separate largest-single-rectangle metric are not adopted here — see
+`largest_usable_drop_area` below).
+
+`O(p²)` per sheet (p = placements on that sheet): a deliberate complexity trade-off
+over a faster `O(p log p)` incremental sweep, which would need real implementation
+complexity (an active occupied-interval structure maintained across band boundaries)
+that isn't justified for the piece counts this GA actually sees. Revisit if profiling
+says otherwise.
 
 ---
 
@@ -148,3 +173,15 @@ equal to the sheet area, and a sparse sheet has a large staircase.
 
 Computed per sheet as `Σ x_i · (y_i − y_{i-1})` over the sorted Pareto frontier;
 `Solution::staircase_area` returns the maximum across all sheets.
+
+---
+
+## largest_usable_drop_area (implemented, not used in Objective)
+
+`Solution::largest_usable_drop_area` is `drop_consolidation_score`'s sibling — same
+decoder-agnostic free-region reconstruction from `placements`, but it reports the area
+of the single largest free rectangle instead of the sum of squares. Like
+`staircase_area`, it is `#[allow(dead_code)]` and not part of `Objective`: finding it
+requires a slab-pair sweep over every pair of y-band boundaries, `O(p³)` per sheet,
+which is fine as a one-off report on the final/best solution but too expensive to run
+on every individual every generation.

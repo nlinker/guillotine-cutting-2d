@@ -27,9 +27,11 @@ and this combinatorics makes the problem hard:
 ## Distinctive features
 
 - Enforces **guillotine**-cut constraints.
-- Three-level lexicographic **Objective** `(sheets_used, layout_score, leftover_area)` —
-  minimizes sheet count first, then maximizes concentration of cuts into long, reusable lines,
-  then minimizes the largest leftover rectangle (see [docs/objective.md](docs/objective.md)).
+- Three-level lexicographic **Objective**
+  `(sheets_used, layout_score, drop_consolidation_score)` — minimizes sheet count first,
+  then maximizes concentration of cuts into long, reusable lines, then maximizes
+  consolidation of leftover waste into a few large, reusable offcuts rather than many
+  small scraps (see [docs/objective.md](docs/objective.md)).
 - **Kerf** — blade thickness subtracted from each internal cut; sheet boundary edges are exempt.
   Internally baked into piece and sheet dimensions in `expand_problem`.
 - **Margin** — border excluded from all four sheet edges before solving;

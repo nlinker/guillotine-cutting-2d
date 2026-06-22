@@ -16,9 +16,19 @@ const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/1
 const N_SEEDS: usize = 100;
 
 /// Ideal: 2 sheets, staircase <= 400x400 on last sheet.
-const IDEAL_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, layout_score: 0 };
+/// `drop_consolidation_score: 0` is a wildcard for that field (it's maximized, so 0 is
+/// the most permissive value), same role `layout_score: 0` already plays below.
+const IDEAL_OBJ: Objective = Objective {
+    sheets_used: 2,
+    drop_consolidation_score: 0,
+    layout_score: 0,
+};
 /// 1-piece threshold: 2 sheets, staircase <= 495x495 on last sheet.
-const ONE_PIECE_OBJ: Objective = Objective { sheets_used: 2, leftover_area: u64::MAX, layout_score: 0 };
+const ONE_PIECE_OBJ: Objective = Objective {
+    sheets_used: 2,
+    drop_consolidation_score: 0,
+    layout_score: 0,
+};
 
 struct Variant {
     name: &'static str,
@@ -27,9 +37,13 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = Objective { sheets_used: usize::MAX, leftover_area: u64::MAX, layout_score: 0 };
+    let mut best_obj: Objective = Objective {
+        sheets_used: usize::MAX,
+        drop_consolidation_score: 0,
+        layout_score: 0,
+    };
     let mut sum_sheets: usize = 0;
-    let mut sum_bbox: u64 = 0;
+    let mut sum_consolidation: u64 = 0;
     let mut ideal_count = 0usize;
     let mut one_piece_count = 0usize;
 
@@ -38,7 +52,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         let ind = run_ga(problem, &v.cfg, &mut rng);
         let obj = ind.objective;
         sum_sheets += obj.sheets_used;
-        sum_bbox += obj.leftover_area;
+        sum_consolidation += obj.drop_consolidation_score;
         if obj < best_obj {
             best_obj = obj;
         }
@@ -52,7 +66,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
 
     let elapsed = t0.elapsed();
     let avg_sheets = sum_sheets / N_SEEDS;
-    let avg_bbox = sum_bbox / N_SEEDS as u64;
+    let avg_consolidation = sum_consolidation / N_SEEDS as u64;
 
     println!(
         "{:<40}  ideal={:3}/{}  1-piece={:3}/{}  best=({},{})\tavg=({},{})  t={:.1}s",
@@ -62,9 +76,9 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         one_piece_count,
         N_SEEDS,
         best_obj.sheets_used,
-        best_obj.leftover_area,
+        best_obj.drop_consolidation_score,
         avg_sheets,
-        avg_bbox,
+        avg_consolidation,
         elapsed.as_secs_f64(),
     );
 }

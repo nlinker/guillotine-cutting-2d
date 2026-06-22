@@ -75,7 +75,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
     println!("Instances : {n}");
     println!("Matched   : {:4} ({:.1}%)", matched, matched as f64 / n as f64 * 100.0);
     println!(
-        "Better    : {:4} ({:.1}%)  [GA found fewer sheets or better leftovers]",
+        "Better    : {:4} ({:.1}%)  [GA found fewer sheets or better-consolidated drops]",
         better,
         better as f64 / n as f64 * 100.0
     );
@@ -83,7 +83,12 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
 
     if worse > 0 {
         let sheet_area = s.gen_cfg.sheet.width as i64 * s.gen_cfg.sheet.height as i64;
-        let encode = |obj: Objective| obj.sheets_used as i64 * (sheet_area + 1) + obj.leftover_area as i64;
+        // drop_consolidation_score is area^2-scaled and higher-is-better, unlike the old
+        // leftover_area term it replaces; divide back down to ~area scale and subtract
+        // so that, as before, a larger encoded value still means a worse solution.
+        let encode = |obj: Objective| {
+            obj.sheets_used as i64 * (sheet_area + 1) - (obj.drop_consolidation_score / sheet_area.max(1) as u64) as i64
+        };
         let mut gaps: Vec<i64> = results
             .iter()
             .filter(|r| r.ga_obj > r.ref_obj)
