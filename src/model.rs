@@ -260,6 +260,18 @@ impl Solution {
             .unwrap_or(0)
     }
 
+    /// Buckets `placements` by `sheet_idx` in one `O(p)` pass. Per-sheet scorers
+    /// (`cut_line_concentration_score`, `strip_structure_score`, `staircase_area`,
+    /// `largest_usable_drop_area`) used to re-filter the whole `placements` list once
+    /// per sheet (`O(p * sheets_used)`); this turns that into `O(p + sheets_used)`.
+    fn placements_by_sheet(&self, n_sheets: usize) -> Vec<Vec<&Placement>> {
+        let mut buckets: Vec<Vec<&Placement>> = vec![Vec::new(); n_sheets];
+        for pl in &self.placements {
+            buckets[pl.sheet_idx].push(pl);
+        }
+        buckets
+    }
+
     pub fn eval(&self, problem: &Problem) -> Objective {
         if self.placements.is_empty() {
             return Objective {
@@ -302,10 +314,10 @@ impl Solution {
         // allocation/hashing overhead of a HashMap<u32, Vec<_>> per sheet.
         let mut v_edges: Vec<(u32, u32, u32)> = Vec::new();
         let mut h_edges: Vec<(u32, u32, u32)> = Vec::new();
-        for sheet in 0..n_sheets {
+        for sheet_placements in self.placements_by_sheet(n_sheets) {
             v_edges.clear();
             h_edges.clear();
-            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+            for pl in sheet_placements {
                 let (x, y, w, h) = placement_rect(pl, problem);
                 if x > 0 {
                     v_edges.push((x, y, y + h));
@@ -347,10 +359,10 @@ impl Solution {
         // (GA hot path, same rationale as cut_line_concentration_score).
         let mut v_runs: Vec<((u32, u32), u32, u32)> = Vec::new();
         let mut h_runs: Vec<((u32, u32), u32, u32)> = Vec::new();
-        for sheet in 0..n_sheets {
+        for sheet_placements in self.placements_by_sheet(n_sheets) {
             v_runs.clear();
             h_runs.clear();
-            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+            for pl in sheet_placements {
                 let (x, y, w, h) = placement_rect(pl, problem);
                 v_runs.push(((x, w), y, y + h));
                 h_runs.push(((y, h), x, x + w));
@@ -513,9 +525,9 @@ impl Solution {
             return 0;
         }
         let mut best = 0u64;
-        for sheet in 0..n {
+        for sheet_placements in self.placements_by_sheet(n) {
             let mut stairs: Vec<(u32, u32)> = Vec::new();
-            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+            for pl in sheet_placements {
                 let piece = &problem.pieces[pl.piece_idx];
                 let (pw, ph) = if pl.rotated {
                     (piece.height, piece.width)
@@ -568,9 +580,9 @@ impl Solution {
         let mut best = 0u64;
         let mut rects: Vec<(u32, u32, u32, u32)> = Vec::new();
         let mut ys: Vec<u32> = Vec::new();
-        for sheet in 0..n_sheets {
+        for sheet_placements in self.placements_by_sheet(n_sheets) {
             rects.clear();
-            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
+            for pl in sheet_placements {
                 rects.push(placement_rect(pl, problem));
             }
 
