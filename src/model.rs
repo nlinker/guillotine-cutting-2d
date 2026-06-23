@@ -248,7 +248,7 @@ pub struct Solution {
 /// Weight of `strip_structure_score` relative to `cut_line_concentration_score` in
 /// `layout_score`. Both are squared-length sums on the same `/10_000` scale, so 1 is
 /// the natural starting point; calibrate on `generator` instances if needed.
-const STRIP_WEIGHT: u64 = 1;
+const STRIP_WEIGHT: u64 = 2;
 
 impl Solution {
     pub fn sheets_used(&self) -> usize {
