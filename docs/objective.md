@@ -8,26 +8,40 @@ therefore reversed in `Ord`):
 |-------|----------------------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1     | `sheets_used`              | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
 | 2     | `layout_score`             | **maximize** | Cut-line concentration score + strip-structure score (see below). Higher means internal cuts align into a few long, reusable lines and pieces stack into mono-width strips — easier to cut and fewer fence repositions. |
-| 3     | `drop_consolidation_score` | **maximize** | Sum of squared areas of the disjoint free-region partition, computed straight from `placements`. Rewards a few large, reusable offcuts over many small scattered scraps.            |
+| 3     | `drop_consolidation_score` | **maximize** | Sum of squared areas of the disjoint free-region partition of the **last sheet only**, computed straight from `placements`. Rewards a few large, reusable offcuts over many small scattered scraps. |
 
 ---
 
 ## drop_consolidation_score
 
-`Solution::drop_consolidation_score` re-derives the free (unused) region from
-`placements` alone — it does **not** read `Solution.leftovers` (the `FreeRect`
-bookkeeping a decoder happens to produce while placing pieces). This matters because
-guillotine free-space decomposition is not unique: SLAS, GLAS, BFDH, ... can each split
-an identical final set of `placements` into differently-shaped `FreeRect` lists, so
-`Solution.leftovers` is not comparable as a single currency across algorithms — the
-same property that motivates computing `layout_score` from `placements` (see
-"How is it being computed?" below).
+`Solution::drop_consolidation_score` re-derives the free (unused) region of the
+**last sheet only** (`sheets_used() - 1`) from `placements` alone — it does **not**
+read `Solution.leftovers` (the `FreeRect` bookkeeping a decoder happens to produce
+while placing pieces). This matters because guillotine free-space decomposition is not
+unique: SLAS, GLAS, BFDH, ... can each split an identical final set of `placements`
+into differently-shaped `FreeRect` lists, so `Solution.leftovers` is not comparable as
+a single currency across algorithms — the same property that motivates computing
+`layout_score` from `placements` (see "How is it being computed?" below).
 
-For each sheet, the free region is partitioned into a canonical, disjoint set of
+Why only the last sheet: on a single sheet, total free area splits into
+`trapped_waste = staircase_area - placed_area` (pockets boxed in between placed
+pieces — pure scrap, see `staircase_area` below) plus
+`outer_area = sheet_area - staircase_area` (the region beyond the pieces' bounding
+staircase — what's actually reusable as stock). Squaring-and-summing `area²` over
+*all* free rectangles of a sheet already prefers small/no trapped pockets plus one big
+outer offcut over the same total waste fragmented — no separate weight is needed to
+balance the two terms, they're already in the same currency (`area²`). Earlier sheets
+don't need this: `sheets_used` (level 1) already pressures every sheet to pack as
+tightly as physically possible — opening another sheet is strictly worse regardless of
+the other levels — so their leftover is already pinned to "as little as fits" and
+isn't a useful drop to optimize for. Only the final, not-fully-packed sheet has a
+leftover worth consolidating.
+
+For the last sheet, the free region is partitioned into a canonical, disjoint set of
 horizontal strips (y-band boundaries are every placement's top/bottom edge plus
 `0`/`sheet.height`; within a band, the placements that fully span it block their
 `x`-interval, and the complement gives that band's free `x`-intervals). Each free
-rectangle's `area²` is summed across the whole solution.
+rectangle's `area²` is summed.
 
 Squaring is what rewards consolidation: merging two adjacent free rectangles of areas
 `a` and `b` into one of area `a+b` strictly increases the sum
@@ -37,6 +51,7 @@ needed to express that preference.
 
 ```
   High drop_consolidation_score (better)   Low drop_consolidation_score (worse)
+  Last sheet only:                         Last sheet only:
   ┌─────────┬─────────┬─────────┐         ┌─────────┬─────────┬─────────┐
   │    A    │    A    │ leftover│         │    A    │    A    │    A    │
   │         │         │  (big)  │         ├─────────┼─────────┼─────────┤
@@ -50,9 +65,9 @@ Idea and partition algorithm ported from a sibling `bin-packing` project's
 filter and its separate largest-single-rectangle metric are not adopted here — see
 `largest_usable_drop_area` below).
 
-`O(p²)` per sheet (p = placements on that sheet): a deliberate complexity trade-off
-over a faster `O(p log p)` incremental sweep, which would need real implementation
-complexity (an active occupied-interval structure maintained across band boundaries)
+`O(p²)` in the number of placements on the last sheet: a deliberate complexity
+trade-off over a faster `O(p log p)` incremental sweep, which would need real
+implementation complexity (an active occupied-interval structure maintained across band boundaries)
 that isn't justified for the piece counts this GA actually sees. Revisit if profiling
 says otherwise.
 

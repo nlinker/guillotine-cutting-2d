@@ -362,10 +362,24 @@ impl Solution {
     }
 
     /// Drop-consolidation score (higher = better) — rewards a few large, reusable
-    /// offcuts over many small scattered scraps.
+    /// offcuts over many small scattered scraps. Computed for the **last sheet only**
+    /// (`sheets_used() - 1`), not summed across the whole solution.
+    ///
+    /// Why the last sheet only: on a single sheet, total free area splits into
+    /// `trapped_waste` (pockets boxed in between placed pieces — pure scrap, see
+    /// `staircase_area`) plus `outer_area` (the region beyond the pieces' bounding
+    /// staircase — the part that's actually reusable as stock). Squaring-and-summing
+    /// `area^2` over *all* free rectangles already prefers a layout with small/no
+    /// trapped pockets and one big outer offcut over the same total waste fragmented —
+    /// no separate weight needed to balance the two (see the doc comment on the
+    /// squaring property below). Earlier sheets don't need this: `sheets_used` (level 0
+    /// of `Objective`) already pressures every sheet to pack as tightly as possible —
+    /// opening another sheet is only worse — so their leftover shape is already pinned
+    /// down to "as little as physically fits" and isn't a useful drop to optimize for.
+    /// Only the final, not-fully-packed sheet has a leftover worth consolidating.
     ///
     /// Computed straight from `placements` (the decoder's own `Solution.leftovers`
-    /// bookkeeping is ignored): for each sheet, the free region is re-derived as a
+    /// bookkeeping is ignored): the free region of the last sheet is re-derived as a
     /// canonical disjoint partition of horizontal strips (y-band boundaries are every
     /// placement's top/bottom edge plus `0`/`sheet.height`; within a band, placements
     /// that fully span it block their `x`-interval, and the complement gives the free
@@ -381,67 +395,71 @@ impl Solution {
     /// (`(a+b)^2 > a^2+b^2` for `a,b>0`), so a single big reusable offcut always beats
     /// the same waste fragmented into several small ones.
     ///
-    /// `O(p^2)` per sheet (p = placements on that sheet): for each of the `O(p)` bands,
-    /// the placements spanning it are found by a linear scan. A faster `O(p log p)`
-    /// incremental sweep (maintaining the active occupied-interval set across band
-    /// boundaries) is possible but adds real implementation complexity; revisit only if
-    /// profiling shows this is a hot spot for the piece counts this GA actually sees.
+    /// `O(p^2)` in the number of placements on the last sheet: for each of the `O(p)`
+    /// bands, the placements spanning it are found by a linear scan. A faster
+    /// `O(p log p)` incremental sweep (maintaining the active occupied-interval set
+    /// across band boundaries) is possible but adds real implementation complexity;
+    /// revisit only if profiling shows this is a hot spot for the piece counts this GA
+    /// actually sees.
     ///
     /// Idea and partition algorithm ported from a sibling `bin-packing` project's
     /// `two_d::drops::usable_drop_metrics` (sum-of-squares half; the `min_usable_side`
     /// filter and the separate largest-single-rectangle metric are not adopted here).
     pub fn drop_consolidation_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
+        if n_sheets == 0 {
+            return 0;
+        }
+        let last_sheet = n_sheets - 1;
         let sheet_w = problem.sheet.width;
         let sheet_h = problem.sheet.height;
         let mut total = 0u64;
-        let mut rects: Vec<(u32, u32, u32, u32)> = Vec::new();
+
+        let rects: Vec<(u32, u32, u32, u32)> = self
+            .placements
+            .iter()
+            .filter(|p| p.sheet_idx == last_sheet)
+            .map(|pl| placement_rect(pl, problem))
+            .collect();
+
         let mut ys: Vec<u32> = Vec::new();
+        ys.push(0);
+        ys.push(sheet_h);
+        for &(_, y, _, h) in &rects {
+            ys.push(y.min(sheet_h));
+            ys.push((y + h).min(sheet_h));
+        }
+        ys.sort_unstable();
+        ys.dedup();
+
         let mut occupied: Vec<(u32, u32)> = Vec::new();
-        for sheet in 0..n_sheets {
-            rects.clear();
-            for pl in self.placements.iter().filter(|p| p.sheet_idx == sheet) {
-                rects.push(placement_rect(pl, problem));
+        for window in ys.windows(2) {
+            let (y_lo, y_hi) = (window[0], window[1]);
+            if y_hi == y_lo {
+                continue;
             }
+            let band_h = (y_hi - y_lo) as u64;
 
-            ys.clear();
-            ys.push(0);
-            ys.push(sheet_h);
-            for &(_, y, _, h) in &rects {
-                ys.push(y.min(sheet_h));
-                ys.push((y + h).min(sheet_h));
-            }
-            ys.sort_unstable();
-            ys.dedup();
+            occupied.clear();
+            occupied.extend(
+                rects
+                    .iter()
+                    .filter(|&&(_, y, _, h)| y <= y_lo && y + h >= y_hi)
+                    .map(|&(x, _, w, _)| (x, (x + w).min(sheet_w))),
+            );
+            occupied.sort_unstable();
 
-            for window in ys.windows(2) {
-                let (y_lo, y_hi) = (window[0], window[1]);
-                if y_hi == y_lo {
-                    continue;
-                }
-                let band_h = (y_hi - y_lo) as u64;
-
-                occupied.clear();
-                occupied.extend(
-                    rects
-                        .iter()
-                        .filter(|&&(_, y, _, h)| y <= y_lo && y + h >= y_hi)
-                        .map(|&(x, _, w, _)| (x, (x + w).min(sheet_w))),
-                );
-                occupied.sort_unstable();
-
-                let mut cursor = 0u32;
-                for &(start, end) in &occupied {
-                    if start > cursor {
-                        let area = (start - cursor) as u64 * band_h;
-                        total += area * area;
-                    }
-                    cursor = cursor.max(end);
-                }
-                if sheet_w > cursor {
-                    let area = (sheet_w - cursor) as u64 * band_h;
+            let mut cursor = 0u32;
+            for &(start, end) in &occupied {
+                if start > cursor {
+                    let area = (start - cursor) as u64 * band_h;
                     total += area * area;
                 }
+                cursor = cursor.max(end);
+            }
+            if sheet_w > cursor {
+                let area = (sheet_w - cursor) as u64 * band_h;
+                total += area * area;
             }
         }
         total
@@ -1037,11 +1055,40 @@ mod tests {
         assert!(merged_score > fragmented_score);
     }
 
-    // Two-sheet solution: total score is the sum of each sheet's score computed
-    // independently (sheet 0 reuses the L-shape case above, sheet 1 is fully covered).
+    // Two-sheet solution: only the last sheet (sheet_idx 1, fully covered) is scored.
+    // The earlier sheet's L-shape leftover (which alone would score 4_176, see
+    // `corner_placement_l_shape`) is ignored.
     #[test]
-    fn drop_score_sums_across_sheets() {
+    fn drop_score_only_last_sheet() {
         let problem = flat_problem(10, 10, &[(4, 4), (10, 10)]);
+        let sol = Solution {
+            placements: vec![
+                Placement {
+                    sheet_idx: 0,
+                    piece_idx: 0,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+                Placement {
+                    sheet_idx: 1,
+                    piece_idx: 1,
+                    x: 0,
+                    y: 0,
+                    rotated: false,
+                },
+            ],
+            leftovers: vec![],
+        };
+        assert_eq!(sol.drop_consolidation_score(&problem), 0);
+    }
+
+    // Same two sheets, roles swapped: the last sheet now has the L-shape leftover, so
+    // its score (4_176) is the one that counts — confirms the function picks the sheet
+    // by `sheets_used() - 1`, not by "least full".
+    #[test]
+    fn drop_score_picks_last_sheet_not_emptiest() {
+        let problem = flat_problem(10, 10, &[(10, 10), (4, 4)]);
         let sol = Solution {
             placements: vec![
                 Placement {
