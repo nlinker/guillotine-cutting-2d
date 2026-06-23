@@ -246,9 +246,14 @@ pub struct Solution {
 }
 
 /// Weight of `strip_structure_score` relative to `cut_line_concentration_score` in
-/// `layout_score`. Both are squared-length sums on the same `/10_000` scale, so 1 is
-/// the natural starting point; calibrate on `generator` instances if needed.
-const STRIP_WEIGHT: u64 = 2;
+/// `layout_score`, expressed as the integer ratio `STRIP_WEIGHT / CUT_LINE_WEIGHT`
+/// (both are squared-length sums on the same `/10_000` scale, so `1/1` is the natural
+/// starting point). `u64` can't hold a fractional weight directly, so a non-integer
+/// ratio like `1.5` is expressed by scaling both sides up: `3/2` instead of `1.5/1`.
+/// Scaling `layout_score` by a constant factor doesn't change `Ord` outcomes, so this
+/// is exact, not an approximation. Calibrate on `generator` instances if needed.
+const CUT_LINE_WEIGHT: u64 = 2;
+const STRIP_WEIGHT: u64 = 3;
 
 impl Solution {
     pub fn sheets_used(&self) -> usize {
@@ -283,7 +288,7 @@ impl Solution {
         Objective {
             sheets_used: self.sheets_used(),
             drop_consolidation_score: self.drop_consolidation_score(problem),
-            layout_score: self.cut_line_concentration_score(problem)
+            layout_score: CUT_LINE_WEIGHT * self.cut_line_concentration_score(problem)
                 + STRIP_WEIGHT * self.strip_structure_score(problem),
         }
     }
