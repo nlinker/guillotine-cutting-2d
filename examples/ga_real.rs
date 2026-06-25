@@ -94,7 +94,7 @@ fn main() {
     for (seed, obj, _sol, n, summary) in &decoded {
         println!(
             "{:6}  {:6}  {:8}  {:12}  {}",
-            seed, obj.sheets_used, n, obj.drop_consolidation_score, summary
+            seed, obj.sheets_used_int(), n, obj.drop_consolidation_score, summary
         );
     }
     println!();
@@ -102,7 +102,7 @@ fn main() {
     let (best_seed, best_obj, best_sol, best_n, best_summary) = &decoded[0];
     println!(
         "BEST (seed={best_seed}  sheets={}  drop_score={}  last={best_n}: {best_summary})",
-        best_obj.sheets_used, best_obj.drop_consolidation_score
+        best_obj.sheets_used_int(), best_obj.drop_consolidation_score
     );
     print_solution(&spec, best_sol);
 }

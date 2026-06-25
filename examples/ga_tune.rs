@@ -15,17 +15,16 @@ use rand_xoshiro::Xoshiro256StarStar;
 const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
-/// Ideal: 2 sheets, staircase <= 400x400 on last sheet.
-/// `drop_consolidation_score: 0` is a wildcard for that field (it's maximized, so 0 is
-/// the most permissive value), same role `layout_score: 0` already plays below.
+/// Ideal sentinel: any 2-sheet solution beats this (sheets_used = 2.0 is above all
+/// 2-sheet solutions whose float encoding lies in [1.0, 2.0)).
 const IDEAL_OBJ: Objective = Objective {
-    sheets_used: 2,
+    sheets_used: 2.0,
     drop_consolidation_score: 0,
     layout_score: 0,
 };
-/// 1-piece threshold: 2 sheets, staircase <= 495x495 on last sheet.
+/// 1-piece threshold: same sentinel — any 2-sheet solution qualifies.
 const ONE_PIECE_OBJ: Objective = Objective {
-    sheets_used: 2,
+    sheets_used: 2.0,
     drop_consolidation_score: 0,
     layout_score: 0,
 };
@@ -38,7 +37,7 @@ struct Variant {
 fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
     let t0 = Instant::now();
     let mut best_obj: Objective = Objective {
-        sheets_used: usize::MAX,
+        sheets_used: f64::MAX,
         drop_consolidation_score: 0,
         layout_score: 0,
     };
@@ -51,7 +50,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
         let ind = run_ga(problem, &v.cfg, &mut rng);
         let obj = ind.objective;
-        sum_sheets += obj.sheets_used;
+        sum_sheets += obj.sheets_used_int();
         sum_consolidation += obj.drop_consolidation_score;
         if obj < best_obj {
             best_obj = obj;
@@ -75,7 +74,7 @@ fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
         N_SEEDS,
         one_piece_count,
         N_SEEDS,
-        best_obj.sheets_used,
+        best_obj.sheets_used_int(),
         best_obj.drop_consolidation_score,
         avg_sheets,
         avg_consolidation,

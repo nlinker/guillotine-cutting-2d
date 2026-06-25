@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn tournament_full_k_returns_best() {
         let o = |dc| crate::model::Objective {
-            sheets_used: 0,
+            sheets_used: 0.0,
             drop_consolidation_score: dc,
             layout_score: 0,
         };
@@ -519,7 +519,7 @@ mod tests {
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
         assert_eq!(
-            (winner.objective.sheets_used, winner.objective.drop_consolidation_score),
+            (winner.objective.sheets_used_int(), winner.objective.drop_consolidation_score),
             (0, 20)
         );
     }
@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn elite_returns_best() {
         let o = |dc| crate::model::Objective {
-            sheets_used: 0,
+            sheets_used: 0.0,
             drop_consolidation_score: dc,
             layout_score: 0,
         };
@@ -536,7 +536,7 @@ mod tests {
         assert_eq!(elite.len(), 1);
         assert_eq!(
             (
-                elite[0].objective.sheets_used,
+                elite[0].objective.sheets_used_int(),
                 elite[0].objective.drop_consolidation_score
             ),
             (0, 30)

@@ -459,7 +459,7 @@ fn run_with_any_handle(
                     drop(lazy);
                     let msg = ProgressMessage::Progress {
                         generation,
-                        sheets_used: objective.sheets_used,
+                        sheets_used: objective.sheets_used_int(),
                         secondary_objective: objective.secondary(),
                         seed,
                         solution: None,
@@ -484,7 +484,7 @@ fn run_with_any_handle(
                         let sol = pending.lazy.decode(&spec);
                         let msg = ProgressMessage::Progress {
                             generation: pending.generation,
-                            sheets_used: pending.objective.sheets_used,
+                            sheets_used: pending.objective.sheets_used_int(),
                             secondary_objective: pending.objective.secondary(),
                             seed: pending.seed,
                             solution: Some(sol),
@@ -503,7 +503,7 @@ fn run_with_any_handle(
                     let sol = pending.lazy.decode(&spec);
                     sink.send(&ProgressMessage::Progress {
                         generation: pending.generation,
-                        sheets_used: pending.objective.sheets_used,
+                        sheets_used: pending.objective.sheets_used_int(),
                         secondary_objective: pending.objective.secondary(),
                         seed: pending.seed,
                         solution: Some(sol),
@@ -517,7 +517,7 @@ fn run_with_any_handle(
                 let cut_lengths = sol.cut_lengths(&spec);
                 sink.send(&ProgressMessage::Done {
                     seed: best_seed,
-                    sheets_used: best_obj.sheets_used,
+                    sheets_used: best_obj.sheets_used_int(),
                     cut_lengths,
                     solution: sol,
                     pieces: spec.piespecs.clone(),
@@ -559,7 +559,7 @@ pub(crate) fn run_with_sink_any(
         let cut_lengths = sol_spec.cut_lengths(&spec);
         sink.send(&ProgressMessage::Done {
             seed: 0,
-            sheets_used: objective.sheets_used,
+            sheets_used: objective.sheets_used_int(),
             cut_lengths,
             solution: sol_spec,
             pieces: spec.piespecs.clone(),

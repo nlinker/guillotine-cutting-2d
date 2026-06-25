@@ -2,21 +2,51 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Three-level lexicographic fitness (lower is better overall).
+/// Fitness (lower is better overall).
 ///
-///   0. `sheets_used`              — primary goal: minimize sheets
+/// `sheets_used` is a float encoding two levels of priority in one value:
+///   `sheets_used = (sheets_used_int - 1) + piece_area_on_last_sheet / sheet_area`
+/// which lies in `[sheets_used_int - 1, sheets_used_int)`, so any k-sheet solution
+/// is strictly better than any (k+1)-sheet solution, while within the same sheet
+/// count the GA is pushed to consolidate pieces away from the last sheet.
+///
 ///   1. `layout_score`             — higher is better (reversed in `Ord`); rewards regular,
 ///      "technological" layouts: concentrated cut lines plus mono-width strips
 ///      (see `cut_line_concentration_score` and `strip_structure_score`)
 ///   2. `drop_consolidation_score` — higher is better (reversed in `Ord`); rewards a few
 ///      large, reusable offcuts over many small scattered scraps (see
 ///      `Solution::drop_consolidation_score`)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct Objective {
-    pub sheets_used: usize,
+    /// Combined primary fitness: `(sheets_used_int - 1) + fill_fraction_on_last_sheet`.
+    pub sheets_used: f64,
     pub layout_score: u64,
     pub drop_consolidation_score: u64,
 }
+
+impl Objective {
+    /// Integer sheet count recovered from the float encoding.
+    pub fn sheets_used_int(&self) -> usize {
+        if self.sheets_used <= 0.0 {
+            0
+        } else {
+            self.sheets_used as usize + 1
+        }
+    }
+
+    /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
+    /// Change the body here to switch what is displayed — no other files need updating.
+    pub fn secondary(&self) -> u64 {
+        self.layout_score
+    }
+}
+
+impl PartialEq for Objective {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl Eq for Objective {}
 
 impl PartialOrd for Objective {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -27,17 +57,9 @@ impl PartialOrd for Objective {
 impl Ord for Objective {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.sheets_used
-            .cmp(&other.sheets_used)
+            .total_cmp(&other.sheets_used)
             .then(other.layout_score.cmp(&self.layout_score))
             .then(other.drop_consolidation_score.cmp(&self.drop_consolidation_score))
-    }
-}
-
-impl Objective {
-    /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
-    /// Change the body here to switch what is displayed — no other files need updating.
-    pub fn secondary(&self) -> u64 {
-        self.layout_score
     }
 }
 
@@ -278,15 +300,24 @@ impl Solution {
     }
 
     pub fn eval(&self, problem: &Problem) -> Objective {
-        if self.placements.is_empty() {
-            return Objective {
-                sheets_used: 0,
-                drop_consolidation_score: 0,
-                layout_score: 0,
-            };
+        let n = self.sheets_used();
+        if n == 0 {
+            return Objective { sheets_used: 0.0, drop_consolidation_score: 0, layout_score: 0 };
         }
+        let last_idx = n - 1;
+        let piece_area_last: u64 = self
+            .placements
+            .iter()
+            .filter(|p| p.sheet_idx == last_idx)
+            .map(|p| {
+                let pc = &problem.pieces[p.piece_idx];
+                pc.width as u64 * pc.height as u64
+            })
+            .sum();
+        let sheet_area = problem.sheet.width as u64 * problem.sheet.height as u64;
+        let fill = piece_area_last as f64 / sheet_area as f64;
         Objective {
-            sheets_used: self.sheets_used(),
+            sheets_used: (n - 1) as f64 + fill,
             drop_consolidation_score: self.drop_consolidation_score(problem),
             layout_score: CUT_LINE_WEIGHT * self.cut_line_concentration_score(problem)
                 + STRIP_WEIGHT * self.strip_structure_score(problem),

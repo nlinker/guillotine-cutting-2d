@@ -87,7 +87,7 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
         // leftover_area term it replaces; divide back down to ~area scale and subtract
         // so that, as before, a larger encoded value still means a worse solution.
         let encode = |obj: Objective| {
-            obj.sheets_used as i64 * (sheet_area + 1) - (obj.drop_consolidation_score / sheet_area.max(1) as u64) as i64
+            obj.sheets_used_int() as i64 * (sheet_area + 1) - (obj.drop_consolidation_score / sheet_area.max(1) as u64) as i64
         };
         let mut gaps: Vec<i64> = results
             .iter()
