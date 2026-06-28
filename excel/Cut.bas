@@ -28,7 +28,7 @@ Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
 Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
 Private Const ACAD_FONT_SIZE   As String = "K4"  ' label text height in drawing units (mm)
 Private Const EDGE_MARGIN_CELL As String = "K5"  ' edging overhang per strip (mm); default 40
-Private Const DATA_CELL        As String = "A5"  ' top-left of piece table ("Panel" label column, first input row)
+Private Const DATA_CELL        As String = "A8"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
@@ -605,10 +605,10 @@ Private Sub DrawEdgeBar(ws As Worksheet, cellRng As Range, count As Long, shapeN
     ln.Placement = xlMove  ' don't let column/row resizes rescale the inset
     ln.Line.ForeColor.RGB = RGB(0, 0, 0)
     If count = 1 Then
-        ln.Line.Weight = 2
+        ln.Line.Weight = 1
         ln.Line.Style = msoLineSingle
     Else
-        ln.Line.Weight = 6
+        ln.Line.Weight = 3
         ln.Line.Style = msoLineThinThin
     End If
 End Sub
