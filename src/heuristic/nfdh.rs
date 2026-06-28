@@ -1,12 +1,21 @@
 use crate::model::{Placement, Problem, Solution};
 
-/// Standalone multi-sheet NFDH solver (Next-Fit Decreasing Height with in-row gap-fill).
+struct Shelf {
+    sheet_idx: usize,
+    y: u32,
+    h: u32,
+    x_cursor: u32,
+}
+
+/// Multi-sheet NFDH variant with shelf backfill.
 ///
-/// Mirrors the VBA algorithm from `tmp/Module1.bas` (`dim_ras` sub):
-/// sort pieces by height descending, place left-to-right in a single active
-/// row; when the current piece does not fit, gap-fill the remaining row width
-/// with any smaller unplaced piece that does fit, then advance to the next
-/// row. Opens a new sheet when the piece would exceed the sheet height.
+/// Pieces are sorted by height descending (rotating to portrait if taller that way).
+/// All open shelves across all sheets are retained. For each piece the algorithm
+/// picks the fitting shelf on the earliest sheet (min sheet_idx, then min y within
+/// that sheet); if no shelf has enough remaining width or height, a new shelf is
+/// opened on the earliest sheet that still has vertical room, and only then is a
+/// new sheet allocated. This lets pieces fill gaps left by tall pieces on earlier
+/// sheets rather than piling onto the most-recently-opened sheet.
 pub fn nfdh_solve(problem: &Problem) -> Solution {
     let sw = problem.sheet.width;
     let sh = problem.sheet.height;
@@ -23,73 +32,42 @@ pub fn nfdh_solve(problem: &Problem) -> Solution {
         .collect::<Vec<_>>();
     items.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
 
-    let n = items.len();
-    let mut placements: Vec<Placement> = Vec::with_capacity(n);
-    let mut placed = vec![false; n];
-    let mut sheet_idx = 0usize;
-    let mut x = 0u32;
-    let mut y = 0u32;
-    let mut row_h = 0u32;
+    let mut placements: Vec<Placement> = Vec::with_capacity(items.len());
+    let mut shelves: Vec<Shelf> = Vec::new();
+    // next free y on each sheet for opening a new shelf
+    let mut sheet_y: Vec<u32> = vec![0];
 
-    let mut i = 0;
-    while i < n {
-        if placed[i] {
-            i += 1;
-            continue;
-        }
-        let (orig_idx, pw, ph) = items[i];
+    for &(orig_idx, pw, ph) in &items {
+        let rotated = problem.pieces[orig_idx].can_rotate && problem.pieces[orig_idx].width != pw;
 
-        if x + pw <= sw && y + ph <= sh {
-            let rotated = problem.pieces[orig_idx].can_rotate && problem.pieces[orig_idx].width != pw;
-            placements.push(Placement {
-                sheet_idx,
-                piece_idx: orig_idx,
-                x,
-                y,
-                rotated,
-            });
-            placed[i] = true;
-            x += pw;
-            row_h = row_h.max(ph);
-            i += 1;
+        let best_idx = shelves
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| ph <= s.h && s.x_cursor + pw <= sw)
+            .min_by_key(|(_, s)| (s.sheet_idx, s.y))
+            .map(|(i, _)| i);
+
+        if let Some(idx) = best_idx {
+            let s = &mut shelves[idx];
+            placements.push(Placement { sheet_idx: s.sheet_idx, piece_idx: orig_idx, x: s.x_cursor, y: s.y, rotated });
+            s.x_cursor += pw;
         } else {
-            // Gap-fill remaining row width with any smaller unplaced piece that fits
-            for j in (i + 1)..n {
-                if placed[j] {
-                    continue;
-                }
-                let (idx_j, pw_j, ph_j) = items[j];
-                if x + pw_j <= sw && y + ph_j <= sh {
-                    let rotated = problem.pieces[idx_j].can_rotate && problem.pieces[idx_j].width != pw_j;
-                    placements.push(Placement {
-                        sheet_idx,
-                        piece_idx: idx_j,
-                        x,
-                        y,
-                        rotated,
-                    });
-                    placed[j] = true;
-                    x += pw_j;
-                    row_h = row_h.max(ph_j);
-                }
-            }
-            // Advance to next row if piece will fit there; otherwise open new sheet
-            let next_y = y + row_h;
-            if row_h > 0 && next_y + ph <= sh {
-                y = next_y;
-                x = 0;
-                row_h = 0;
-            } else {
-                sheet_idx += 1;
-                y = 0;
-                x = 0;
-                row_h = 0;
-            }
+            // find the earliest sheet with vertical room for a new shelf of height ph
+            let target = sheet_y
+                .iter()
+                .enumerate()
+                .find(|&(_, &y)| y + ph <= sh)
+                .map(|(i, &y)| (i, y));
+            let (sidx, shelf_y) = target.unwrap_or_else(|| {
+                let sidx = sheet_y.len();
+                sheet_y.push(0);
+                (sidx, 0)
+            });
+            sheet_y[sidx] += ph;
+            placements.push(Placement { sheet_idx: sidx, piece_idx: orig_idx, x: 0, y: shelf_y, rotated });
+            shelves.push(Shelf { sheet_idx: sidx, y: shelf_y, h: ph, x_cursor: pw });
         }
     }
 
-    Solution {
-        placements,
-        leftovers: vec![],
-    }
+    Solution { placements, leftovers: vec![] }
 }
