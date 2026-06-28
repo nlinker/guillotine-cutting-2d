@@ -38,8 +38,6 @@ struct SolveParams {
     progress: usize,
     #[serde(default)]
     algorithm: crate::Algorithm,
-    #[serde(default = "default_beam_width")]
-    beam_width: usize,
 }
 
 fn default_seed() -> u64 {
@@ -56,9 +54,6 @@ fn default_pop() -> usize {
 }
 fn default_progress() -> usize {
     50
-}
-fn default_beam_width() -> usize {
-    256
 }
 
 const INDEX_HTML: &str = include_str!("index.html");
@@ -126,17 +121,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             };
             let algorithm = params.algorithm;
             std::thread::spawn(move || {
-                crate::run_with_sink_any(
-                    problem,
-                    cfg,
-                    &seeds,
-                    params.progress,
-                    algorithm,
-                    &mut sink,
-                    0,
-                    params.beam_width,
-                )
-                .ok();
+                crate::run_with_sink_any(problem, cfg, &seeds, params.progress, algorithm, &mut sink, 0).ok();
             });
         }
     }

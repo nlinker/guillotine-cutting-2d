@@ -75,11 +75,8 @@
       <option value="glas" selected>GLAS</option>
       <option value="nfdh">NFDH</option>
       <option value="bfdh">BFDH</option>
-      <option value="beam">Beam</option>
       <option value="jylanki">Jylanki</option>
-      <option value="groupsub">GroupSub</option>
     </select></label>
-    <label>Beam width <input type="number" id="beam-width" value="256" min="1" max="256" disabled></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
     <span id="status"></span>
@@ -329,8 +326,6 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
   params.set('algorithm', document.getElementById('algorithm').value);
-  if (document.getElementById('algorithm').value === 'beam')
-    params.set('beam_width', document.getElementById('beam-width').value || '256');
 
   es = new EventSource('/stream?' + params);
 
@@ -393,13 +388,10 @@ document.getElementById('cancel').addEventListener('click', () => {
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 function applyAlgorithmState(value) {
   const isGA = ['glas'].includes(value);
-  const isBeam = value === 'beam';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = !isGA;
   });
-  const bwEl = document.getElementById('beam-width');
-  if (bwEl) bwEl.disabled = !isBeam;
 }
 const algSelect = document.getElementById('algorithm');
 algSelect.addEventListener('change', (e) => applyAlgorithmState(e.target.value));

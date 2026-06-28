@@ -31,14 +31,10 @@ pub(crate) enum Algorithm {
     Glas,
     /// BFDH greedy shelf heuristic (no GA, instant result)
     Bfdh,
-    /// Beam search over guillotine cut trees (no GA, instant result)
-    Beam,
     /// NFDH greedy heuristic — Next-Fit Decreasing Height with in-row gap-fill (no GA, instant result)
     Nfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
-    /// GroupSub: strips filled with piece groups via exact 1D knapsack DP (no GA, instant result)
-    Groupsub,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -47,9 +43,7 @@ impl std::fmt::Display for Algorithm {
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
             Algorithm::Nfdh => write!(f, "nfdh"),
-            Algorithm::Beam => write!(f, "beam"),
             Algorithm::Jylanki => write!(f, "jylanki"),
-            Algorithm::Groupsub => write!(f, "groupsub"),
         }
     }
 }
@@ -109,9 +103,6 @@ enum Command {
         /// Solver algorithm
         #[arg(long, default_value = "glas")]
         algorithm: Algorithm,
-        /// Beam width for --algorithm beam (number of states kept per step)
-        #[arg(long, default_value_t = 256)]
-        beam_width: usize,
         /// Min side length (px) for a piece to be "long"; 0 = auto (sheet_max * 0.3)
         #[arg(long, default_value_t = 0)]
         long_dim_threshold: u32,
@@ -160,7 +151,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             sink_interval,
             render,
             algorithm,
-            beam_width,
             long_dim_threshold,
             large_area_threshold,
         } => {
@@ -168,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let cfg = ga_config(gens, pop, elite, k, &spec, large_area_threshold, long_dim_threshold);
             let n_threads = resolve_threads(threads);
             if render {
-                run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm, beam_width)?;
+                run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
             } else {
                 run_calc_with_sink(
                     &spec,
@@ -179,7 +169,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     &sink,
                     sink_interval,
                     algorithm,
-                    beam_width,
                 )?;
             }
         }
@@ -309,9 +298,7 @@ fn make_any_handle(
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Nfdh => unreachable!("Nfdh is handled before make_any_handle"),
-        Algorithm::Beam => unreachable!("Beam is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
-        Algorithm::Groupsub => unreachable!("Groupsub is handled before make_any_handle"),
     }
 }
 
@@ -347,7 +334,6 @@ fn run_calc_with_sink(
     sink_mode: &str,
     sink_interval_ms: u64,
     algorithm: Algorithm,
-    beam_width: usize,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
@@ -370,62 +356,26 @@ fn run_calc_with_sink(
     match sink_mode {
         "stdout" => {
             let mut sink = cutting::transport::stdout::StdoutSink;
-            run_with_sink_any(
-                spec,
-                cfg,
-                &seeds,
-                progress_interval,
-                algorithm,
-                &mut sink,
-                sink_interval_ms,
-                beam_width,
-            )
+            run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink_any(
-                    spec,
-                    cfg,
-                    &seeds,
-                    progress_interval,
-                    algorithm,
-                    &mut sink,
-                    sink_interval_ms,
-                    beam_width,
-                )
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink_any(
-                    spec,
-                    cfg,
-                    &seeds,
-                    progress_interval,
-                    algorithm,
-                    &mut sink,
-                    sink_interval_ms,
-                    beam_width,
-                )
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cutting::transport::stdout::StdoutSink;
-                run_with_sink_any(
-                    spec,
-                    cfg,
-                    &seeds,
-                    progress_interval,
-                    algorithm,
-                    &mut sink,
-                    sink_interval_ms,
-                    beam_width,
-                )
+                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
         }
     }
@@ -531,7 +481,6 @@ fn run_with_any_handle(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_with_sink_any(
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
@@ -540,18 +489,12 @@ pub(crate) fn run_with_sink_any(
     algorithm: Algorithm,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
-    beam_width: usize,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(
-        algorithm,
-        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Beam | Algorithm::Jylanki | Algorithm::Groupsub
-    ) {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
         let problem = cutting::expand::expand_problem(&spec);
         let flat_sol = match algorithm {
             Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
-            Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
-            Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),
             _ => cutting::heuristic::bfdh_solve(&problem),
         };
         let objective = flat_sol.eval(&problem);
@@ -584,18 +527,12 @@ fn run_calc_render(
     n_threads: usize,
     progress_interval: usize,
     algorithm: Algorithm,
-    beam_width: usize,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(
-        algorithm,
-        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Beam | Algorithm::Jylanki | Algorithm::Groupsub
-    ) {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
         let problem = cutting::expand::expand_problem(spec);
         let flat_sol = match algorithm {
             Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
-            Algorithm::Beam => cutting::heuristic::beam_solve(&problem, beam_width),
             Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
-            Algorithm::Groupsub => cutting::heuristic::groupsub_solve(&problem),
             _ => cutting::heuristic::bfdh_solve(&problem),
         };
         let sol_spec = cutting::expand::shrink_solution(&flat_sol, spec);
