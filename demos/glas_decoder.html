@@ -248,8 +248,8 @@
     <div style="margin-top:8px;font-size:10px;color:#888780">
       Gene: <strong>W&times;H &times;N</strong> = type dims &amp; count<br/>
       <strong>[L/M/S]</strong> = Large / Medium / Small<br/>
-      Batch: horizontal if <em>floor(fr_w/pw) &ge; floor(fr_h/ph)</em>, else vertical.<br/>
-      When remaining &gt; 1: prefer rects where batch &ge; 2; fall back to any rect.
+      Grid: row-major if <em>hole(row) &le; hole(col)</em>, else col-major.<br/>
+      Same-sheet pref. per gene; batch&ge;2 pref. when remaining&gt;1.
     </div>
   </div>
 </div>
@@ -344,6 +344,38 @@ function findFittingLeafMinBatch(free, ps, prefer_rotate, selector, kerf, minFit
   return candidates[selector % candidates.length];
 }
 
+// ── find fitting leaf on sheet ─────────────────────────────────────
+// Collects all fitting free rects on the given sheet, then picks selector % len.
+// Matches Rust CutForest::find_fitting_leaf_on_sheet.
+function findFittingLeafOnSheet(free, ps, prefer_rotate, selector, kerf, sheet_idx) {
+  const candidates = [];
+  for (let i = 0; i < free.length; i++) {
+    if (free[i].sheet_idx !== sheet_idx) continue;
+    const fit = fitsPiece(free[i].w, free[i].h, ps, prefer_rotate, kerf);
+    if (fit) candidates.push({idx: i, ...fit});
+  }
+  if (!candidates.length) return null;
+  return candidates[selector % candidates.length];
+}
+
+// ── find fitting leaf on sheet (min batch) ────────────────────────
+// Same-sheet variant of findFittingLeafMinBatch.
+// Matches Rust CutForest::find_fitting_leaf_min_batch_on_sheet.
+function findFittingLeafMinBatchOnSheet(free, ps, prefer_rotate, selector, kerf, minFit, sheet_idx) {
+  const candidates = [];
+  for (let i = 0; i < free.length; i++) {
+    const fr = free[i];
+    if (fr.sheet_idx !== sheet_idx) continue;
+    const fit = fitsPiece(fr.w, fr.h, ps, prefer_rotate, kerf);
+    if (!fit) continue;
+    const bh = Math.floor(fr.w / fit.pw_exp);
+    const bv = Math.floor(fr.h / fit.ph_exp);
+    if (Math.max(bh, bv) >= minFit) candidates.push({idx: i, ...fit});
+  }
+  if (!candidates.length) return null;
+  return candidates[selector % candidates.length];
+}
+
 // ── apply blueprint ────────────────────────────────────────────────
 // Returns up to 2 new free rects; cw/ch are in expanded (kerf-padded) coords.
 function applyBlueprint(fr, cw, ch, bp) {
@@ -373,7 +405,7 @@ function buildSteps(problem, genome) {
   const {sheet, piespecs, kerf} = problem;
   const flat = flatGenes(genome);
 
-  let free = [{sheet_idx:0, x:0, y:0, w:sheet.width, h:sheet.height}];
+  let free = [{sheet_idx:0, x:0, y:0, w:sheet.width+kerf, h:sheet.height+kerf}];
   let sheets_open = 1;
   const placed_counts = piespecs.map(() => 0);
   const all_placements = [];
@@ -394,69 +426,131 @@ function buildSteps(problem, genome) {
     const ti = gene.type_idx;
     const ps = piespecs[ti];
 
+    // Same-sheet preference: steer each subsequent batch of this type to the
+    // sheet that held the previous batch.  Matches Rust decoder's last_sheet.
+    let last_sheet = null;
+
     while (placed_counts[ti] < ps.count) {
       const placed    = placed_counts[ti];
       const remaining = ps.count - placed;
-      const sel    = (gene.selectors && gene.selectors[placed]) || 0;
-      const inv    = (gene.inverses  && gene.inverses[placed])  || false;
-      const bp     = inv ? 'TlV' : 'TlH';
+      const sel = (gene.selectors && gene.selectors[placed]) || 0;
+      const inv = (gene.inverses  && gene.inverses[placed])  || false;
+      const bp  = inv ? 'TlV' : 'TlH';
 
-      // Find rect — soft batch preference: when remaining > 1, try fit>=2 first.
+      // Search order mirrors Rust CutForest search chain.
       let found = null, batchMode = '';
       if (remaining > 1) {
-        found = findFittingLeafMinBatch(free, ps, gene.rotate, sel, kerf, 2);
-        if (found) {
-          batchMode = 'batch';
-        } else {
+        // 1. same sheet, batch >= 2
+        if (last_sheet !== null) {
+          found = findFittingLeafMinBatchOnSheet(free, ps, gene.rotate, sel, kerf, 2, last_sheet);
+          if (found) batchMode = 'same+batch';
+        }
+        // 2. any sheet, batch >= 2
+        if (!found) {
+          found = findFittingLeafMinBatch(free, ps, gene.rotate, sel, kerf, 2);
+          if (found) batchMode = 'any+batch';
+        }
+        // 3. any sheet, single
+        if (!found) {
           found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
           if (found) batchMode = 'fallback';
         }
       } else {
-        found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
-        batchMode = 'single';
+        // remaining == 1
+        // 1. same sheet
+        if (last_sheet !== null) {
+          found = findFittingLeafOnSheet(free, ps, gene.rotate, sel, kerf, last_sheet);
+          if (found) batchMode = 'same';
+        }
+        // 2. any sheet
+        if (!found) {
+          found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
+          if (found) batchMode = 'any';
+        }
       }
 
       if (!found) {
         // Open new sheet
-        free.push({sheet_idx:sheets_open, x:0, y:0, w:sheet.width, h:sheet.height});
+        free.push({sheet_idx:sheets_open, x:0, y:0, w:sheet.width+kerf, h:sheet.height+kerf});
         sheets_open++;
-        found = findFittingLeaf(free, ps, gene.rotate, 0, kerf);
+        found = findFittingLeaf(free, ps, gene.rotate, sel, kerf);
         batchMode = 'new_sheet';
         steps.push({...mkState(), type:'new_sheet', geneIdx:fi, chosenIdx:free.length-1,
           text:`<span class="tag t-new">New sheet</span>Type <strong>${ps.width}&times;${ps.height}</strong> `+
-               `batch ${placed+1}/${ps.count}: no rect fits. Opening sheet <strong>${sheets_open-1}</strong>.`});
+               `copy ${placed+1}/${ps.count}: no rect fits. Opening sheet <strong>${sheets_open-1}</strong>.`});
       } else {
-        const tag = batchMode === 'batch'
+        const isBatch = batchMode === 'same+batch' || batchMode === 'any+batch';
+        const tag = isBatch
           ? `<span class="tag t-batch">Batch&ge;2</span>`
           : `<span class="tag t-find">Fit</span>`;
-        const note = (remaining > 1 && batchMode === 'fallback')
-          ? ' <em style="font-size:10px">(no fit&ge;2 rect, fallback to any)</em>'
-          : '';
+        let note = '';
+        if (remaining > 1 && batchMode === 'fallback')
+          note = ' <em style="font-size:10px">(no batch rect, fallback)</em>';
+        else if (batchMode === 'same+batch' || batchMode === 'same')
+          note = ' <em style="font-size:10px">(same sheet)</em>';
         steps.push({...mkState(), type:'search', geneIdx:fi, chosenIdx:found.idx,
           text:`${tag}Type <strong>${ps.width}&times;${ps.height}</strong> `+
-               `batch ${placed+1}/${ps.count} &mdash; rect[<strong>${found.idx}</strong>]. sel=${sel}.${note}`});
+               `copy ${placed+1}/${ps.count} &mdash; rect[<strong>${found.idx}</strong>]. sel=${sel}.${note}`});
       }
 
-      // Place batch — choose horizontal or vertical strip (whichever fits more pieces)
-      const fr  = free[found.idx];
-      const cnt_h = Math.min(Math.floor(fr.w / found.pw_exp), remaining);
-      const cnt_v = Math.min(Math.floor(fr.h / found.ph_exp), remaining);
-      const vertical = cnt_v > cnt_h;
-      const cnt = vertical ? cnt_v : cnt_h;
-      const cw  = vertical ? found.pw_exp               : found.pw_exp * cnt;
-      const ch  = vertical ? found.ph_exp * cnt         : found.ph_exp;
+      // Grid geometry — matches Rust decoder's row-major / col-major selection.
+      // Picks the orientation that leaves the smallest "hole" from an incomplete
+      // last row (row-major) or last column (col-major).
+      const fr   = free[found.idx];
+      const cols = Math.floor(fr.w / found.pw_exp);
+      const rows = Math.floor(fr.h / found.ph_exp);
+      const grid_n = Math.min(rows * cols, remaining);
+
+      // row-major option
+      const rows_full  = Math.floor(grid_n / cols);
+      const extra_row  = grid_n % cols;
+      const cw_row = rows_full >= 1 ? cols * found.pw_exp : extra_row * found.pw_exp;
+      const ch_row = (rows_full + (extra_row > 0 ? 1 : 0)) * found.ph_exp;
+      const hole_row = (extra_row > 0 && rows_full >= 1)
+        ? (cw_row - extra_row * found.pw_exp) * found.ph_exp : 0;
+
+      // col-major option
+      const cols_full  = Math.floor(grid_n / rows);
+      const extra_col  = grid_n % rows;
+      const ch_col = cols_full >= 1 ? rows * found.ph_exp : extra_col * found.ph_exp;
+      const cw_col = (cols_full + (extra_col > 0 ? 1 : 0)) * found.pw_exp;
+      const hole_col = (extra_col > 0 && cols_full >= 1)
+        ? found.pw_exp * (ch_col - extra_col * found.ph_exp) : 0;
+
+      const row_major     = hole_row <= hole_col;
+      const cw            = row_major ? cw_row   : cw_col;
+      const ch            = row_major ? ch_row   : ch_col;
+      const grid_cols_n   = row_major ? cols     : rows;
+      const grid_ln_full  = row_major ? rows_full : cols_full;
+      const extra         = row_major ? extra_row : extra_col;
 
       // Compute display dimensions (without kerf)
       const pw_disp = found.rotated ? ps.height : ps.width;
       const ph_disp = found.rotated ? ps.width  : ps.height;
 
+      // Apply blueprint (removes free rect, adds TlH/TlV leftovers)
       const newFrees = applyBlueprint(fr, cw, ch, bp);
+
+      // Corner hole from incomplete last row/column
+      let holeRect = null;
+      if (extra > 0 && grid_ln_full >= 1) {
+        const hx = row_major ? fr.x + extra * found.pw_exp          : fr.x + grid_ln_full * found.pw_exp;
+        const hy = row_major ? fr.y + grid_ln_full * found.ph_exp   : fr.y + extra * found.ph_exp;
+        const hw = row_major ? cw - extra * found.pw_exp            : found.pw_exp;
+        const hh = row_major ? found.ph_exp                         : ch - extra * found.ph_exp;
+        if (hw > 0 && hh > 0)
+          holeRect = {sheet_idx: fr.sheet_idx, x: hx, y: hy, w: hw, h: hh};
+      }
+
+      // Place grid
       const batchPlacements = [];
-      for (let k = 0; k < cnt; k++) {
+      for (let k = 0; k < grid_n; k++) {
+        const line = Math.floor(k / grid_cols_n);
+        const pos  = k % grid_cols_n;
         batchPlacements.push({
           type_idx: ti, ci,
-          x: fr.x + (vertical ? 0 : k * found.pw_exp),
-          y: fr.y + (vertical ? k * found.ph_exp : 0),
+          x: fr.x + (row_major ? pos * found.pw_exp  : line * found.pw_exp),
+          y: fr.y + (row_major ? line * found.ph_exp : pos  * found.ph_exp),
           pw: pw_disp, ph: ph_disp,
           pw_exp: found.pw_exp, ph_exp: found.ph_exp,
           rotated: found.rotated,
@@ -464,17 +558,27 @@ function buildSteps(problem, genome) {
           copy: placed + k,
         });
       }
-      free.splice(found.idx, 1);
-      free.push(...newFrees);
-      all_placements.push(...batchPlacements);
-      placed_counts[ti] += cnt;
 
-      const dir = vertical ? '&#x2193; col' : '&#x2192; row';
+      // swap_remove: mirrors Rust's free_leaves.swap_remove(free_pos) so that
+      // subsequent selector % len picks are identical to the Rust decoder.
+      if (found.idx < free.length - 1) free[found.idx] = free[free.length - 1];
+      free.pop();
+      free.push(...newFrees);
+      if (holeRect) free.push(holeRect);
+      all_placements.push(...batchPlacements);
+      placed_counts[ti] += grid_n;
+      last_sheet = fr.sheet_idx;
+
+      const orient     = row_major ? '&#x2192; row-major' : '&#x2193; col-major';
+      const gridInfo   = (cols > 1 || rows > 1) ? ` ${cols}&times;${rows} grid,` : '';
+      const holeNote   = holeRect
+        ? ` <em style="font-size:10px">(hole ${holeRect.w}&times;${holeRect.h})</em>` : '';
+      const totalFrees = newFrees.length + (holeRect ? 1 : 0);
       steps.push({...mkState(), type:'place', geneIdx:fi, chosenIdx:-1,
-        batchPlacements: clone(batchPlacements), newFreeCount: newFrees.length, bp,
-        text:`<span class="tag t-place">Place</span><strong>${cnt}&times;${ps.width}&times;${ps.height}</strong>`+
-             `${found.rotated?' (rotated)':''} ${dir} at (${fr.x},${fr.y}). `+
-             `Blueprint: <strong>${bp}</strong>. ${newFrees.length} new free rect(s).`});
+        batchPlacements: clone(batchPlacements), newFreeCount: totalFrees, bp,
+        text:`<span class="tag t-place">Place</span><strong>${grid_n}&times;${ps.width}&times;${ps.height}</strong>`+
+             `${found.rotated?' (rotated)':''}${gridInfo} ${orient} at (${fr.x},${fr.y}). `+
+             `Blueprint: <strong>${bp}</strong>. ${totalFrees} new free rect(s).${holeNote}`});
     }
   }
 
