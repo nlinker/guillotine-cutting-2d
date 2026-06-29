@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cutting::{
+use cut::{
     ga,
     ga::GaConfig,
     glas::ga as glas_ga,
@@ -294,7 +294,7 @@ fn make_any_handle(
                 progress_interval,
                 progress_interval,
             );
-            ga_handle_to_any(handle, |g, spec| cutting::glas::decoder::decode_spec(spec, g))
+            ga_handle_to_any(handle, |g, spec| cut::glas::decoder::decode_spec(spec, g))
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Nfdh => unreachable!("Nfdh is handled before make_any_handle"),
@@ -355,26 +355,26 @@ fn run_calc_with_sink(
 
     match sink_mode {
         "stdout" => {
-            let mut sink = cutting::transport::stdout::StdoutSink;
+            let mut sink = cut::transport::stdout::StdoutSink;
             run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
-                let mut sink = cutting::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
+                let mut sink = cut::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
                 run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
-                let mut sink = cutting::transport::unix::FifoSink::new(FIFO_PATH)?;
+                let mut sink = cut::transport::unix::FifoSink::new(FIFO_PATH)?;
                 run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
-                let mut sink = cutting::transport::stdout::StdoutSink;
+                let mut sink = cut::transport::stdout::StdoutSink;
                 run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
             }
         }
@@ -491,14 +491,14 @@ pub(crate) fn run_with_sink_any(
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
-        let problem = cutting::expand::expand_problem(&spec);
+        let problem = cut::expand::expand_problem(&spec);
         let flat_sol = match algorithm {
-            Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
-            Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
-            _ => cutting::heuristic::bfdh_solve(&problem),
+            Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),
+            Algorithm::Jylanki => cut::heuristic::jylanki_solve(&problem),
+            _ => cut::heuristic::bfdh_solve(&problem),
         };
         let objective = flat_sol.eval(&problem);
-        let sol_spec = cutting::expand::shrink_solution(&flat_sol, &spec);
+        let sol_spec = cut::expand::shrink_solution(&flat_sol, &spec);
         let cut_lengths = sol_spec.cut_lengths(&spec);
         sink.send(&ProgressMessage::Done {
             seed: 0,
@@ -529,13 +529,13 @@ fn run_calc_render(
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
-        let problem = cutting::expand::expand_problem(spec);
+        let problem = cut::expand::expand_problem(spec);
         let flat_sol = match algorithm {
-            Algorithm::Nfdh => cutting::heuristic::nfdh_solve(&problem),
-            Algorithm::Jylanki => cutting::heuristic::jylanki_solve(&problem),
-            _ => cutting::heuristic::bfdh_solve(&problem),
+            Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),
+            Algorithm::Jylanki => cut::heuristic::jylanki_solve(&problem),
+            _ => cut::heuristic::bfdh_solve(&problem),
         };
-        let sol_spec = cutting::expand::shrink_solution(&flat_sol, spec);
+        let sol_spec = cut::expand::shrink_solution(&flat_sol, spec);
         print!("{}", render_svg(spec, &sol_spec)?);
         return Ok(());
     }

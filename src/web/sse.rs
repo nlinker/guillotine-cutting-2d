@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use axum::response::sse::Event;
-use cutting::transport::{ProgressMessage, ProgressSink};
+use cut::transport::{ProgressMessage, ProgressSink};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct SseSink {

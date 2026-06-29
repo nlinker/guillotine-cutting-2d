@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::{sync::Arc, time::Instant};
 
-use cutting::{
+use cut::{
     ga::GaConfig,
     model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
     parse::parse_problem,

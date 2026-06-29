@@ -1,5 +1,5 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use cutting::{
+use cut::{
     expand::expand_problem,
     glas::decoder::{Gene as GlasGene, Genome as GlasGenome, decode as glas_decode},
     model::ProblemSpec,

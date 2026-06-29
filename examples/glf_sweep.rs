@@ -7,7 +7,7 @@ use std::sync::Arc;
 /// Run with:  cargo run --example glf_sweep --release
 use std::{fs, path::Path};
 
-use cutting::{
+use cut::{
     ga::GaConfig,
     glf::build_glf,
     model::{ProblemSpec, Sheet},

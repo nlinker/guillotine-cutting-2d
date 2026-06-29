@@ -8,7 +8,7 @@
 /// Run with:  cargo run --example ga_tune --release
 use std::time::Instant;
 
-use cutting::{expand::expand_problem, ga::GaConfig, model::Objective, parse::parse_problem, slas::ga::run_ga};
+use cut::{expand::expand_problem, ga::GaConfig, model::Objective, parse::parse_problem, slas::ga::run_ga};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
@@ -34,7 +34,7 @@ struct Variant {
     cfg: GaConfig,
 }
 
-fn run_variant(v: &Variant, problem: &cutting::model::Problem) {
+fn run_variant(v: &Variant, problem: &cut::model::Problem) {
     let t0 = Instant::now();
     let mut best_obj: Objective = Objective {
         sheets_used: f64::MAX,

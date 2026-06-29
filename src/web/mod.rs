@@ -13,7 +13,7 @@ use axum::{
     },
     routing::get,
 };
-use cutting::model::{PieceSpec, ProblemSpec, Sheet};
+use cut::model::{PieceSpec, ProblemSpec, Sheet};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;

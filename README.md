@@ -126,7 +126,7 @@ cargo run --release --example glf_sweep
 - Finally, you can use the library directly:
 ```rust
 use std::sync::Arc;
-use cutting::{
+use cut::{
     ga::GaConfig,
     glas::{decoder::decode_spec, ga::{GaEvent, run_ga_mt}},
     parse::parse_problem,
