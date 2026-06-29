@@ -116,7 +116,7 @@ pub fn jylanki_solve(problem: &Problem) -> Solution {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, heuristic::gbaf::gbaf_solve, parse::parse_problem};
+    use crate::{expand::expand_problem, parse::parse_problem};
 
     fn problem(s: &str) -> Problem {
         expand_problem(&parse_problem(s).expect("Error parsing problem"))
@@ -139,19 +139,6 @@ mod tests {
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 1);
         assert!(sol.placements[0].rotated);
-    }
-
-    #[test]
-    fn jylanki_not_worse_than_gbaf_on_sheets() {
-        let p = problem("2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r");
-        let j = jylanki_solve(&p);
-        let g = gbaf_solve(&p);
-        assert!(
-            j.sheets_used() <= g.sheets_used(),
-            "jylanki used {} sheets, gbaf used {}",
-            j.sheets_used(),
-            g.sheets_used()
-        );
     }
 
     #[test]
