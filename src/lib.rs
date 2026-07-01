@@ -1,6 +1,7 @@
 #![deny(clippy::unwrap_used)]
 
 pub mod cut_tree;
+pub mod exact;
 pub mod expand;
 pub mod ga;
 pub mod generator;

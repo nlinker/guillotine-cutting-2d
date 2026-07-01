@@ -76,6 +76,7 @@
       <option value="nfdh">NFDH</option>
       <option value="bfdh">BFDH</option>
       <option value="jylanki">Jylanki</option>
+      <option value="bpc">BPC (exact)</option>
     </select></label>
     <button type="submit">Solve</button>
     <button type="button" id="cancel">Cancel</button>
@@ -153,16 +154,41 @@ document.getElementById('add-row').addEventListener('click', () => addRow());
 // == chart =====================================================================
 let es = null;
 let chart = null;
+let currentAlgorithm = 'glas';
 
-function initChart() {
+function initChart(algorithm) {
+  currentAlgorithm = algorithm;
   const canvas = document.getElementById('chart');
   if (chart) { chart.destroy(); }
+
+  const isBpc = algorithm === 'bpc';
   chart = new Chart(canvas, {
     type: 'line',
     data: {
       labels: [],
-      datasets: [{
-        label: 'objective',
+      datasets: isBpc ? [
+        {
+          label: 'UB (best solution)',
+          data: [],
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,0.06)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.1,
+          fill: false,
+        },
+        {
+          label: 'LB (lower bound)',
+          data: [],
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.12)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.1,
+          fill: '-1',
+        },
+      ] : [{
+        label: 'layout score',
         data: [],
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59,130,246,0.08)',
@@ -175,15 +201,15 @@ function initChart() {
     options: {
       animation: false,
       responsive: true,
-      plugins: { legend: { display: false } },
+      plugins: { legend: { display: isBpc } },
       scales: {
         x: {
-          title: { display: true, text: 'generation', color: T.chartText },
+          title: { display: true, text: isBpc ? 'iteration' : 'generation', color: T.chartText },
           ticks: { color: T.chartText },
           grid: { color: T.chartGrid },
         },
         y: {
-          title: { display: true, text: 'layout score', color: T.chartText },
+          title: { display: true, text: isBpc ? 'sheets' : 'layout score', color: T.chartText },
           ticks: { color: T.chartText, callback: (v) => v.toLocaleString() },
           grid: { color: T.chartGrid },
         }
@@ -196,6 +222,13 @@ function initChart() {
 function addPoint(generation, objective) {
   chart.data.labels.push(generation);
   chart.data.datasets[0].data.push(objective);
+  chart.update('none');
+}
+
+function addBpcPoint(iteration, ub, lb) {
+  chart.data.labels.push(iteration);
+  chart.data.datasets[0].data.push(ub);
+  chart.data.datasets[1].data.push(lb);
   chart.update('none');
 }
 
@@ -308,7 +341,8 @@ document.getElementById('form').addEventListener('submit', (e) => {
   document.getElementById('copy-genome-status').textContent = '';
   document.getElementById('status').textContent = 'running…';
   document.getElementById('cancel').style.display = 'inline';
-  initChart();
+  const alg = document.getElementById('algorithm').value;
+  initChart(alg);
 
   if (randomSeedChk.checked) {
     seedInput.value = Math.floor(Math.random() * 10000);
@@ -336,6 +370,13 @@ document.getElementById('form').addEventListener('submit', (e) => {
     document.getElementById('sheets-live').style.display = 'inline';
   });
 
+  es.addEventListener('bpc_progress', (ev) => {
+    const d = JSON.parse(ev.data);
+    addBpcPoint(d.iteration, d.ub, d.lb);
+    document.getElementById('sheets-val').textContent = 'UB=' + d.ub + ' LB=' + d.lb;
+    document.getElementById('sheets-live').style.display = 'inline';
+  });
+
   es.addEventListener('done', (ev) => {
     const d = JSON.parse(ev.data);
     if (d.solution) {
@@ -345,8 +386,13 @@ document.getElementById('form').addEventListener('submit', (e) => {
       drawLayout(d.solution, d.pieces, d.sheet_w, d.sheet_h, kerf, !drawKerfChk.checked, rowColor);
       document.getElementById('layout-wrap').style.display = 'block';
     }
-    document.getElementById('results').innerHTML =
-      buildResultSummary(d.elapsed_secs, d.sheets_used, d.seed);
+    let summary = buildResultSummary(d.elapsed_secs, d.sheets_used, d.seed);
+    if (d.proven_optimal === true) {
+      summary += '<p style="color:#16a34a"><b>Proven optimal</b></p>';
+    } else if (d.proven_optimal === false) {
+      summary += '<p style="color:#888">Gap: optimality not proven (BPC incomplete)</p>';
+    }
+    document.getElementById('results').innerHTML = summary;
     const copyBtn = document.getElementById('copy-genome');
     const copyStatus = document.getElementById('copy-genome-status');
     copyStatus.textContent = '';
@@ -387,10 +433,12 @@ document.getElementById('cancel').addEventListener('click', () => {
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 function applyAlgorithmState(value) {
-  const isGA = ['glas'].includes(value);
+  const isGA = value === 'glas';
+  const useProgress = isGA || value === 'bpc';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = !isGA;
+    if (!el) return;
+    el.disabled = (id === 'progress') ? !useProgress : !isGA;
   });
 }
 const algSelect = document.getElementById('algorithm');

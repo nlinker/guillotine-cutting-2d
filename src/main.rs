@@ -35,6 +35,8 @@ pub(crate) enum Algorithm {
     Nfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
+    /// BPC exact solver — branch-price-and-cut column generation (iterative, stoppable)
+    Bpc,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -44,6 +46,7 @@ impl std::fmt::Display for Algorithm {
             Algorithm::Bfdh => write!(f, "bfdh"),
             Algorithm::Nfdh => write!(f, "nfdh"),
             Algorithm::Jylanki => write!(f, "jylanki"),
+            Algorithm::Bpc => write!(f, "bpc"),
         }
     }
 }
@@ -299,6 +302,7 @@ fn make_any_handle(
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Nfdh => unreachable!("Nfdh is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
+        Algorithm::Bpc => unreachable!("Bpc is handled before make_any_handle"),
     }
 }
 
@@ -472,6 +476,7 @@ fn run_with_any_handle(
                     solution: sol,
                     pieces: spec.piespecs.clone(),
                     genome: genome_json,
+                    proven_optimal: None,
                 })
                 .ok();
                 break;
@@ -507,8 +512,14 @@ pub(crate) fn run_with_sink_any(
             solution: sol_spec,
             pieces: spec.piespecs.clone(),
             genome: None,
+            proven_optimal: None,
         })?;
         return Ok(());
+    }
+    if matches!(algorithm, Algorithm::Bpc) {
+        let bpc_cfg = Arc::new(cut::exact::BpcConfig { progress_interval });
+        let handle = cut::exact::run_bpc_bg(Arc::clone(&spec), bpc_cfg);
+        return cut::exact::drain_bpc(handle, &spec, sink).map_err(Into::into);
     }
     let any = make_any_handle(
         Arc::clone(&spec),
@@ -528,12 +539,15 @@ fn run_calc_render(
     progress_interval: usize,
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki | Algorithm::Bpc) {
         let problem = cut::expand::expand_problem(spec);
         let flat_sol = match algorithm {
             Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),
-            Algorithm::Jylanki => cut::heuristic::jylanki_solve(&problem),
-            _ => cut::heuristic::bfdh_solve(&problem),
+            Algorithm::Bfdh => cut::heuristic::bfdh_solve(&problem),
+            // BPC render uses jylanki UB as the initial feasible solution
+            Algorithm::Jylanki | Algorithm::Bpc => cut::heuristic::jylanki_solve(&problem),
+            // TODO what this should return really?
+            Algorithm::Glas => cut::heuristic::bfdh_solve(&problem),
         };
         let sol_spec = cut::expand::shrink_solution(&flat_sol, spec);
         print!("{}", render_svg(spec, &sol_spec)?);
