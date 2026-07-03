@@ -32,7 +32,7 @@ pub struct GlfType {
 pub type StepFn = Vec<(u32, u32)>;
 
 /// Evaluate f(x): return height at given width, None if infeasible.
-fn eval_f(f: &StepFn, x: u32) -> Option<u32> {
+pub(crate) fn eval_f(f: &StepFn, x: u32) -> Option<u32> {
     // Find last breakpoint with x_i <= x (f is non-increasing step function).
     // Breakpoints sorted ascending, so find the last one where x_i <= x.
     let pos = f.partition_point(|&(xi, _)| xi <= x);
@@ -40,7 +40,7 @@ fn eval_f(f: &StepFn, x: u32) -> Option<u32> {
 }
 
 /// Evaluate f⁻¹(h): return minimum x such that f(x) <= h, None if no such x.
-fn eval_f_inv(f: &StepFn, h: u32) -> Option<u32> {
+pub(crate) fn eval_f_inv(f: &StepFn, h: u32) -> Option<u32> {
     // Heights decrease: f[0].1 > f[1].1 > ...
     // Want first i, where f[i].1 <= h, that gives minimum x = f[i].0
     for &(xi, hi) in f {
