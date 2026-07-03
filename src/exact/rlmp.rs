@@ -111,6 +111,22 @@ impl Rlmp {
         self.compute_duals()
     }
 
+    /// Basic pattern columns with a numerically nonzero lambda, as
+    /// `(column_index, lambda)`. Surplus variables and degenerate
+    /// exactly-zero-lambda basics are excluded. `column_index` uses the same
+    /// numbering as `add_column`'s return value (0..n for the initial
+    /// singletons seeded by `new`, then in `add_column` call order).
+    pub(crate) fn basic_patterns(&self) -> Vec<(usize, f64)> {
+        self.basis
+            .iter()
+            .zip(&self.b_bar)
+            .filter_map(|(&bv, &v)| match bv {
+                Bv::Pat(p) if v > PIVOT_TOL => Some((p, v)),
+                _ => None,
+            })
+            .collect()
+    }
+
     // -- Private helpers ------------------------------------------------------
 
     // mu = c_B * B^{-1}; c_B[r] = 1 if Pat, 0 if Sur.
@@ -470,5 +486,37 @@ mod tests {
         // After all this, the full-cover pattern should dominate: obj = 1.
         let obj = rlmp.objective();
         assert!((obj - 1.0).abs() < 1e-9, "obj = {obj}");
+    }
+
+    // Basic pattern reporting: the full-cover column replaces both
+    // singletons, so it alone should be basic, at lambda = 1.
+    #[test]
+    fn basic_patterns_reports_lambda_values() {
+        let mut rlmp = Rlmp::new(2);
+        let full_cover = rlmp.add_column(&[0, 1]);
+        rlmp.solve();
+        let basic = rlmp.basic_patterns();
+        assert_eq!(basic.len(), 1, "exactly one basic pattern column: {basic:?}");
+        let (col, lambda) = basic[0];
+        assert_eq!(col, full_cover);
+        assert!((lambda - 1.0).abs() < 1e-9, "lambda = {lambda}");
+    }
+
+    // Degenerate tie: two disjoint patterns partition the items, so both
+    // singletons stay basic at lambda = 1 alongside them being replaced
+    // one-for-one — sum(lambda) must still equal the objective.
+    #[test]
+    fn basic_patterns_lambda_sums_to_objective() {
+        let mut rlmp = Rlmp::new(4);
+        rlmp.add_column(&[0, 1]);
+        rlmp.add_column(&[2, 3]);
+        rlmp.solve();
+        let basic = rlmp.basic_patterns();
+        let sum: f64 = basic.iter().map(|&(_, lambda)| lambda).sum();
+        assert!(
+            (sum - rlmp.objective()).abs() < 1e-9,
+            "sum={sum} obj={}",
+            rlmp.objective()
+        );
     }
 }
