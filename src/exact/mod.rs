@@ -15,6 +15,8 @@
 /// Drop the returned `BpcHandle` (or set `handle.stop`) to request early
 /// termination.  The background thread checks the flag between iterations and
 /// emits `BpcStatus::Stopped` before exiting.
+mod rlmp;
+
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
