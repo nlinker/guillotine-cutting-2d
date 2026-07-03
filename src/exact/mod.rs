@@ -6,9 +6,22 @@
 ///
 /// ## Algorithm outline (Phases 0-6 from docs/plans/21_exact-bpc.md)
 ///
-/// Phase 2 (LB0/UB0) is implemented; Phases 3-6 (column generation, pricing,
-/// LP master, gap closing) are stubs — the solver currently returns UB0 from
-/// the Jylanki heuristic together with the area-bound LB0.
+/// Phases 2-5 are implemented: LB0/UB0 (area bound / Jylanki heuristic), the
+/// RLMP (`rlmp`), the pricing oracle (`pricing`), and the root-node column
+/// generation loop below. Phase 6 (gap-closing rounding) is a stub — when CG
+/// converges with `lb < ub0` the solver currently reports `BpcStatus::Gap`
+/// rather than attempting to round the fractional RLMP solution into a
+/// smaller integer one.
+///
+/// ## Soundness of the reported lower bound
+///
+/// `z_RLMP` (the current RLMP objective) is a valid lower bound on the full
+/// LP relaxation **only once column generation has converged** (pricing
+/// proved no improving pattern exists) — with a partial column pool it can
+/// only ever be *larger* than the true LP optimum, so reporting `ceil(z_RLMP)`
+/// as `lb` before convergence would be unsound. The CG loop below therefore
+/// only ever computes `lb` from `z_RLMP` after `PriceOutcome::NoneExists`;
+/// mid-loop progress events keep reporting the already-proven `lb0`.
 ///
 /// ## Cancellation
 ///
@@ -23,12 +36,24 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use pricing::{PriceOutcome, Pricer, PricingLimits};
+use rlmp::Rlmp;
+
 use crate::{
     expand::{expand_problem, shrink_solution},
     heuristic::jylanki_solve,
     model::{ProblemSpec, SolutionSpec},
     transport::{ProgressMessage, ProgressSink},
 };
+
+/// Safety margin subtracted from `z_RLMP` before rounding up to the integer
+/// lower bound. Absorbs two sources of slack, both tiny and both one-sided
+/// (they can only make `z_RLMP` *larger* than the true LP optimum, never
+/// smaller — so subtracting is always safe, never invalidates the bound):
+/// floating-point noise accumulated over the simplex pivots, and `Pricer`'s
+/// own `RC_EPS` tolerance (it reports `NoneExists` once no column improves by
+/// more than `RC_EPS`, not by exactly zero).
+const EPS_ROUND: f64 = 1e-4;
 
 // == Types =====================================================================
 
@@ -55,9 +80,10 @@ pub enum BpcStatus {
 }
 
 /// A single-sheet guillotine cutting pattern (internal use; used in Phases 4-6).
-#[allow(dead_code)]
 struct Pattern {
     items: Vec<usize>,
+    // Read outside tests only once Phase 6 reconstructs the rounded solution.
+    #[allow(dead_code)]
     placements: Vec<crate::model::Placement>,
 }
 
@@ -102,11 +128,7 @@ pub fn run_bpc_bg(spec: Arc<ProblemSpec>, cfg: Arc<BpcConfig>) -> BpcHandle {
 ///
 /// Stops early if `sink.send` returns an error (e.g. SSE client disconnected),
 /// which also drops `handle` and signals the solver thread to stop.
-pub fn drain_bpc(
-    handle: BpcHandle,
-    spec: &ProblemSpec,
-    sink: &mut dyn ProgressSink,
-) -> Result<(), std::io::Error> {
+pub fn drain_bpc(handle: BpcHandle, spec: &ProblemSpec, sink: &mut dyn ProgressSink) -> Result<(), std::io::Error> {
     loop {
         match handle.rx.recv() {
             Err(_) => break,
@@ -138,18 +160,11 @@ pub fn drain_bpc(
 
 // == Solver thread =============================================================
 
-fn bpc_thread(
-    spec: &ProblemSpec,
-    cfg: &BpcConfig,
-    stop: &AtomicBool,
-    tx: &std::sync::mpsc::Sender<BpcInternalEvent>,
-) {
+fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::sync::mpsc::Sender<BpcInternalEvent>) {
     let problem = expand_problem(spec);
 
     // Phase 2: LB0 — continuous area lower bound
-    let total_area: u64 = problem.pieces.iter()
-        .map(|p| p.width as u64 * p.height as u64)
-        .sum();
+    let total_area: u64 = problem.pieces.iter().map(|p| p.width as u64 * p.height as u64).sum();
     let sheet_area = problem.sheet.width as u64 * problem.sheet.height as u64;
     let lb0 = if sheet_area == 0 {
         0usize
@@ -175,7 +190,14 @@ fn bpc_thread(
     }
 
     // Emit initial bounds (iteration 0)
-    if tx.send(BpcInternalEvent::Progress { iteration: 0, lb: lb0, ub: ub0 }).is_err() {
+    if tx
+        .send(BpcInternalEvent::Progress {
+            iteration: 0,
+            lb: lb0,
+            ub: ub0,
+        })
+        .is_err()
+    {
         return;
     }
 
@@ -187,17 +209,85 @@ fn bpc_thread(
         return;
     }
 
-    // TODO Phase 3: LP master problem (RLMP) + microlp/good_lp dependency
-    // TODO Phase 4: pricing oracle — guillotine knapsack B&B
-    // TODO Phase 5: column generation loop
-    // TODO Phase 6: gap-closing rounding
+    // Phases 3-5: root-node column generation.
+    let mut rlmp = Rlmp::new(problem.pieces.len());
+    let mut pricer = Pricer::new(
+        &problem.pieces,
+        problem.sheet.width,
+        problem.sheet.height,
+        PricingLimits::default(),
+    );
 
-    // Interim: return Gap with the heuristic UB and area LB
-    let _ = cfg.progress_interval; // suppress unused warning until CG loop is implemented
+    // CG is finite in theory (finite pattern universe, strictly decreasing
+    // z_RLMP per accepted column), but a generous cap protects against
+    // pathological floating-point cycling; hitting it is reported honestly
+    // as a Gap, not a crash or a hang.
+    let max_iterations = 20 * problem.pieces.len().max(1) + 1_000;
+
+    let mut iteration = 0usize;
+    let mut converged = false;
+    while iteration < max_iterations {
+        if stop.load(Ordering::Relaxed) {
+            let _ = tx.send(BpcInternalEvent::Done {
+                status: BpcStatus::Stopped { lb: lb0, ub: ub0 },
+                solution: best_sol,
+            });
+            return;
+        }
+
+        rlmp.solve();
+        let mu = rlmp.duals();
+        match pricer.price(&mu) {
+            PriceOutcome::Column(pattern) => {
+                rlmp.add_column(&pattern.items);
+                iteration += 1;
+                if iteration.is_multiple_of(cfg.progress_interval) {
+                    // Not yet a proven bound (CG hasn't converged) — report
+                    // the last proven value, per the module doc.
+                    let progress = BpcInternalEvent::Progress {
+                        iteration,
+                        lb: lb0,
+                        ub: ub0,
+                    };
+                    if tx.send(progress).is_err() {
+                        return;
+                    }
+                }
+            }
+            PriceOutcome::NoneExists => {
+                converged = true;
+                break;
+            }
+            PriceOutcome::Aborted => break,
+        }
+    }
+
+    // Phase 6 (gap-closing rounding) is not implemented yet: a converged CG
+    // loop either certifies UB0 as optimal or is reported as an honest gap.
+    let status = if converged {
+        let lb = lb0.max(round_down_lb(rlmp.objective()));
+        debug_assert!(lb <= ub0, "computed LB {lb} exceeds known feasible UB {ub0}");
+        if lb >= ub0 {
+            BpcStatus::Optimal { sheets: ub0 }
+        } else {
+            BpcStatus::Gap { lb, ub: ub0 }
+        }
+    } else {
+        // Aborted (pricing budget exhausted) or the iteration cap was hit:
+        // z_RLMP is not a valid bound without convergence, so lb stays lb0.
+        BpcStatus::Gap { lb: lb0, ub: ub0 }
+    };
     let _ = tx.send(BpcInternalEvent::Done {
-        status: BpcStatus::Gap { lb: lb0, ub: ub0 },
+        status,
         solution: best_sol,
     });
+}
+
+/// `ceil(z_rlmp - EPS_ROUND)`, clamped to 0 (see `EPS_ROUND` for why the
+/// subtraction is always safe). Only valid to call once CG has converged.
+fn round_down_lb(z_rlmp: f64) -> usize {
+    let v = (z_rlmp - EPS_ROUND).ceil();
+    if v <= 0.0 { 0 } else { v as usize }
 }
 
 // == Tests =====================================================================
@@ -218,7 +308,12 @@ mod tests {
         }
         impl ProgressSink for Capture {
             fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
-                if let ProgressMessage::Done { sheets_used, proven_optimal, .. } = msg {
+                if let ProgressMessage::Done {
+                    sheets_used,
+                    proven_optimal,
+                    ..
+                } = msg
+                {
                     self.sheets = *sheets_used;
                     self.proven = *proven_optimal;
                 }
@@ -226,7 +321,10 @@ mod tests {
             }
         }
 
-        let mut cap = Capture { sheets: 0, proven: None };
+        let mut cap = Capture {
+            sheets: 0,
+            proven: None,
+        };
         drain_bpc(handle, &spec, &mut cap).expect("drain_bpc failed");
         (cap.sheets, cap.proven)
     }
@@ -241,15 +339,17 @@ mod tests {
     }
 
     #[test]
-    fn gap_returned_when_lb_lt_ub() {
-        // Many small pieces in a small sheet: area bound is tight but heuristic
-        // may use more sheets than LB (unlikely for this tiny case, but we verify
-        // the run completes and returns a valid sheet count).
+    fn lp_bound_tighter_than_area_bound_proves_optimal() {
+        // 20 copies of 30x30 in a 100x100 sheet: only a 3x3 grid (9 copies)
+        // fits per sheet, so area_bound = ceil(20*900/10000) = 2 is loose —
+        // the true optimum is 3 (ceil(20/9)). Column generation must price a
+        // pattern of 9 identical pieces, drive z_RLMP down to 20/9 = 2.22,
+        // and round up to LB = 3 = UB0: a genuine LP-bound proof, not just
+        // the area heuristic from Phase 2.
         let spec = parse_problem("100x100F:0:30x30/20").unwrap();
         let (sheets, proven) = run_sync(spec);
-        assert!(sheets >= 1, "must use at least 1 sheet");
-        // proven may be true (if area bound == UB) or false (gap); both are valid
-        let _ = proven;
+        assert_eq!(sheets, 3, "3x3 grids cap every sheet at 9 copies");
+        assert_eq!(proven, Some(true), "LP bound must tighten to match UB0");
     }
 
     #[test]

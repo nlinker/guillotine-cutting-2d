@@ -21,9 +21,12 @@
 //!    While the chain function of the current branch still fits the sheet it
 //!    serves as a cheap sufficient feasibility witness; the oracle is invoked
 //!    only once the chain loses track.  `NoneExists` is a proof that no
-//!    pattern has profit > `1 + RC_EPS` (up to the `MU_EPS` filter, absorbed
-//!    by the pessimistic re-check in the CG loop); `Aborted` means a work
-//!    budget ran out before either a column or the proof was found.
+//!    pattern has profit > `1 + RC_EPS`; the CG loop (`mod.rs`) only trusts
+//!    this as a certified LP bound once it holds, and separately subtracts
+//!    `EPS_ROUND` (which must dominate `RC_EPS`) before rounding the RLMP
+//!    objective down to an integer, so this margin never overstates the true
+//!    lower bound. `Aborted` means a work budget ran out before either a
+//!    column or the proof was found.
 //!
 //! The GLF DP is exponential in the number of pieces of a pattern — that is
 //! the honest price of exactness without the paper's G2KP machinery — hence
@@ -32,11 +35,7 @@
 //! Both piece and sheet dimensions must be kerf-expanded (`expand_problem`),
 //! the same convention as the rest of the crate.
 
-// Not yet wired to the CG loop in mod.rs (Phase 5).
-#![allow(dead_code)]
-
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use super::Pattern;
 use crate::{
@@ -351,7 +350,12 @@ impl Pricer {
 
     /// Reconstruct type-level placements for the found include set: first via
     /// chain recomposition (cheap), falling back to the exact oracle.
-    fn reconstruct_found(&mut self, candidates: &[Candidate], includes: &[usize], counts: &[u16]) -> Option<Vec<TypePlacement>> {
+    fn reconstruct_found(
+        &mut self,
+        candidates: &[Candidate],
+        includes: &[usize],
+        counts: &[u16],
+    ) -> Option<Vec<TypePlacement>> {
         let mut steps: Vec<ChainStep> = Vec::with_capacity(includes.len());
         for &pos in includes {
             let base = &self.ptypes[candidates[pos].type_idx].base;

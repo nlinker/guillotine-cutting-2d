@@ -17,9 +17,6 @@
 //! Anti-cycling: Bland's rule (entering = smallest index with rc < 0;
 //! leaving = smallest basis index among ratio-test ties).
 
-// Items that are not yet wired to mod.rs (Phases 4-6) are stubs.
-#![allow(dead_code)]
-
 // Tolerance for "strictly negative" reduced cost (entering criterion).
 const RC_TOL: f64 = 1e-9;
 // Minimum eta component considered a valid pivot denominator.
@@ -62,7 +59,14 @@ impl Rlmp {
             b_inv[i * n_items + i] = 1.0;
         }
         let b_bar = vec![1.0f64; n_items];
-        Rlmp { n: n_items, col_items, basis, b_inv, b_bar, pivot_count: 0 }
+        Rlmp {
+            n: n_items,
+            col_items,
+            basis,
+            b_inv,
+            b_bar,
+            pivot_count: 0,
+        }
     }
 
     /// Add a new pattern column covering `items`. Returns its column index.
@@ -94,9 +98,11 @@ impl Rlmp {
 
     /// LP objective value (weighted sum of basic pattern variables).
     pub(crate) fn objective(&self) -> f64 {
-        self.basis.iter().zip(self.b_bar.iter()).map(|(bv, &v)| {
-            if matches!(bv, Bv::Pat(_)) { v } else { 0.0 }
-        }).sum()
+        self.basis
+            .iter()
+            .zip(self.b_bar.iter())
+            .map(|(bv, &v)| if matches!(bv, Bv::Pat(_)) { v } else { 0.0 })
+            .sum()
     }
 
     /// Dual variables mu_i for each item i (shadow prices of the >= 1 constraints).
@@ -130,10 +136,14 @@ impl Rlmp {
     }
 
     fn find_entering(&self, mu: &[f64]) -> Option<Bv> {
-        let basic_pats: std::collections::HashSet<usize> = self.basis.iter()
+        let basic_pats: std::collections::HashSet<usize> = self
+            .basis
+            .iter()
             .filter_map(|&bv| if let Bv::Pat(p) = bv { Some(p) } else { None })
             .collect();
-        let basic_surs: std::collections::HashSet<usize> = self.basis.iter()
+        let basic_surs: std::collections::HashSet<usize> = self
+            .basis
+            .iter()
             .filter_map(|&bv| if let Bv::Sur(i) = bv { Some(i) } else { None })
             .collect();
 
@@ -205,8 +215,7 @@ impl Rlmp {
             }
             let ratio = self.b_bar[r] / eta_r;
             let bland = self.bland_idx(self.basis[r]);
-            let is_better = ratio < min_ratio - 1e-10
-                || (ratio <= min_ratio + 1e-10 && bland < best_bland);
+            let is_better = ratio < min_ratio - 1e-10 || (ratio <= min_ratio + 1e-10 && bland < best_bland);
             if is_better {
                 min_ratio = ratio;
                 best_bland = bland;
@@ -419,8 +428,16 @@ mod tests {
         check_duals_non_negative(&mu);
         // Every added column must have rc >= 0: 1 - sum(mu_i for i in col) >= -tol.
         let all_cols: &[&[usize]] = &[
-            &[0][..], &[1][..], &[2][..], &[3][..], &[4][..],
-            &[0,1][..], &[1,2][..], &[2,3][..], &[3,4][..], &[0,2,4][..],
+            &[0][..],
+            &[1][..],
+            &[2][..],
+            &[3][..],
+            &[4][..],
+            &[0, 1][..],
+            &[1, 2][..],
+            &[2, 3][..],
+            &[3, 4][..],
+            &[0, 2, 4][..],
         ];
         for col in all_cols {
             let profit: f64 = col.iter().map(|&i| mu[i]).sum();
