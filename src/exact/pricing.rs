@@ -51,13 +51,21 @@ const MU_EPS: f64 = 1e-12;
 
 // == Types =====================================================================
 
-/// Work budgets for a single `price` call. The GLF cell budget is shared
-/// across calls (the cache persists), the node budget is per call.
+/// Work budgets for a single `price` call. The GLF cell and split budgets are
+/// shared across calls (the cache and the split counter both persist), the
+/// node budget is per call.
 pub(crate) struct PricingLimits {
     /// Maximum branch-and-bound nodes explored per `price` call.
     pub max_nodes: usize,
     /// Maximum memoized GLF cells over the lifetime of the `Pricer`.
     pub max_cells: usize,
+    /// Maximum GLF split-enumeration steps over the lifetime of the `Pricer`.
+    /// A single `GlfOracle::eval` call on a sparse key with `L` distinct
+    /// types enumerates ~2^(L-1) splits even when every sub-key it recurses
+    /// into is already cached (a cache hit is still one loop iteration), so
+    /// `max_cells` alone does not bound this -- it only stops growth of the
+    /// cache, not of an already-mostly-cached call's own enumeration.
+    pub max_splits: usize,
 }
 
 impl Default for PricingLimits {
@@ -65,6 +73,7 @@ impl Default for PricingLimits {
         PricingLimits {
             max_nodes: 200_000,
             max_cells: 200_000,
+            max_splits: 2_000_000,
         }
     }
 }
@@ -131,6 +140,9 @@ struct GlfOracle {
     sheet_h: u32,
     cache: HashMap<CountKey, StepFn>,
     max_cells: usize,
+    /// Total split-enumeration steps taken so far, across all `eval` calls.
+    splits: usize,
+    max_splits: usize,
 }
 
 /// Signals that a work budget was exhausted mid-search.
@@ -214,6 +226,8 @@ impl Pricer {
             sheet_h,
             cache: HashMap::new(),
             max_cells: limits.max_cells,
+            splits: 0,
+            max_splits: limits.max_splits,
         };
         Pricer {
             pieces: pieces.to_vec(),
@@ -540,6 +554,10 @@ impl GlfOracle {
             let mut best: StepFn = vec![];
             let mut split = vec![0u16; key.len()];
             while next_split(&mut split, key) {
+                self.splits += 1;
+                if self.splits > self.max_splits {
+                    return Err(Exhausted);
+                }
                 if is_full_split(&split, key) || !is_canonical_split(&split, key) {
                     continue;
                 }
@@ -963,6 +981,7 @@ mod tests {
         let limits = PricingLimits {
             max_nodes: 2,
             max_cells: 200_000,
+            max_splits: 2_000_000,
         };
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
         assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
@@ -980,6 +999,28 @@ mod tests {
         let limits = PricingLimits {
             max_nodes: 200_000,
             max_cells: 3,
+            max_splits: 2_000_000,
+        };
+        let mut pr = Pricer::new(&pieces, 10, 7, limits);
+        assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
+    }
+
+    // GLF split budget too small: even though every sub-key the top-level
+    // call recurses into ends up cached, the top-level split-enumeration
+    // loop itself is cut off -- this is the case max_cells alone cannot
+    // catch (see PricingLimits::max_splits doc).
+    #[test]
+    fn aborted_when_split_budget_tiny() {
+        let pieces = vec![
+            piece(6, 4, false),
+            piece(4, 4, false),
+            piece(6, 3, false),
+            piece(4, 3, false),
+        ];
+        let limits = PricingLimits {
+            max_nodes: 200_000,
+            max_cells: 200_000,
+            max_splits: 1,
         };
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
         assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
