@@ -45,7 +45,7 @@ Private Const OUT_OBJ_CELL     As String = "S3"  ' best objective
 Private Const OUT_SHEETS_CELL  As String = "S4"  ' sheets used
 Private Const OUT_CUT_CELL     As String = "S5"  ' cuts used for each of the sheets
 
-Private Const CANVAS_RANGE     As String = "J8:O8"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_RANGE     As String = "J8:N8"  ' top row of canvas; spans the full drawn width
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 
@@ -54,6 +54,9 @@ Private Const EXTR_LEFT_CELL  As String = "A2"  ' header row of the left block (
 Private Const EXTR_RIGHT_CELL As String = "H2"  ' header row of the right block (G = 1-column gap)
 Private Const EXTR_COLS       As Long   = 6     ' Панель, N п/п, Длина, Ширина, Кол-во, Примечание
 Private Const EXTR_SHAPE_PREFIX As String = "extr_edge_"
+Private Const EDGE_DASH_COUNT   As Long   = 3     ' number of dashes drawn per dashed edge bar, regardless of cell width
+Private Const EDGE_DASH_GAP_RATIO As Double = 4 / 9  ' fraction of each dash+gap unit that is the gap
+Private Const EDGE_ROW_OFFSET   As Double = 1.5   ' half the vertical gap between the two lines of a double edge bar
 
 #If VBA7 Then
     Private Const INVALID_HANDLE As LongPtr = -1
@@ -310,7 +313,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     Dim cvs        As Range:  Set cvs     = ws.Range(CANVAS_RANGE)
     Dim originLeft As Double: originLeft  = cvs.Cells(1, 1).Left
     Dim originTop  As Double: originTop   = cvs.Cells(1, 1).Top
-    Dim canvasW    As Double: canvasW     = cvs.Cells(1, cvs.Columns.Count).Left - originLeft
+    Dim canvasW    As Double: canvasW     = cvs.Width
 
     ' After 90° CCW rotation the sheet is shH wide and shW tall in display space.
     ' Two columns fit side by side within canvasW.
@@ -452,9 +455,9 @@ Public Sub PrepareExtract()
     UpdateExtractTitle wsOut, wsIn
 
     Dim names() As String, widths() As Long, heights() As Long
-    Dim cnts() As Long, ews() As Long, ehs() As Long
+    Dim cnts() As Long, ews() As Long, ehs() As Long, ets() As Long
     Dim n As Long
-    n = ReadPieceRows(wsIn, names, widths, heights, cnts, ews, ehs)
+    n = ReadPieceRows(wsIn, names, widths, heights, cnts, ews, ehs, ets)
 
     Dim half As Long: half = -Int(-n / 2)  ' ceil(n / 2)
 
@@ -475,8 +478,8 @@ Public Sub PrepareExtract()
     If prevPairsL > maxPairs Then maxPairs = prevPairsL
     If prevPairsR > maxPairs Then maxPairs = prevPairsR
 
-    ClearStatementBlock wsOut, leftCol, dataRow0, maxPairs
-    ClearStatementBlock wsOut, rightCol, dataRow0, maxPairs
+    ClearExtractBlock wsOut, leftCol, dataRow0, maxPairs
+    ClearExtractBlock wsOut, rightCol, dataRow0, maxPairs
     ClearShapesByPrefix wsOut, EXTR_SHAPE_PREFIX
 
     Dim r As Long, leftIdx As Long, rightIdx As Long, dataRow As Long
@@ -485,12 +488,12 @@ Public Sub PrepareExtract()
         leftIdx = r
         rightIdx = r + half
         If leftIdx <= n Then
-            FillStatementRow wsOut, leftCol, dataRow, leftIdx, _
-                names(leftIdx), widths(leftIdx), heights(leftIdx), cnts(leftIdx), ews(leftIdx), ehs(leftIdx)
+            FillExtractRow wsOut, leftCol, dataRow, leftIdx, _
+                names(leftIdx), widths(leftIdx), heights(leftIdx), cnts(leftIdx), ews(leftIdx), ehs(leftIdx), ets(leftIdx)
         End If
         If rightIdx <= n Then
-            FillStatementRow wsOut, rightCol, dataRow, rightIdx, _
-                names(rightIdx), widths(rightIdx), heights(rightIdx), cnts(rightIdx), ews(rightIdx), ehs(rightIdx)
+            FillExtractRow wsOut, rightCol, dataRow, rightIdx, _
+                names(rightIdx), widths(rightIdx), heights(rightIdx), cnts(rightIdx), ews(rightIdx), ehs(rightIdx), ets(rightIdx)
         End If
     Next r
 End Sub
@@ -499,13 +502,15 @@ End Sub
 ' BuildProblemJson) into parallel 1-based arrays. Returns the row count.
 Private Function ReadPieceRows(ws As Worksheet, ByRef names() As String, ByRef widths() As Long, _
                                 ByRef heights() As Long, ByRef cnts() As Long, _
-                                ByRef ews() As Long, ByRef ehs() As Long) As Long
+                                ByRef ews() As Long, ByRef ehs() As Long, _
+                                ByRef ets() As Long) As Long
     ReDim names(1 To MAX_PIECE_ROWS)
     ReDim widths(1 To MAX_PIECE_ROWS)
     ReDim heights(1 To MAX_PIECE_ROWS)
     ReDim cnts(1 To MAX_PIECE_ROWS)
     ReDim ews(1 To MAX_PIECE_ROWS)
     ReDim ehs(1 To MAX_PIECE_ROWS)
+    ReDim ets(1 To MAX_PIECE_ROWS)
 
     Dim dc As Long: dc = DataCol(ws)
     Dim n As Long: n = 0
@@ -521,12 +526,18 @@ Private Function ReadPieceRows(ws As Worksheet, ByRef names() As String, ByRef w
         names(n) = Trim(ws.Cells(i, dc).Value)
         widths(n) = w
         heights(n) = h
+        ' dc + 3 = "D" is the counts column
         cnts(n) = 0
         If ws.Cells(i, dc + 3).Value <> "" Then cnts(n) = CLng(ws.Cells(i, dc + 3).Value)
+        ' dc + 5 = "F" is the edge widths column
         ews(n) = 0
         If ws.Cells(i, dc + 5).Value <> "" Then ews(n) = CLng(ws.Cells(i, dc + 5).Value)
+        ' dc + 6 = "G" is the edge heights column
         ehs(n) = 0
         If ws.Cells(i, dc + 6).Value <> "" Then ehs(n) = CLng(ws.Cells(i, dc + 6).Value)
+        ' dc + 7 = "H" is the edge types column
+        ets(n) = 0
+        If ws.Cells(i, dc + 7).Value <> "" Then ets(n) = CLng(ws.Cells(i, dc + 7).Value)
     Next i
 
     ReadPieceRows = n
@@ -535,10 +546,10 @@ End Function
 ' Clears the Панель..Кол-во columns of one block's `maxPairs` (data row, bar
 ' row) pairs (leaves the Примечание column and the header row untouched), and
 ' resets the per-pair grid borders over the full block width (so unused pairs
-' from a shrinking list lose their border too; FillStatementRow reapplies it
+' from a shrinking list lose their border too; FillExtractRow reapplies it
 ' for pairs that are still in use). The edge-bar line shapes are cleared
 ' separately via ClearShapesByPrefix.
-Private Sub ClearStatementBlock(ws As Worksheet, col As Long, dataRow0 As Long, maxPairs As Long)
+Private Sub ClearExtractBlock(ws As Worksheet, col As Long, dataRow0 As Long, maxPairs As Long)
     If maxPairs <= 0 Then Exit Sub
     Dim lastRow As Long: lastRow = dataRow0 + maxPairs * 2 - 1
     ws.Range(ws.Cells(dataRow0, col), ws.Cells(lastRow, col + EXTR_COLS - 2)).ClearContents
@@ -572,9 +583,9 @@ End Sub
 
 ' Writes the data row of one piece (row = dataRow) and the edge-banding
 ' border row directly below it (row = dataRow + 1).
-Private Sub FillStatementRow(ws As Worksheet, col As Long, dataRow As Long, idx As Long, _
+Private Sub FillExtractRow(ws As Worksheet, col As Long, dataRow As Long, idx As Long, _
                               pieceName As String, w As Long, h As Long, cnt As Long, _
-                              ew As Long, eh As Long)
+                              ew As Long, eh As Long, edgeType As Long)
     ws.Cells(dataRow, col).Value = pieceName  ' template column is pre-formatted as text
     ws.Cells(dataRow, col + 1).Value = idx
     ws.Cells(dataRow, col + 2).Value = w
@@ -582,34 +593,105 @@ Private Sub FillStatementRow(ws As Worksheet, col As Long, dataRow As Long, idx 
     ws.Cells(dataRow, col + 4).Value = cnt
 
     Dim barRow As Long: barRow = dataRow + 1
-    DrawEdgeBar ws, ws.Cells(barRow, col + 2), ew, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 2)
-    DrawEdgeBar ws, ws.Cells(barRow, col + 3), eh, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 3)
+    DrawEdgeBar ws, ws.Cells(barRow, col + 2), ew, edgeType, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 2)
+    DrawEdgeBar ws, ws.Cells(barRow, col + 3), eh, edgeType, EXTR_SHAPE_PREFIX & barRow & "_" & (col + 3)
 
     SetThinOutlineBorder ws.Range(ws.Cells(dataRow, col), ws.Cells(barRow, col + EXTR_COLS - 1))
 End Sub
 
 ' Draws a horizontal line shape across the vertical middle of cellRng (equal
 ' margins above and below, and a small inset from the left/right cell edges)
-' representing the edge-banding count: 0 (or empty) -> nothing, 1 -> single
-' black line, 2pt, Compound Type = Simple, 2+ -> black line, 6pt, Compound
-' Type = Thin-Thin.
-Private Sub DrawEdgeBar(ws As Worksheet, cellRng As Range, count As Long, shapeName As String)
+' representing the edge-banding count. Both edgeType 0 (solid, DrawSolidEdgeBar)
+' and edgeType 1 (dashed, DrawDashedEdgeBar) are built from plain AddLine
+' shapes rather than Shape.Line's compound Style/DashStyle, which does not
+' combine reliably for a double line in Excel.
+Private Sub DrawEdgeBar(ws As Worksheet, cellRng As Range, count As Long, edgeType As Long, shapeName As String)
     If count <= 0 Then Exit Sub
 
-    Dim y As Double: y = cellRng.Top + cellRng.Height / 2
     Dim inset As Double: inset = 5
-    Dim ln As Shape
-    Set ln = ws.Shapes.AddLine(cellRng.Left + inset, y, cellRng.Left + cellRng.Width - inset, y)
-    ln.Name = shapeName
+    Dim xLeft  As Double: xLeft  = cellRng.Left + inset
+    Dim xRight As Double: xRight = cellRng.Left + cellRng.Width - inset
+    Dim yMid   As Double: yMid   = cellRng.Top + cellRng.Height / 2
+
+    If edgeType = 1 Then
+        DrawDashedEdgeBar ws, xLeft, xRight, yMid, count, shapeName
+    Else
+        DrawSolidEdgeBar ws, xLeft, xRight, yMid, count, shapeName
+    End If
+End Sub
+
+' Draws an edgeType=0 bar as one solid line (count=1) or two parallel solid
+' lines grouped into a single Shape (count=2), so the double edge is one
+' object -- selectable/deletable as a unit -- exactly like the dashed bar.
+Private Sub DrawSolidEdgeBar(ws As Worksheet, xLeft As Double, xRight As Double, _
+                              yMid As Double, count As Long, shapeName As String)
+    If count = 1 Then
+        Dim ln As Shape
+        Set ln = ws.Shapes.AddLine(xLeft, yMid, xRight, yMid)
+        StyleSolidLine ln, shapeName
+        Exit Sub
+    End If
+
+    Dim ln1 As Shape, ln2 As Shape
+    Set ln1 = ws.Shapes.AddLine(xLeft, yMid - EDGE_ROW_OFFSET, xRight, yMid - EDGE_ROW_OFFSET)
+    Set ln2 = ws.Shapes.AddLine(xLeft, yMid + EDGE_ROW_OFFSET, xRight, yMid + EDGE_ROW_OFFSET)
+    StyleSolidLine ln1, ln1.Name
+    StyleSolidLine ln2, ln2.Name
+
+    Dim grp As Shape
+    Set grp = ws.Shapes.Range(Array(ln1.Name, ln2.Name)).Group
+    grp.Name = shapeName
+End Sub
+
+Private Sub StyleSolidLine(ln As Shape, nm As String)
+    ln.Name = nm
     ln.Placement = xlMove  ' don't let column/row resizes rescale the inset
     ln.Line.ForeColor.RGB = RGB(0, 0, 0)
+    ln.Line.Weight = 1
+    ln.Line.Style = msoLineSingle
+    ln.Line.DashStyle = msoLineSolid
+End Sub
+
+' Draws an edgeType=1 bar as explicit short line-segment shapes instead of
+' via Shape.Line.DashStyle: a ThinThin (double) line combined with a dash
+' style silently collapses to a plain dotted single line in Excel, so the
+' dashed look is built by hand instead. count=1 draws one row of dashes;
+' count=2 draws two rows offset above/below the midline, giving the "="
+' appearance of a double dashed edge. Always draws exactly EDGE_DASH_COUNT
+' dashes per row, with EDGE_DASH_COUNT-1 gaps *between* them (not after the
+' last one), so the row spans the full xLeft..xRight width -- same as a
+' solid bar -- instead of falling short by one trailing gap.
+Private Sub DrawDashedEdgeBar(ws As Worksheet, xLeft As Double, xRight As Double, _
+                               yMid As Double, count As Long, shapeName As String)
+    Dim gapToDashRatio As Double: gapToDashRatio = EDGE_DASH_GAP_RATIO / (1 - EDGE_DASH_GAP_RATIO)
+    Dim dashLen As Double: dashLen = (xRight - xLeft) / (EDGE_DASH_COUNT + (EDGE_DASH_COUNT - 1) * gapToDashRatio)
+    Dim gapLen  As Double: gapLen  = dashLen * gapToDashRatio
+    Dim stepLen As Double: stepLen = dashLen + gapLen
+
+    Dim rows As Variant
     If count = 1 Then
-        ln.Line.Weight = 1
-        ln.Line.Style = msoLineSingle
+        rows = Array(yMid)
     Else
-        ln.Line.Weight = 3
-        ln.Line.Style = msoLineThinThin
+        rows = Array(yMid - EDGE_ROW_OFFSET, yMid + EDGE_ROW_OFFSET)
     End If
+
+    Dim r As Long, segIdx As Long: segIdx = 0
+    For r = LBound(rows) To UBound(rows)
+        Dim i As Long
+        For i = 0 To EDGE_DASH_COUNT - 1
+            Dim x  As Double: x  = xLeft + i * stepLen
+            Dim x2 As Double: x2 = x + dashLen
+            Dim seg As Shape
+            Set seg = ws.Shapes.AddLine(x, rows(r), x2, rows(r))
+            seg.Name = shapeName & "_" & segIdx
+            seg.Placement = xlMove
+            seg.Line.ForeColor.RGB = RGB(0, 0, 0)
+            seg.Line.Weight = 1
+            seg.Line.Style = msoLineSingle
+            seg.Line.DashStyle = msoLineSolid
+            segIdx = segIdx + 1
+        Next i
+    Next r
 End Sub
 
 ' Removes all shapes on `ws` whose name starts with `prefix` (the
