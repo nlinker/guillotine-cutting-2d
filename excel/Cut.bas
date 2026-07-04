@@ -49,7 +49,6 @@ Private Const CANVAS_RANGE     As String = "J8:N8"  ' top row of canvas; spans t
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 
-Private Const EXTR_SHEET_NAME As String = "Extract"  ' may become a cell-driven value later
 Private Const EXTR_LEFT_CELL  As String = "A2"  ' header row of the left block (data starts one row below)
 Private Const EXTR_RIGHT_CELL As String = "H2"  ' header row of the right block (G = 1-column gap)
 Private Const EXTR_COLS       As Long   = 6     ' Панель, N п/п, Длина, Ширина, Кол-во, Примечание
@@ -127,6 +126,15 @@ Private Const EDGE_ROW_OFFSET   As Double = 1.5   ' half the vertical gap betwee
 Private g_Running As Boolean
 
 '' == Helpers ==================================================================
+
+' Extract sheet name -- a Function, not a Const, because VBA Consts cannot
+' call RuStr() (compile-time constant expressions only). Kept as the very
+' first procedure in the module (all Const/Declare/Dim must precede every
+' Sub/Function/Property) so it stays as close as possible to the EXTR_
+' constants above it.
+Private Function ExtrSheetName() As String
+    ExtrSheetName = RuStr(&H412, &H44B, &H43F, &H438, &H441, &H43A, &H430)  ' "Выписка"
+End Function
 
 ' Escapes a string for JSON: non-ASCII and control chars become \uXXXX.
 Private Function JsonEscapeStr(s As String) As String
@@ -424,17 +432,17 @@ Private Function ExtrDataRow(ws As Worksheet) As Long
     ExtrDataRow = ExtrHeaderRow(ws) + 1
 End Function
 
-' Returns the EXTR_SHEET_NAME sheet, creating a blank one if it doesn't
+' Returns the ExtrSheetName() sheet, creating a blank one if it doesn't
 ' exist yet. Formatting (column widths, fonts, borders, header text) is not
 ' set up here -- the sheet itself is the template, edited by hand in Excel.
 Private Function GetOrCreateExtractSheet(wsIn As Worksheet) As Worksheet
     Dim ws As Worksheet
     On Error Resume Next
-    Set ws = ThisWorkbook.Sheets(EXTR_SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(ExtrSheetName())
     On Error GoTo 0
     If ws Is Nothing Then
         Set ws = ThisWorkbook.Sheets.Add(After:=wsIn)
-        ws.Name = EXTR_SHEET_NAME
+        ws.Name = ExtrSheetName()
     End If
     Set GetOrCreateExtractSheet = ws
 End Function
@@ -445,6 +453,7 @@ End Function
 ' grid border. Static formatting (column widths, fonts, header text, etc.) is
 ' owned by the template and is never modified here. Re-running is idempotent:
 ' the same sheet is reused and the Примечание column is left untouched.
+' Switches the active sheet to the extract sheet when done.
 Public Sub PrepareExtract()
     Dim wsIn As Worksheet
     Set wsIn = ThisWorkbook.Sheets(SHEET_NAME)
@@ -496,6 +505,8 @@ Public Sub PrepareExtract()
                 names(rightIdx), widths(rightIdx), heights(rightIdx), cnts(rightIdx), ews(rightIdx), ehs(rightIdx), ets(rightIdx)
         End If
     Next r
+
+    wsOut.Activate
 End Sub
 
 ' Reads the piece table from Sheet1 (same rows/columns as TotalEdgeLength /
@@ -983,11 +994,13 @@ Public Function IsRunning() As Boolean
     IsRunning = g_Running
 End Function
 
-' Calculates total edge banding length (mm) from edging columns F and G.
-' F = number of width edges (0-2), G = number of height edges (0-2).
+' Calculates total edge banding length (mm) from edging columns F and G,
+' counting only rows whose edge type (column H, 0 default or 1) equals
+' edgeType. F = number of width edges (0-2), G = number of height edges (0-2).
 ' Overhang (припуск) is read from EDGE_MARGIN_CELL (K5); default = 40 mm if empty.
-' Usage: put =TotalEdgeLength() in any cell; recalculates on every sheet change.
-Public Function TotalEdgeLength() As Long
+' Usage: put =TotalEdgeLength(0) in S6 and =TotalEdgeLength(1) in S7;
+' recalculates on every sheet change.
+Public Function TotalEdgeLength(edgeType As Long) As Long
     Application.Volatile
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets(SHEET_NAME)
@@ -1006,16 +1019,20 @@ Public Function TotalEdgeLength() As Long
         If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
         If w = 0 Or h = 0 Then Exit For
 
-        Dim cnt As Long: cnt = 0
-        If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
+        Dim et As Long: et = 0
+        If ws.Cells(i, dc + 7).Value <> "" Then et = CLng(ws.Cells(i, dc + 7).Value)
+        If et = edgeType Then
+            Dim cnt As Long: cnt = 0
+            If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
 
-        Dim ew As Long: ew = 0
-        Dim eh As Long: eh = 0
-        If ws.Cells(i, dc + 5).Value <> "" Then ew = CLng(ws.Cells(i, dc + 5).Value)
-        If ws.Cells(i, dc + 6).Value <> "" Then eh = CLng(ws.Cells(i, dc + 6).Value)
+            Dim ew As Long: ew = 0
+            Dim eh As Long: eh = 0
+            If ws.Cells(i, dc + 5).Value <> "" Then ew = CLng(ws.Cells(i, dc + 5).Value)
+            If ws.Cells(i, dc + 6).Value <> "" Then eh = CLng(ws.Cells(i, dc + 6).Value)
 
-        total = total + cnt * ew * (w + overhang)
-        total = total + cnt * eh * (h + overhang)
+            total = total + cnt * ew * (w + overhang)
+            total = total + cnt * eh * (h + overhang)
+        End If
     Next i
 
     TotalEdgeLength = total
