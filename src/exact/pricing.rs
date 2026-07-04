@@ -71,9 +71,9 @@ pub(crate) struct PricingLimits {
 impl Default for PricingLimits {
     fn default() -> Self {
         PricingLimits {
-            max_nodes: 200_000,
-            max_cells: 200_000,
-            max_splits: 2_000_000,
+            max_nodes: 2_000_000,
+            max_cells: 1_000_000,
+            max_splits: 20_000_000,
         }
     }
 }
