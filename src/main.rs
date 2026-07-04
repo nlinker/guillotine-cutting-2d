@@ -163,16 +163,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             if render {
                 run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
             } else {
-                run_calc_with_sink(
-                    &spec,
-                    &cfg,
-                    seed,
-                    n_threads,
-                    progress,
-                    &sink,
-                    sink_interval,
-                    algorithm,
-                )?;
+                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval, algorithm)?;
             }
         }
         Command::Serve { port } => web::run_serve(port)?,
@@ -360,26 +351,58 @@ fn run_calc_with_sink(
     match sink_mode {
         "stdout" => {
             let mut sink = cut::transport::stdout::StdoutSink;
-            run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
+            run_with_sink_any(
+                spec,
+                cfg,
+                &seeds,
+                progress_interval,
+                algorithm,
+                &mut sink,
+                sink_interval_ms,
+            )
         }
         _ => {
             #[cfg(windows)]
             {
                 eprintln!("Waiting for client on {PIPE_NAME} …");
                 let mut sink = cut::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
+                run_with_sink_any(
+                    spec,
+                    cfg,
+                    &seeds,
+                    progress_interval,
+                    algorithm,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
             #[cfg(unix)]
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} …");
                 let mut sink = cut::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
+                run_with_sink_any(
+                    spec,
+                    cfg,
+                    &seeds,
+                    progress_interval,
+                    algorithm,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
             #[cfg(not(any(windows, unix)))]
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cut::transport::stdout::StdoutSink;
-                run_with_sink_any(spec, cfg, &seeds, progress_interval, algorithm, &mut sink, sink_interval_ms)
+                run_with_sink_any(
+                    spec,
+                    cfg,
+                    &seeds,
+                    progress_interval,
+                    algorithm,
+                    &mut sink,
+                    sink_interval_ms,
+                )
             }
         }
     }
@@ -519,7 +542,7 @@ pub(crate) fn run_with_sink_any(
     if matches!(algorithm, Algorithm::Bpc) {
         let bpc_cfg = Arc::new(cut::exact::BpcConfig { progress_interval });
         let handle = cut::exact::run_bpc_bg(Arc::clone(&spec), bpc_cfg);
-        return cut::exact::drain_bpc(handle, &spec, sink).map_err(Into::into);
+        return cut::exact::drain_bpc(handle, &spec, sink, sink_interval_ms).map_err(Into::into);
     }
     let any = make_any_handle(
         Arc::clone(&spec),
@@ -539,7 +562,10 @@ fn run_calc_render(
     progress_interval: usize,
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki | Algorithm::Bpc) {
+    if matches!(
+        algorithm,
+        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki | Algorithm::Bpc
+    ) {
         let problem = cut::expand::expand_problem(spec);
         let flat_sol = match algorithm {
             Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),

@@ -31,9 +31,12 @@
 mod pricing;
 mod rlmp;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use pricing::{PriceOutcome, Pricer, PricingLimits};
@@ -124,16 +127,38 @@ pub fn run_bpc_bg(spec: Arc<ProblemSpec>, cfg: Arc<BpcConfig>) -> BpcHandle {
 
 /// Block until the BPC solver finishes, forwarding events to `sink`.
 ///
+/// Progress events are throttled the same way GA progress is (see
+/// `run_with_any_handle` in `main.rs`): at most one per `sink_interval_ms`,
+/// with the latest pending one flushed right before `Done`. Without this, CG
+/// iterations that complete in microseconds each would otherwise write one
+/// line per `progress_interval` iterations regardless of real elapsed time.
+///
 /// Stops early if `sink.send` returns an error (e.g. SSE client disconnected),
 /// which also drops `handle` and signals the solver thread to stop.
-pub fn drain_bpc(handle: BpcHandle, spec: &ProblemSpec, sink: &mut dyn ProgressSink) -> Result<(), std::io::Error> {
+pub fn drain_bpc(
+    handle: BpcHandle,
+    spec: &ProblemSpec,
+    sink: &mut dyn ProgressSink,
+    sink_interval_ms: u64,
+) -> Result<(), std::io::Error> {
+    let throttle = Duration::from_millis(sink_interval_ms);
+    let mut last_sent: Option<Instant> = None;
+    let mut pending: Option<(usize, usize, usize)> = None;
     loop {
         match handle.rx.recv() {
             Err(_) => break,
             Ok(BpcInternalEvent::Progress { iteration, lb, ub }) => {
-                sink.send(&ProgressMessage::BpcProgress { iteration, lb, ub })?;
+                pending = Some((iteration, lb, ub));
+                let should_flush = sink_interval_ms == 0 || last_sent.is_none_or(|t| t.elapsed() >= throttle);
+                if should_flush && let Some((iteration, lb, ub)) = pending.take() {
+                    sink.send(&ProgressMessage::BpcProgress { iteration, lb, ub })?;
+                    last_sent = Some(Instant::now());
+                }
             }
             Ok(BpcInternalEvent::Done { status, solution }) => {
+                if let Some((iteration, lb, ub)) = pending.take() {
+                    sink.send(&ProgressMessage::BpcProgress { iteration, lb, ub })?;
+                }
                 let proven_optimal = matches!(status, BpcStatus::Optimal { .. });
                 let sheets_used = match &status {
                     BpcStatus::Optimal { sheets } => *sheets,
@@ -513,7 +538,7 @@ mod tests {
             sheets: 0,
             proven: None,
         };
-        drain_bpc(handle, &spec, &mut cap).expect("drain_bpc failed");
+        drain_bpc(handle, &spec, &mut cap, 0).expect("drain_bpc failed");
         (cap.sheets, cap.proven)
     }
 
@@ -555,7 +580,7 @@ mod tests {
             }
         }
         let mut cnt = Count(0);
-        drain_bpc(handle, &spec, &mut cnt).expect("drain_bpc failed");
+        drain_bpc(handle, &spec, &mut cnt, 0).expect("drain_bpc failed");
         // Should have received at most 2 events (one Progress + one Done)
         assert!(cnt.0 <= 3, "too many events: {}", cnt.0);
     }
