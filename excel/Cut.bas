@@ -14,7 +14,9 @@ Option Explicit
 
 '' == Constants ================================================================
 
-Private Const SHEET_NAME       As String = "Sheet1"
+Private Const MAIN_SHEET_INDEX As Long   = 1     ' tab position of the input sheet; addressed by index (1-based), not name, so renaming the tab doesn't break anything
+Private Const EXTR_SHEET_INDEX As Long   = 2     ' tab position of the "Выписка" (extract) sheet
+
 Private Const PIPE_NAME        As String = "\\.\pipe\cut_progress"
 Private Const GENERIC_READ     As Long   = &H80000000
 Private Const OPEN_EXISTING    As Long   = 3
@@ -432,15 +434,15 @@ Private Function ExtrDataRow(ws As Worksheet) As Long
     ExtrDataRow = ExtrHeaderRow(ws) + 1
 End Function
 
-' Returns the ExtrSheetName() sheet, creating a blank one if it doesn't
-' exist yet. Formatting (column widths, fonts, borders, header text) is not
-' set up here -- the sheet itself is the template, edited by hand in Excel.
+' Returns the sheet at EXTR_SHEET_INDEX, creating a blank one right after
+' wsIn if the workbook doesn't have that many tabs yet. Formatting (column
+' widths, fonts, borders, header text) is not set up here -- the sheet
+' itself is the template, edited by hand in Excel.
 Private Function GetOrCreateExtractSheet(wsIn As Worksheet) As Worksheet
     Dim ws As Worksheet
-    On Error Resume Next
-    Set ws = ThisWorkbook.Sheets(ExtrSheetName())
-    On Error GoTo 0
-    If ws Is Nothing Then
+    If ThisWorkbook.Sheets.Count >= EXTR_SHEET_INDEX Then
+        Set ws = ThisWorkbook.Sheets(EXTR_SHEET_INDEX)
+    Else
         Set ws = ThisWorkbook.Sheets.Add(After:=wsIn)
         ws.Name = ExtrSheetName()
     End If
@@ -456,7 +458,7 @@ End Function
 ' Switches the active sheet to the extract sheet when done.
 Public Sub PrepareExtract()
     Dim wsIn As Worksheet
-    Set wsIn = ThisWorkbook.Sheets(SHEET_NAME)
+    Set wsIn = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
 
     Dim wsOut As Worksheet
     Set wsOut = GetOrCreateExtractSheet(wsIn)
@@ -818,7 +820,7 @@ Public Sub RunCut()
     End If
 
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
 
     Dim exePath As String
     exePath = Trim(ws.Cells(1, 2).Value)  ' B1
@@ -1003,7 +1005,7 @@ End Function
 Public Function TotalEdgeLength(edgeType As Long) As Long
     Application.Volatile
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
 
     Dim overhang As Long
     overhang = CLng(ws.Range(EDGE_MARGIN_CELL).Value)
@@ -1050,7 +1052,7 @@ End Sub
 Public Sub StopCut()
     g_Running = False
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
     ws.Range(OUT_STATUS_CELL).Value = "Stopped"
     Dim rBase As Range: Set rBase = ws.Range(RESULT_CELL)
     ws.Range(ws.Cells(rBase.Row + 1, rBase.Column), ws.Cells(1000, rBase.Column + 6)).ClearContents
@@ -1115,7 +1117,7 @@ End Sub
 
 Public Sub SendToAutoCAD()
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
 
     Dim shW      As Long:   shW      = ws.Range(SHEET_W_CELL).Value
     Dim shH      As Long:   shH      = ws.Range(SHEET_H_CELL).Value
@@ -1245,7 +1247,7 @@ End Sub
 
 Private Sub SetupAlgorithmValidation()
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
@@ -1257,7 +1259,7 @@ End Sub
 
 Sub CreateCheckboxes()
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.sheets(SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
 
     Dim shp As Object
     For Each shp In ws.CheckBoxes
