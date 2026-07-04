@@ -22,40 +22,39 @@ Private Const FILE_ATTR_NORMAL As Long   = &H80
 Private Const BUFFER_SIZE      As Long   = 8192
 Private Const MAX_PIECE_ROWS   As Long   = 100   ' max rows in the piece table
 
-Private Const SHEET_W_CELL     As String = "J1"  ' sheet width (mm)
-Private Const SHEET_H_CELL     As String = "K1"  ' sheet height (mm)
-Private Const KERF_CELL        As String = "K2"  ' blade kerf width (mm)
-Private Const MARGIN_CELL      As String = "K3"  ' edge margin (mm)
-Private Const ACAD_FONT_SIZE   As String = "K4"  ' label text height in drawing units (mm)
-Private Const EDGE_MARGIN_CELL As String = "K5"  ' edging overhang per strip (mm); default 40
+Private Const SHEET_W_CELL     As String = "K1"  ' sheet width (mm)
+Private Const SHEET_H_CELL     As String = "L1"  ' sheet height (mm)
+Private Const KERF_CELL        As String = "L2"  ' blade kerf width (mm)
+Private Const MARGIN_CELL      As String = "L3"  ' edge margin (mm)
+Private Const ACAD_FONT_SIZE   As String = "L4"  ' label text height in drawing units (mm)
+Private Const EDGE_MARGIN_CELL As String = "L5"  ' edging overhang per strip (mm); default 40
 Private Const DATA_CELL        As String = "A8"  ' top-left of piece table ("Panel" label column, first input row)
-Private Const RESULT_CELL      As String = "O8"  ' top-left of placement table ("Sheet" label column, first result row)
+Private Const RESULT_CELL      As String = "P8"  ' top-left of placement table ("Sheet" label column, first result row)
 
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
-Private Const CFG_SEED_CELL      As String = "N1"  ' base random seed (--seed)
-Private Const CFG_GENS_CELL      As String = "N2"  ' generations per run (--gens)
-Private Const CFG_POP_CELL       As String = "N3"  ' population size (--pop)
-Private Const CFG_ALGORITHM_CELL      As String = "N4"  ' algorithm: nfdh/glas/bfdh/jylanki
-Private Const CFG_LARGE_AREA_CELL     As String = "N5"  ' large_area_threshold (0 = auto)
-Private Const CFG_LONG_DIM_CELL       As String = "N6"  ' long_dim_threshold   (0 = auto)
-Private Const OUT_STATUS_CELL  As String = "R1"  ' status text
-Private Const OUT_GEN_CELL     As String = "R2"  ' current generation
-Private Const OUT_OBJ_CELL     As String = "R3"  ' best objective
-Private Const OUT_SHEETS_CELL  As String = "R4"  ' sheets used
-Private Const OUT_CUT_CELL     As String = "R5"  ' cuts used for each of the sheets
+Private Const CFG_SEED_CELL           As String = "O1"  ' base random seed (--seed)
+Private Const CFG_GENS_CELL           As String = "O2"  ' generations per run (--gens)
+Private Const CFG_POP_CELL            As String = "O3"  ' population size (--pop)
+Private Const CFG_ALGORITHM_CELL      As String = "O4"  ' algorithm: nfdh/glas/bfdh/jylanki
+Private Const CFG_LARGE_AREA_CELL     As String = "O5"  ' large_area_threshold (0 = auto)
+Private Const CFG_LONG_DIM_CELL       As String = "O6"  ' long_dim_threshold   (0 = auto)
+Private Const OUT_STATUS_CELL  As String = "S1"  ' status text
+Private Const OUT_GEN_CELL     As String = "S2"  ' current generation
+Private Const OUT_OBJ_CELL     As String = "S3"  ' best objective
+Private Const OUT_SHEETS_CELL  As String = "S4"  ' sheets used
+Private Const OUT_CUT_CELL     As String = "S5"  ' cuts used for each of the sheets
 
-Private Const CANVAS_RANGE     As String = "I8:N8"  ' top row of canvas; left col = draw origin, right col = width boundary
+Private Const CANVAS_RANGE     As String = "J8:O8"  ' top row of canvas; left col = draw origin, right col = width boundary
 Private Const CANVAS_SHEET_GAP As Double = 14#   ' gap between sheets in points
 Private Const SHEET_GAP_ACAD   As Long   = 150   ' gap between sheets exported to AutoCAD (drawing units)
 
-Private Const EXTRACT_SHEET_NAME As String = "Extract"  ' may become a cell-driven value later
-
+Private Const EXTR_SHEET_NAME As String = "Extract"  ' may become a cell-driven value later
 Private Const EXTR_LEFT_CELL  As String = "A2"  ' header row of the left block (data starts one row below)
 Private Const EXTR_RIGHT_CELL As String = "H2"  ' header row of the right block (G = 1-column gap)
 Private Const EXTR_COLS       As Long   = 6     ' Панель, N п/п, Длина, Ширина, Кол-во, Примечание
-
 Private Const EXTR_SHAPE_PREFIX As String = "extr_edge_"
+
 #If VBA7 Then
     Private Const INVALID_HANDLE As LongPtr = -1
 #Else
@@ -422,17 +421,17 @@ Private Function ExtrDataRow(ws As Worksheet) As Long
     ExtrDataRow = ExtrHeaderRow(ws) + 1
 End Function
 
-' Returns the EXTRACT_SHEET_NAME sheet, creating a blank one if it doesn't
+' Returns the EXTR_SHEET_NAME sheet, creating a blank one if it doesn't
 ' exist yet. Formatting (column widths, fonts, borders, header text) is not
 ' set up here -- the sheet itself is the template, edited by hand in Excel.
 Private Function GetOrCreateExtractSheet(wsIn As Worksheet) As Worksheet
     Dim ws As Worksheet
     On Error Resume Next
-    Set ws = ThisWorkbook.Sheets(EXTRACT_SHEET_NAME)
+    Set ws = ThisWorkbook.Sheets(EXTR_SHEET_NAME)
     On Error GoTo 0
     If ws Is Nothing Then
         Set ws = ThisWorkbook.Sheets.Add(After:=wsIn)
-        ws.Name = EXTRACT_SHEET_NAME
+        ws.Name = EXTR_SHEET_NAME
     End If
     Set GetOrCreateExtractSheet = ws
 End Function
