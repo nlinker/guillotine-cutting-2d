@@ -60,6 +60,7 @@ const INDEX_HTML: &str = include_str!("index.html");
 const CHART_JS: &[u8] = include_bytes!("chart.min.js");
 const SVG_JS: &[u8] = include_bytes!("svg.min.js");
 const REAL1_JSON: &[u8] = include_bytes!("real1.json");
+const REAL2_JSON: &[u8] = include_bytes!("real2.json");
 
 async fn serve_chartjs() -> Response {
     Response::builder()
@@ -82,6 +83,13 @@ async fn serve_real1() -> Response {
         .unwrap()
 }
 
+async fn serve_real2() -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .body(Body::from(REAL2_JSON))
+        .unwrap()
+}
+
 pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -92,6 +100,7 @@ pub(crate) fn run_serve(port: u16) -> std::io::Result<()> {
                 .route("/web/chart.min.js", get(serve_chartjs))
                 .route("/web/svg.min.js", get(serve_svgjs))
                 .route("/web/real1.json", get(serve_real1))
+                .route("/web/real2.json", get(serve_real2))
                 .route("/stream", get(stream_handler));
             let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
             println!("Listening on http://localhost:{port}");

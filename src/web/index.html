@@ -49,6 +49,10 @@
 
 <form id="form">
   <div class="row">
+    <label>Instance <select id="instance">
+      <option value="real1" selected>real1</option>
+      <option value="real2">real2</option>
+    </select></label>
     <label>Sheet W <input type="number" id="sheet-w" value="2800" min="1"></label>
     <label>× H <input type="number" id="sheet-h" value="2070" min="1"></label>
     <label>Kerf <input type="number" id="kerf" value="7" min="0"></label>
@@ -140,15 +144,21 @@ function serializePieces() {
   });
 }
 
+function loadInstance(name) {
+  fetch(`/web/${name}.json`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('sheet-w').value = data.sheet.width;
+      document.getElementById('sheet-h').value = data.sheet.height;
+      document.getElementById('kerf').value    = data.kerf;
+      document.getElementById('pieces-tbody').innerHTML = '';
+      data.piespecs.forEach(addRow);
+    });
+}
+
 document.getElementById('threads').value = navigator.hardwareConcurrency || 8;
-fetch('/web/real1.json')
-  .then(r => r.json())
-  .then(data => {
-    document.getElementById('sheet-w').value = data.sheet.width;
-    document.getElementById('sheet-h').value = data.sheet.height;
-    document.getElementById('kerf').value    = data.kerf;
-    data.piespecs.forEach(addRow);
-  });
+loadInstance(document.getElementById('instance').value);
+document.getElementById('instance').addEventListener('change', e => loadInstance(e.target.value));
 document.getElementById('add-row').addEventListener('click', () => addRow());
 
 // == chart =====================================================================
