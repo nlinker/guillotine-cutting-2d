@@ -38,7 +38,7 @@ Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: rando
 Private Const CFG_SEED_CELL           As String = "O1"  ' base random seed (--seed)
 Private Const CFG_GENS_CELL           As String = "O2"  ' generations per run (--gens)
 Private Const CFG_POP_CELL            As String = "O3"  ' population size (--pop)
-Private Const CFG_ALGORITHM_CELL      As String = "O4"  ' algorithm: nfdh/glas/bfdh/jylanki
+Private Const CFG_ALGORITHM_CELL      As String = "O4"  ' algorithm: glas/bfdh/jylanki
 Private Const CFG_LARGE_AREA_CELL     As String = "O5"  ' large_area_threshold (0 = auto)
 Private Const CFG_LONG_DIM_CELL       As String = "O6"  ' long_dim_threshold   (0 = auto)
 Private Const OUT_STATUS_CELL  As String = "S1"  ' status text
@@ -1251,7 +1251,7 @@ Private Sub SetupAlgorithmValidation()
     With ws.Range(CFG_ALGORITHM_CELL).Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-             Formula1:="glas - Генетический алгоритм,nfdh - Следующий подходящий,bfdh - Лучший подходящий,jylanki - Эвристика Джиланки"
+             Formula1:="glas - Генетический алгоритм,bfdh - Лучший подходящий,jylanki - Эвристика Джиланки"
     End With
 End Sub
 

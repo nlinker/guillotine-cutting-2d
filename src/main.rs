@@ -32,8 +32,6 @@ pub(crate) enum Algorithm {
     Glas,
     /// BFDH greedy shelf heuristic (no GA, instant result)
     Bfdh,
-    /// NFDH greedy heuristic — Next-Fit Decreasing Height with in-row gap-fill (no GA, instant result)
-    Nfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
     /// BPC exact solver — branch-price-and-cut column generation (iterative, stoppable)
@@ -45,7 +43,6 @@ impl std::fmt::Display for Algorithm {
         match self {
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
-            Algorithm::Nfdh => write!(f, "nfdh"),
             Algorithm::Jylanki => write!(f, "jylanki"),
             Algorithm::Bpc => write!(f, "bpc"),
         }
@@ -293,7 +290,6 @@ fn make_any_handle(
             ga_handle_to_any(handle, |g, spec| cut::glas::decoder::decode_spec(spec, g))
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
-        Algorithm::Nfdh => unreachable!("Nfdh is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
         Algorithm::Bpc => unreachable!("Bpc is handled before make_any_handle"),
     }
@@ -520,10 +516,9 @@ pub(crate) fn run_with_sink_any(
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki) {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Jylanki) {
         let problem = cut::expand::expand_problem(&spec);
         let flat_sol = match algorithm {
-            Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),
             Algorithm::Jylanki => cut::heuristic::jylanki_solve(&problem),
             _ => cut::heuristic::bfdh_solve(&problem),
         };
@@ -567,13 +562,9 @@ fn run_calc_render(
     progress_interval: usize,
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(
-        algorithm,
-        Algorithm::Bfdh | Algorithm::Nfdh | Algorithm::Jylanki | Algorithm::Bpc
-    ) {
+    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Jylanki | Algorithm::Bpc) {
         let problem = cut::expand::expand_problem(spec);
         let flat_sol = match algorithm {
-            Algorithm::Nfdh => cut::heuristic::nfdh_solve(&problem),
             Algorithm::Bfdh => cut::heuristic::bfdh_solve(&problem),
             // BPC render uses jylanki UB as the initial feasible solution
             Algorithm::Jylanki | Algorithm::Bpc => cut::heuristic::jylanki_solve(&problem),
