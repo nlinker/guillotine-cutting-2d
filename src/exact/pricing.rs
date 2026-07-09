@@ -53,20 +53,25 @@ const MU_EPS: f64 = 1e-12;
 
 /// Work budgets for a single `price` call. The GLF cell and split budgets
 /// belong to `GlfOracle`, which is shared across every node of the
-/// branch-and-bound tree for one BPC run (the cache and the split counter
-/// both persist across the whole run, not just one `Pricer`); the node
-/// budget is per `price` call.
+/// branch-and-bound tree for one BPC run: the cache persists across the whole
+/// run (that's the point of sharing it), but `max_nodes` and `max_splits` are
+/// both per-`price`-call budgets -- see `GlfOracle`'s split-counter reset in
+/// `Pricer::exact`. A lifetime-cumulative split budget was tried first and
+/// rejected: one hard multiset key could exhaust it once and then every
+/// later call -- even ones needing only cached or trivially cheap new keys --
+/// would abort immediately for the rest of the run.
 pub(crate) struct PricingLimits {
     /// Maximum branch-and-bound nodes explored per `price` call.
     pub max_nodes: usize,
     /// Maximum memoized GLF cells over the lifetime of the BPC run.
     pub max_cells: usize,
-    /// Maximum GLF split-enumeration steps over the lifetime of the BPC run.
-    /// A single `GlfOracle::eval` call on a sparse key with `L` distinct
-    /// types enumerates ~2^(L-1) splits even when every sub-key it recurses
-    /// into is already cached (a cache hit is still one loop iteration), so
-    /// `max_cells` alone does not bound this -- it only stops growth of the
-    /// cache, not of an already-mostly-cached call's own enumeration.
+    /// Maximum GLF split-enumeration steps per `price` call (the counter is
+    /// reset at the start of `Pricer::exact`). A single `GlfOracle::eval`
+    /// call on a sparse key with `L` distinct types enumerates ~2^(L-1)
+    /// splits even when every sub-key it recurses into is already cached (a
+    /// cache hit is still one loop iteration), so `max_cells` alone does not
+    /// bound this -- it only stops growth of the cache, not of an
+    /// already-mostly-cached call's own enumeration.
     pub max_splits: usize,
 }
 
@@ -196,6 +201,14 @@ impl GlfOracle {
             splits: 0,
             max_splits,
         }
+    }
+
+    /// Reset the per-call split-enumeration counter. Called once at the
+    /// start of every `Pricer::exact` invocation so a hard multiset key in
+    /// one pricing call can't carry its exhaustion over into unrelated later
+    /// calls -- see `PricingLimits::max_splits`'s doc.
+    fn reset_splits(&mut self) {
+        self.splits = 0;
     }
 }
 
@@ -404,6 +417,7 @@ impl Pricer {
         constraints: &BranchConstraints,
         oracle: &mut GlfOracle,
     ) -> PriceOutcome {
+        oracle.reset_splits();
         let n_types = self.ptypes.len();
         let (found, includes, counts) = {
             let mut dfs = DfsState {
