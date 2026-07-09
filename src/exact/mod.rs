@@ -4,14 +4,21 @@
 /// The secondary metrics (`layout_score`, `drop_consolidation_score`) used by
 /// the GA are not part of the BPC formulation.
 ///
-/// ## Algorithm outline (Phases 0-6 from docs/plans/21_exact-bpc.md)
+/// ## Algorithm outline
 ///
-/// Phases 2-6 are implemented: LB0/UB0 (area bound / Jylanki heuristic), the
-/// RLMP (`rlmp`), the pricing oracle (`pricing`), the root-node column
-/// generation loop, and gap-closing rounding (`round_gap`) below. Phase 7
-/// (Ryan-Foster branch-and-price) is out of scope — see
-/// `docs/plans/21_exact-bpc.md`; a converged root node that still has
-/// `lb < ub` after rounding is reported as an honest `BpcStatus::Gap`.
+/// Phases 2-6 (`docs/plans/21_exact-bpc.md`) are implemented: LB0/UB0 (area
+/// bound / Jylanki heuristic), the RLMP (`rlmp`), the pricing oracle
+/// (`pricing`), column generation, and gap-closing rounding (`round_gap`).
+/// Phase 7 (`docs/plans/22_rf-branch-and-price.md`) adds Ryan-Foster-style
+/// branch-and-bound on top of the root: when a converged node's LP bound
+/// still falls short of the incumbent after rounding, `pick_fractional_type_pair`
+/// finds a pair of *types* with a fractional aggregated co-occurrence and
+/// branches into a "together" and an "apart" child (`BpcNode`), each with its
+/// own restricted column pool. Branching on individual items (rather than
+/// types) doesn't work here because copies of a type are interchangeable
+/// throughout `Pricer` -- see that plan's Context section. `GlfOracle` and
+/// `Pricer` are shared across every node of the tree (constructed once,
+/// below) so the memoized GLF cache isn't rebuilt per node.
 ///
 /// ## Soundness of the reported lower bound
 ///
@@ -39,7 +46,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use pricing::{PriceOutcome, Pricer, PricingLimits};
+use pricing::{BranchConstraints, GlfOracle, PriceOutcome, Pricer, PricingLimits};
 use rlmp::Rlmp;
 
 use crate::{
@@ -62,13 +69,23 @@ const EPS_ROUND: f64 = 1e-4;
 
 /// Hyperparameters for the BPC solver.
 pub struct BpcConfig {
-    /// Emit a `BpcProgress` event every this many column-generation iterations.
+    /// Emit a `BpcProgress` event every this many column-generation iterations
+    /// (counted across the whole branch-and-bound tree, not per node).
     pub progress_interval: usize,
+    /// Maximum number of branch-and-bound tree nodes processed before giving
+    /// up and reporting an honest `Gap`/`Stopped` instead of `Optimal`. Does
+    /// not bound the work done *within* one node's column generation --
+    /// that's `PricingLimits` (per pricing call) and the per-node CG
+    /// iteration cap in `bpc_thread`.
+    pub max_tree_nodes: usize,
 }
 
 impl Default for BpcConfig {
     fn default() -> Self {
-        BpcConfig { progress_interval: 10 }
+        BpcConfig {
+            progress_interval: 10,
+            max_tree_nodes: 10_000,
+        }
     }
 }
 
@@ -83,9 +100,29 @@ pub enum BpcStatus {
 }
 
 /// A single-sheet guillotine cutting pattern (internal use; used in Phases 4-6).
+#[derive(Clone)]
 struct Pattern {
     items: Vec<usize>,
     placements: Vec<Placement>,
+}
+
+/// One node of the branch-and-bound tree (Phase 7). `rlmp`/`column_patterns`
+/// are a from-scratch RLMP restricted to patterns compatible with
+/// `constraints` -- child nodes are built by re-adding only the parent's
+/// patterns that still satisfy the (tightened) constraint set, never by
+/// mutating the parent's RLMP in place.
+struct BpcNode {
+    constraints: BranchConstraints,
+    rlmp: Rlmp,
+    /// Parallel to `rlmp`'s column indexing, same convention as
+    /// `bpc_thread`'s original root-only `column_patterns` (see its doc).
+    column_patterns: Vec<Pattern>,
+    /// Lower bound for this subtree inherited from the parent at creation
+    /// time, before this node's own CG has run. A safe placeholder for
+    /// progress reporting: a child's LP bound can only be >= the parent's
+    /// (constraints only ever shrink the column pool), so this never
+    /// overstates what the subtree can prove.
+    pending_lb: usize,
 }
 
 // == Handle ====================================================================
@@ -232,100 +269,313 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
         return;
     }
 
-    // Phases 3-5: root-node column generation.
-    let mut rlmp = Rlmp::new(problem.pieces.len());
+    // Phases 3-7: branch-and-bound tree of column-generation nodes. `oracle`
+    // and `pricer` are shared across every node (Phase 2) so the memoized GLF
+    // cache and the pricing work budgets aren't rebuilt/reset per node.
+    let pricing_limits = PricingLimits::default();
+    let mut oracle = GlfOracle::new(
+        problem.sheet.width,
+        problem.sheet.height,
+        pricing_limits.max_cells,
+        pricing_limits.max_splits,
+    );
     let mut pricer = Pricer::new(
         &problem.pieces,
         problem.sheet.width,
         problem.sheet.height,
-        PricingLimits::default(),
+        pricing_limits,
     );
-    // Parallel to `rlmp`'s column indexing (0..n singletons, then
+
+    // Parallel to each node's `rlmp` column indexing (0..n singletons, then
     // `add_column` call order): the RLMP only needs each column's item set
     // for the LP, but Phase 6 rounding needs the actual placements, which
     // `Rlmp` never stores. `basic_patterns()` returns column indices into
     // this table.
-    let mut column_patterns: Vec<Pattern> = (0..problem.pieces.len())
-        .map(|i| singleton_pattern(i, &problem))
-        .collect();
+    let root = BpcNode {
+        constraints: BranchConstraints::default(),
+        rlmp: Rlmp::new(problem.pieces.len()),
+        column_patterns: (0..problem.pieces.len())
+            .map(|i| singleton_pattern(i, &problem))
+            .collect(),
+        pending_lb: lb0,
+    };
+    let mut open: Vec<BpcNode> = vec![root];
 
-    // CG is finite in theory (finite pattern universe, strictly decreasing
-    // z_RLMP per accepted column), but a generous cap protects against
-    // pathological floating-point cycling; hitting it is reported honestly
-    // as a Gap, not a crash or a hang.
-    let max_iterations = 20 * problem.pieces.len().max(1) + 1_000;
+    // Per-node CG iteration cap (finite in theory: finite pattern universe,
+    // strictly decreasing z_RLMP per accepted column, but a generous cap
+    // protects against pathological floating-point cycling); applied fresh
+    // to every node's own column generation.
+    let max_cg_iterations = 20 * problem.pieces.len().max(1) + 1_000;
 
     let mut iteration = 0usize;
-    let mut converged = false;
-    while iteration < max_iterations {
+    let mut global_ub = ub0;
+    let mut best_solution = best_sol;
+    let mut tree_nodes_processed = 0usize;
+    // Set once a node's CG is aborted (pricing budget exhausted) or the tree
+    // node budget runs out with nodes still pending: an honest signal that
+    // the final status must be `Gap`, not `Optimal`, even once `open` empties
+    // out (a dropped/unexplored subtree might have hidden a better solution).
+    let mut any_node_incomplete = false;
+
+    while let Some(mut node) = open.pop() {
         if stop.load(Ordering::Relaxed) {
+            let lb = frontier_lb(&open, lb0).min(node.pending_lb);
             let _ = tx.send(BpcInternalEvent::Done {
-                status: BpcStatus::Stopped { lb: lb0, ub: ub0 },
-                solution: best_sol,
+                status: BpcStatus::Stopped { lb, ub: global_ub },
+                solution: best_solution,
             });
             return;
         }
 
-        rlmp.solve();
-        let mu = rlmp.duals();
-        match pricer.price(&mu) {
-            PriceOutcome::Column(pattern) => {
-                rlmp.add_column(&pattern.items);
-                column_patterns.push(pattern);
-                iteration += 1;
-                if iteration.is_multiple_of(cfg.progress_interval) {
-                    // Not yet a proven bound (CG hasn't converged) — report
-                    // the last proven value, per the module doc.
-                    let progress = BpcInternalEvent::Progress {
-                        iteration,
-                        lb: lb0,
-                        ub: ub0,
-                    };
-                    if tx.send(progress).is_err() {
-                        return;
+        tree_nodes_processed += 1;
+        if tree_nodes_processed > cfg.max_tree_nodes {
+            open.push(node);
+            let lb = frontier_lb(&open, lb0);
+            let _ = tx.send(BpcInternalEvent::Done {
+                status: BpcStatus::Gap { lb, ub: global_ub },
+                solution: best_solution,
+            });
+            return;
+        }
+
+        let progress_lb = frontier_lb(&open, lb0).min(node.pending_lb);
+        match run_cg_at_node(
+            &mut node,
+            &mut pricer,
+            &mut oracle,
+            stop,
+            tx,
+            &mut iteration,
+            cfg.progress_interval,
+            progress_lb,
+            global_ub,
+            max_cg_iterations,
+        ) {
+            CgOutcome::Disconnected => return,
+            CgOutcome::StopRequested => {
+                let lb = frontier_lb(&open, lb0).min(node.pending_lb);
+                let _ = tx.send(BpcInternalEvent::Done {
+                    status: BpcStatus::Stopped { lb, ub: global_ub },
+                    solution: best_solution,
+                });
+                return;
+            }
+            // z_RLMP is not a valid bound without convergence, so this
+            // subtree is simply dropped rather than trusted or branched on.
+            CgOutcome::Aborted => any_node_incomplete = true,
+            CgOutcome::Converged => {
+                let node_lb = lb0.max(round_down_lb(node.rlmp.objective()));
+                if node_lb < global_ub {
+                    // Phase 6: try to beat the incumbent by rounding this
+                    // node's fractional RLMP solution before deciding whether
+                    // to branch.
+                    if let Some((rounded_sheets, placements)) =
+                        round_gap(&node.rlmp, &node.column_patterns, &problem, global_ub)
+                    {
+                        global_ub = rounded_sheets;
+                        best_solution = shrink_solution(
+                            &Solution {
+                                placements,
+                                leftovers: vec![],
+                            },
+                            spec,
+                        );
                     }
                 }
+                if node_lb < global_ub {
+                    match pick_fractional_type_pair(&node, &pricer) {
+                        Some((t, t2)) => {
+                            let has_type =
+                                |p: &Pattern, ty: usize| p.items.iter().any(|&i| pricer.type_of(i) == Some(ty));
+                            let together = child_node(
+                                &node,
+                                node.constraints.with_forced_together(t, t2),
+                                node_lb,
+                                &problem,
+                                |p| has_type(p, t) == has_type(p, t2),
+                            );
+                            let apart =
+                                child_node(&node, node.constraints.with_forbidden(t, t2), node_lb, &problem, |p| {
+                                    !(has_type(p, t) && has_type(p, t2))
+                                });
+                            open.push(together);
+                            open.push(apart);
+                        }
+                        None => {
+                            // Either this node's LP solution is already
+                            // integral (round_gap above already turned it
+                            // into a UB candidate if it improved things, and
+                            // node_lb is now a fully resolved bound for this
+                            // subtree -- nothing left to explore), or the
+                            // rare edge case docs/plans/22_rf-branch-and-price.md
+                            // flags: some lambda is still fractional but no
+                            // type pair captures it. The Vanderbeck-style
+                            // aggregated fallback for that case isn't
+                            // implemented; detect it and report it honestly
+                            // instead of silently over-claiming optimality.
+                            if node_has_fractional_lambda(&node) {
+                                any_node_incomplete = true;
+                            }
+                        }
+                    }
+                }
+                // else: fathomed by bound -- no solution in this subtree can
+                // beat the incumbent, so it needs no further exploration.
             }
-            PriceOutcome::NoneExists => {
-                converged = true;
-                break;
-            }
-            PriceOutcome::Aborted => break,
         }
     }
 
-    let mut ub = ub0;
-    let mut solution = best_sol;
-    let status = if converged {
-        let lb = lb0.max(round_down_lb(rlmp.objective()));
-        debug_assert!(lb <= ub0, "computed LB {lb} exceeds known feasible UB {ub0}");
-        if lb < ub0 {
-            // Phase 6: try to beat UB0 by rounding the final fractional
-            // RLMP solution instead of accepting the gap outright.
-            if let Some((rounded_sheets, placements)) = round_gap(&rlmp, &column_patterns, &problem, ub0) {
-                ub = rounded_sheets;
-                solution = shrink_solution(
-                    &Solution {
-                        placements,
-                        leftovers: vec![],
-                    },
-                    spec,
-                );
+    let status = if any_node_incomplete {
+        BpcStatus::Gap { lb: lb0, ub: global_ub }
+    } else {
+        BpcStatus::Optimal { sheets: global_ub }
+    };
+    let _ = tx.send(BpcInternalEvent::Done {
+        status,
+        solution: best_solution,
+    });
+}
+
+/// Lower bound over every node still pending in `open`, or `fallback` if
+/// `open` is empty. Nodes not yet processed by column generation only carry
+/// their `pending_lb` placeholder (inherited from their parent), never a
+/// tighter bound -- see `BpcNode::pending_lb`'s doc.
+fn frontier_lb(open: &[BpcNode], fallback: usize) -> usize {
+    open.iter().map(|n| n.pending_lb).min().unwrap_or(fallback)
+}
+
+/// Outcome of running column generation to convergence (or budget
+/// exhaustion) at one branch-and-bound tree node.
+enum CgOutcome {
+    /// Pricing proved no improving column exists: `node.rlmp.objective()` is
+    /// now a valid LP bound for this node's subtree.
+    Converged,
+    /// A work budget (pricing or the per-node iteration cap) ran out before
+    /// convergence; this node's LP state cannot be trusted as a bound.
+    Aborted,
+    /// The stop flag was set; the whole solve is winding down.
+    StopRequested,
+    /// The progress channel's receiver is gone (e.g. SSE client
+    /// disconnected); the caller should stop immediately without sending.
+    Disconnected,
+}
+
+/// Run column generation at one tree node to convergence, forwarding
+/// progress events (throttled by `progress_interval`, counted against the
+/// shared `iteration` counter). `global_lb`/`global_ub` are a snapshot for
+/// progress reporting only -- they don't change mid-call.
+#[allow(clippy::too_many_arguments)]
+fn run_cg_at_node(
+    node: &mut BpcNode,
+    pricer: &mut Pricer,
+    oracle: &mut GlfOracle,
+    stop: &AtomicBool,
+    tx: &std::sync::mpsc::Sender<BpcInternalEvent>,
+    iteration: &mut usize,
+    progress_interval: usize,
+    global_lb: usize,
+    global_ub: usize,
+    max_iterations: usize,
+) -> CgOutcome {
+    let mut local_iterations = 0usize;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return CgOutcome::StopRequested;
+        }
+        if local_iterations >= max_iterations {
+            return CgOutcome::Aborted;
+        }
+
+        node.rlmp.solve();
+        let mu = node.rlmp.duals();
+        match pricer.price(&mu, &node.constraints, oracle) {
+            PriceOutcome::Column(pattern) => {
+                node.rlmp.add_column(&pattern.items);
+                node.column_patterns.push(pattern);
+                *iteration += 1;
+                local_iterations += 1;
+                if iteration.is_multiple_of(progress_interval) {
+                    // Not yet a proven bound (this node's CG hasn't
+                    // converged) -- report the last proven frontier value.
+                    let progress = BpcInternalEvent::Progress {
+                        iteration: *iteration,
+                        lb: global_lb,
+                        ub: global_ub,
+                    };
+                    if tx.send(progress).is_err() {
+                        return CgOutcome::Disconnected;
+                    }
+                }
+            }
+            PriceOutcome::NoneExists => return CgOutcome::Converged,
+            PriceOutcome::Aborted => return CgOutcome::Aborted,
+        }
+    }
+}
+
+/// Find a pair of distinct types with a fractional aggregated co-occurrence
+/// `y_{t,t'} = sum_p lambda_p * [pattern p contains a copy of both t and
+/// t']`, picking the one closest to 0.5 (classic "most fractional"
+/// tie-break). `None` if every type pair present in the node's basic
+/// patterns is already integral.
+fn pick_fractional_type_pair(node: &BpcNode, pricer: &Pricer) -> Option<(usize, usize)> {
+    let mut y: std::collections::HashMap<(usize, usize), f64> = std::collections::HashMap::new();
+    for (col, lambda) in node.rlmp.basic_patterns() {
+        let mut types: Vec<usize> = node.column_patterns[col]
+            .items
+            .iter()
+            .filter_map(|&i| pricer.type_of(i))
+            .collect();
+        types.sort_unstable();
+        types.dedup();
+        for i in 0..types.len() {
+            for &tj in &types[i + 1..] {
+                *y.entry((types[i], tj)).or_insert(0.0) += lambda;
             }
         }
-        if lb >= ub {
-            BpcStatus::Optimal { sheets: ub }
-        } else {
-            BpcStatus::Gap { lb, ub }
+    }
+    y.into_iter()
+        .filter(|&(_, v)| (v - v.round()).abs() > EPS_ROUND)
+        .min_by(|a, b| (a.1 - 0.5).abs().total_cmp(&(b.1 - 0.5).abs()))
+        .map(|(pair, _)| pair)
+}
+
+/// Whether any basic pattern in `node` has a non-integral lambda -- used
+/// only to distinguish "this node is already integral, nothing to branch on"
+/// from the rare edge case where `pick_fractional_type_pair` finds nothing
+/// even though the LP solution is still fractional (see the call site).
+fn node_has_fractional_lambda(node: &BpcNode) -> bool {
+    node.rlmp
+        .basic_patterns()
+        .iter()
+        .any(|&(_, lambda)| (lambda - lambda.round()).abs() > EPS_ROUND)
+}
+
+/// Build a child node: a from-scratch RLMP seeded with the parent's patterns
+/// that satisfy `keep` (plus the usual singletons), under a tightened
+/// constraint set.
+fn child_node(
+    parent: &BpcNode,
+    constraints: BranchConstraints,
+    pending_lb: usize,
+    problem: &Problem,
+    keep: impl Fn(&Pattern) -> bool,
+) -> BpcNode {
+    let n = problem.pieces.len();
+    let mut rlmp = Rlmp::new(n);
+    let mut column_patterns: Vec<Pattern> = (0..n).map(|i| singleton_pattern(i, problem)).collect();
+    for pattern in parent.column_patterns.iter().skip(n) {
+        if keep(pattern) {
+            rlmp.add_column(&pattern.items);
+            column_patterns.push(pattern.clone());
         }
-    } else {
-        // Aborted (pricing budget exhausted) or the iteration cap was hit:
-        // z_RLMP is not a valid bound without convergence, so lb stays lb0.
-        // Rounding needs a converged RLMP (its dual/primal split is only
-        // meaningful at LP optimality), so it is skipped here too.
-        BpcStatus::Gap { lb: lb0, ub: ub0 }
-    };
-    let _ = tx.send(BpcInternalEvent::Done { status, solution });
+    }
+    BpcNode {
+        constraints,
+        rlmp,
+        column_patterns,
+        pending_lb,
+    }
 }
 
 /// A single-item pattern occupying its own sheet at the origin. Used to seed
@@ -440,6 +690,109 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    fn piece(w: u32, h: u32) -> Piece {
+        Piece {
+            name: String::new(),
+            width: w,
+            height: h,
+            can_rotate: false,
+        }
+    }
+
+    fn dummy_pattern(items: Vec<usize>) -> Pattern {
+        Pattern {
+            items,
+            placements: vec![],
+        }
+    }
+
+    // The textbook example motivating Ryan-Foster branching in the first
+    // place: 3 items, one of each (distinct) type, with only pairwise
+    // patterns available (no full-triple or singleton pattern competitive at
+    // the optimum) -- the LP relaxation's unique optimum is the classic
+    // lambda=0.5 on each of the 3 pairs, objective 1.5, with every type pair
+    // equally (and only) fractional. Verifies `pick_fractional_type_pair`
+    // finds one of them via the real `Pricer::type_of` mapping, not just
+    // `Rlmp`'s raw column indices.
+    #[test]
+    fn pick_fractional_type_pair_finds_a_fractional_pair() {
+        let pieces = vec![piece(5, 5), piece(4, 4), piece(3, 3)];
+        let pricer = Pricer::new(&pieces, 10, 10, PricingLimits::default());
+
+        let mut rlmp = Rlmp::new(3);
+        rlmp.add_column(&[0, 1]);
+        rlmp.add_column(&[0, 2]);
+        rlmp.add_column(&[1, 2]);
+        rlmp.solve();
+        assert!(
+            (rlmp.objective() - 1.5).abs() < 1e-6,
+            "expected the classic 1.5 fractional optimum, got {}",
+            rlmp.objective()
+        );
+
+        let column_patterns = vec![
+            dummy_pattern(vec![0]),
+            dummy_pattern(vec![1]),
+            dummy_pattern(vec![2]),
+            dummy_pattern(vec![0, 1]),
+            dummy_pattern(vec![0, 2]),
+            dummy_pattern(vec![1, 2]),
+        ];
+        let node = BpcNode {
+            constraints: BranchConstraints::default(),
+            rlmp,
+            column_patterns,
+            pending_lb: 0,
+        };
+        let (t, t2) = pick_fractional_type_pair(&node, &pricer).expect("must find a fractional type pair");
+        let pair = (t.min(t2), t.max(t2));
+        assert!([(0, 1), (0, 2), (1, 2)].contains(&pair), "unexpected pair {pair:?}");
+    }
+
+    // A child node must both filter `column_patterns` *and* actually leave
+    // the excluded pattern out of the rebuilt `Rlmp` (not just out of the
+    // bookkeeping Vec) -- checked behaviorally: dropping the only pattern
+    // that covers both items forces the child's LP optimum back up to 2,
+    // same as if the combined pattern had never been generated at all.
+    #[test]
+    fn child_node_drops_the_filtered_pattern_from_the_rebuilt_rlmp() {
+        let problem = tiny_problem(2);
+        let mut parent_rlmp = Rlmp::new(2);
+        parent_rlmp.add_column(&[0, 1]);
+        parent_rlmp.solve();
+        assert!(
+            (parent_rlmp.objective() - 1.0).abs() < 1e-9,
+            "parent should use the combined pattern"
+        );
+
+        let parent = BpcNode {
+            constraints: BranchConstraints::default(),
+            rlmp: parent_rlmp,
+            column_patterns: vec![
+                singleton_pattern(0, &problem),
+                singleton_pattern(1, &problem),
+                dummy_pattern(vec![0, 1]),
+            ],
+            pending_lb: 0,
+        };
+
+        let mut child = child_node(&parent, BranchConstraints::default(), 1, &problem, |p| {
+            p.items.len() == 1
+        });
+        assert_eq!(
+            child.column_patterns.len(),
+            2,
+            "the combined pattern must not survive the filter"
+        );
+        assert_eq!(child.pending_lb, 1);
+        child.rlmp.solve();
+        assert!(
+            (child.rlmp.objective() - 2.0).abs() < 1e-9,
+            "without the combined pattern the child must fall back to 2 singleton sheets, got {}",
+            child.rlmp.objective()
+        );
     }
 
     #[test]
@@ -568,7 +921,10 @@ mod tests {
     #[test]
     fn stop_flag_respected() {
         let spec = Arc::new(parse_problem("100x100F:0:30x30/20").unwrap());
-        let cfg = Arc::new(BpcConfig { progress_interval: 1 });
+        let cfg = Arc::new(BpcConfig {
+            progress_interval: 1,
+            ..BpcConfig::default()
+        });
         let handle = run_bpc_bg(Arc::clone(&spec), cfg);
         handle.stop.store(true, Ordering::Relaxed);
 

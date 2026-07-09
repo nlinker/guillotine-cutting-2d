@@ -51,15 +51,17 @@ const MU_EPS: f64 = 1e-12;
 
 // == Types =====================================================================
 
-/// Work budgets for a single `price` call. The GLF cell and split budgets are
-/// shared across calls (the cache and the split counter both persist), the
-/// node budget is per call.
+/// Work budgets for a single `price` call. The GLF cell and split budgets
+/// belong to `GlfOracle`, which is shared across every node of the
+/// branch-and-bound tree for one BPC run (the cache and the split counter
+/// both persist across the whole run, not just one `Pricer`); the node
+/// budget is per `price` call.
 pub(crate) struct PricingLimits {
     /// Maximum branch-and-bound nodes explored per `price` call.
     pub max_nodes: usize,
-    /// Maximum memoized GLF cells over the lifetime of the `Pricer`.
+    /// Maximum memoized GLF cells over the lifetime of the BPC run.
     pub max_cells: usize,
-    /// Maximum GLF split-enumeration steps over the lifetime of the `Pricer`.
+    /// Maximum GLF split-enumeration steps over the lifetime of the BPC run.
     /// A single `GlfOracle::eval` call on a sparse key with `L` distinct
     /// types enumerates ~2^(L-1) splits even when every sub-key it recurses
     /// into is already cached (a cache hit is still one loop iteration), so
@@ -75,6 +77,42 @@ impl Default for PricingLimits {
             max_cells: 1_000_000,
             max_splits: 20_000_000,
         }
+    }
+}
+
+/// Branch-and-price constraints restricting which patterns the pricing
+/// oracle may return, expressed as pairs of *types* (not individual flat
+/// items). Ryan-Foster branching normally operates on item pairs, but copies
+/// of a type are interchangeable throughout `Pricer` (the exact search
+/// already takes a mu-descending prefix of a type's copies, `DfsState`
+/// tracks only per-type counts) -- branching on two copies of the same type
+/// changes nothing (either copy is as good as the other), so the LP would
+/// never converge. See `docs/plans/22_rf-branch-and-price.md` for the
+/// rationale. Both fields hold `(a, b)` with `a < b`.
+#[derive(Clone, Default)]
+pub(crate) struct BranchConstraints {
+    /// A pattern may not contain a copy of both types.
+    forbidden: Vec<(usize, usize)>,
+    /// A pattern must contain a copy of both types, or of neither. Checked
+    /// only once a candidate pattern is complete (a leaf of the search) --
+    /// unlike `forbidden`, there is no sound way to prune a partial pattern
+    /// against this, since a currently-missing type might still be added.
+    forced_together: Vec<(usize, usize)>,
+}
+
+impl BranchConstraints {
+    /// A copy of `self` with an added forbidden type pair.
+    pub(crate) fn with_forbidden(&self, a: usize, b: usize) -> Self {
+        let mut c = self.clone();
+        c.forbidden.push((a.min(b), a.max(b)));
+        c
+    }
+
+    /// A copy of `self` with an added forced-together type pair.
+    pub(crate) fn with_forced_together(&self, a: usize, b: usize) -> Self {
+        let mut c = self.clone();
+        c.forced_together.push((a.min(b), a.max(b)));
+        c
     }
 }
 
@@ -134,8 +172,11 @@ struct ChainStep {
 /// width) for a multiset of pieces, clipped to the sheet: breakpoints with
 /// `x > sheet_w` or `h > sheet_h` are dropped, so an empty function means
 /// "does not fit on one sheet".  The cache depends only on geometry (not on
-/// duals) and persists across pricing rounds.
-struct GlfOracle {
+/// duals or branch constraints) and persists across pricing rounds -- owned
+/// externally (one instance per BPC run, not per `Pricer`) so every node of
+/// the branch-and-bound tree shares the same memoized cache instead of
+/// rebuilding it from scratch per node.
+pub(crate) struct GlfOracle {
     sheet_w: u32,
     sheet_h: u32,
     cache: HashMap<CountKey, StepFn>,
@@ -143,6 +184,19 @@ struct GlfOracle {
     /// Total split-enumeration steps taken so far, across all `eval` calls.
     splits: usize,
     max_splits: usize,
+}
+
+impl GlfOracle {
+    pub(crate) fn new(sheet_w: u32, sheet_h: u32, max_cells: usize, max_splits: usize) -> Self {
+        GlfOracle {
+            sheet_w,
+            sheet_h,
+            cache: HashMap::new(),
+            max_cells,
+            splits: 0,
+            max_splits,
+        }
+    }
 }
 
 /// Signals that a work budget was exhausted mid-search.
@@ -156,13 +210,15 @@ enum Include {
     Feasible(Option<StepFn>),
 }
 
-/// Pricing oracle with a persistent GLF cache. One instance per BPC run.
+/// Pricing oracle for a single BPC run. `GlfOracle` (the memoized GLF cache)
+/// is owned externally and passed to `price` by `&mut` -- see its doc for why
+/// it must be shared across branch-and-bound tree nodes rather than living
+/// inside `Pricer`.
 pub(crate) struct Pricer {
     pieces: Vec<Piece>,
     ptypes: Vec<PType>,
     sheet_w: u32,
     sheet_h: u32,
-    oracle: GlfOracle,
     limits: PricingLimits,
 }
 
@@ -171,6 +227,7 @@ struct DfsState<'a> {
     candidates: &'a [Candidate],
     ptypes: &'a [PType],
     oracle: &'a mut GlfOracle,
+    constraints: &'a BranchConstraints,
     sheet_area: u64,
     max_nodes: usize,
     nodes: usize,
@@ -221,26 +278,34 @@ impl Pricer {
                 }
             }
         }
-        let oracle = GlfOracle {
-            sheet_w,
-            sheet_h,
-            cache: HashMap::new(),
-            max_cells: limits.max_cells,
-            splits: 0,
-            max_splits: limits.max_splits,
-        };
         Pricer {
             pieces: pieces.to_vec(),
             ptypes,
             sheet_w,
             sheet_h,
-            oracle,
             limits,
         }
     }
 
-    /// One pricing round for duals `mu` (indexed by flat piece index).
-    pub(crate) fn price(&mut self, mu: &[f64]) -> PriceOutcome {
+    /// Which internal type index a flat piece belongs to, or `None` if it
+    /// was dropped in `new` (cannot fit the sheet in any orientation). Used
+    /// by the branch-and-bound tree driver (`mod.rs`) to translate a
+    /// pattern's flat item indices into type indices for RF-style type-pair
+    /// branching (`docs/plans/22_rf-branch-and-price.md`).
+    pub(crate) fn type_of(&self, flat_idx: usize) -> Option<usize> {
+        self.ptypes.iter().position(|t| t.copies.contains(&flat_idx))
+    }
+
+    /// One pricing round for duals `mu` (indexed by flat piece index), under
+    /// the current node's branch constraints. `oracle` is shared across
+    /// every node of the branch-and-bound tree for one BPC run (see
+    /// `GlfOracle`'s doc) -- callers must pass the same instance every time.
+    pub(crate) fn price(
+        &mut self,
+        mu: &[f64],
+        constraints: &BranchConstraints,
+        oracle: &mut GlfOracle,
+    ) -> PriceOutcome {
         let candidates = self.build_candidates(mu);
         if candidates.is_empty() {
             return PriceOutcome::NoneExists;
@@ -251,13 +316,13 @@ impl Pricer {
         let mut profit_order = density_order.clone();
         profit_order.sort_by(|&a, &b| candidates[b].profit.total_cmp(&candidates[a].profit));
         for order in [&density_order, &profit_order] {
-            if let Some(p) = self.try_chain(&candidates, order) {
+            if let Some(p) = self.try_chain(&candidates, order, constraints) {
                 return PriceOutcome::Column(p);
             }
         }
 
         // Stage 2: exact branch-and-bound.
-        self.exact(&candidates)
+        self.exact(&candidates, constraints, oracle)
     }
 
     // -- Candidate construction ------------------------------------------------
@@ -292,16 +357,22 @@ impl Pricer {
     // -- Stage 1: greedy chain -------------------------------------------------
 
     /// Greedily chain-compose candidates in the given order, keeping every
-    /// copy whose addition still fits the sheet.  Returns a pattern only if
-    /// the accumulated profit is improving.
-    fn try_chain(&self, candidates: &[Candidate], order: &[usize]) -> Option<Pattern> {
+    /// copy whose addition still fits the sheet and does not violate a
+    /// `forbidden` type pair against a type already in the chain. Returns a
+    /// pattern only if the accumulated profit is improving and the result
+    /// respects every `forced_together` pair.
+    fn try_chain(&self, candidates: &[Candidate], order: &[usize], constraints: &BranchConstraints) -> Option<Pattern> {
         let sheet_area = self.sheet_w as u64 * self.sheet_h as u64;
         let mut steps: Vec<ChainStep> = Vec::new();
         let mut profit = 0.0f64;
         let mut area = 0u64;
+        let mut included = vec![false; self.ptypes.len()];
         for &pos in order {
             let c = &candidates[pos];
             if area + c.area > sheet_area {
+                continue;
+            }
+            if chain_forbidden(constraints, &included, c.type_idx) {
                 continue;
             }
             let base = &self.ptypes[c.type_idx].base;
@@ -313,10 +384,11 @@ impl Pricer {
                 continue;
             }
             steps.push(ChainStep { candidate_pos: pos, f });
+            included[c.type_idx] = true;
             profit += c.profit;
             area += c.area;
         }
-        if profit <= 1.0 + RC_EPS {
+        if profit <= 1.0 + RC_EPS || !chain_satisfies_forced(constraints, &included) {
             return None;
         }
         let tps = chain_reconstruct(&steps, candidates, &self.ptypes, self.sheet_w)?;
@@ -326,13 +398,19 @@ impl Pricer {
 
     // -- Stage 2: exact search ------------------------------------------------
 
-    fn exact(&mut self, candidates: &[Candidate]) -> PriceOutcome {
+    fn exact(
+        &mut self,
+        candidates: &[Candidate],
+        constraints: &BranchConstraints,
+        oracle: &mut GlfOracle,
+    ) -> PriceOutcome {
         let n_types = self.ptypes.len();
         let (found, includes, counts) = {
             let mut dfs = DfsState {
                 candidates,
                 ptypes: &self.ptypes,
-                oracle: &mut self.oracle,
+                oracle,
+                constraints,
                 sheet_area: self.sheet_w as u64 * self.sheet_h as u64,
                 max_nodes: self.limits.max_nodes,
                 nodes: 0,
@@ -351,7 +429,7 @@ impl Pricer {
         };
         debug_assert!(found);
         let pattern = self
-            .reconstruct_found(candidates, &includes, &counts)
+            .reconstruct_found(candidates, &includes, &counts, oracle)
             .and_then(|tps| self.assemble(&tps, &includes, candidates));
         match pattern {
             Some(p) => PriceOutcome::Column(p),
@@ -369,6 +447,7 @@ impl Pricer {
         candidates: &[Candidate],
         includes: &[usize],
         counts: &[u16],
+        oracle: &mut GlfOracle,
     ) -> Option<Vec<TypePlacement>> {
         let mut steps: Vec<ChainStep> = Vec::with_capacity(includes.len());
         for &pos in includes {
@@ -389,7 +468,7 @@ impl Pricer {
             return Some(tps);
         }
         let key = sparse_key(counts);
-        self.oracle.recon(&self.ptypes, &key)
+        oracle.recon(&self.ptypes, &key)
     }
 
     // -- Pattern assembly & validation ------------------------------------------
@@ -458,7 +537,12 @@ impl DfsState<'_> {
             pos += 1;
         }
         if pos == self.candidates.len() {
-            return Ok(false);
+            // Reached with no more candidates to decide: accept only if the
+            // set finalized this way is both improving and forced-consistent
+            // (the `profit > ... ` shortcut below skips this path whenever
+            // `forced_together` is trivially satisfied, i.e. on every node
+            // without active constraints -- see `satisfies_forced`'s doc).
+            return Ok(self.profit > 1.0 + RC_EPS && self.satisfies_forced());
         }
         if self.profit + self.frac_bound(pos) <= 1.0 + RC_EPS {
             return Ok(false);
@@ -466,13 +550,21 @@ impl DfsState<'_> {
         let c = self.candidates[pos];
         // Include branch.
         if self.area + c.area <= self.sheet_area
+            && !self.forbidden_with_included(c.type_idx)
             && let Include::Feasible(child_chain) = self.feasible_with(&c, chain)?
         {
             self.counts[c.type_idx] += 1;
             self.includes.push(pos);
             self.profit += c.profit;
             self.area += c.area;
-            if self.profit > 1.0 + RC_EPS || self.dfs(pos + 1, child_chain.as_ref())? {
+            // Accepting here (instead of continuing to a longer, possibly
+            // more-profitable set) is sound because the LP only needs *an*
+            // improving column, not the best one -- but it is only valid
+            // when `forced_together` already holds for the set as it
+            // stands; otherwise a still-missing partner type might only be
+            // reachable by continuing the search, so fall through to it.
+            let accept_now = self.profit > 1.0 + RC_EPS && self.satisfies_forced();
+            if accept_now || self.dfs(pos + 1, child_chain.as_ref())? {
                 return Ok(true);
             }
             self.counts[c.type_idx] -= 1;
@@ -534,6 +626,33 @@ impl DfsState<'_> {
             }
         }
         total
+    }
+
+    /// Whether including a copy of type `t` would put it in the same
+    /// pattern as a type it is `forbidden` to accompany, given the types
+    /// already included (`counts[other] > 0`).
+    fn forbidden_with_included(&self, t: usize) -> bool {
+        self.constraints.forbidden.iter().any(|&(a, b)| {
+            let other = if a == t {
+                b
+            } else if b == t {
+                a
+            } else {
+                return false;
+            };
+            self.counts[other] > 0
+        })
+    }
+
+    /// Whether the current include set agrees with every `forced_together`
+    /// pair (both types present, or both absent). Trivially `true` when
+    /// `constraints.forced_together` is empty (the common case: no active
+    /// branch constraint), which keeps this a no-op on the unbranched root.
+    fn satisfies_forced(&self) -> bool {
+        self.constraints
+            .forced_together
+            .iter()
+            .all(|&(a, b)| (self.counts[a] > 0) == (self.counts[b] > 0))
     }
 }
 
@@ -756,6 +875,29 @@ fn rotated_for_width(t: &PType, w: u32, max_h: u32) -> Option<bool> {
     }
 }
 
+/// `chain_forbidden`/`chain_satisfies_forced` mirror
+/// `DfsState::forbidden_with_included`/`satisfies_forced` for `try_chain`,
+/// which tracks presence as a `Vec<bool>` rather than per-type counts.
+fn chain_forbidden(constraints: &BranchConstraints, included: &[bool], t: usize) -> bool {
+    constraints.forbidden.iter().any(|&(a, b)| {
+        let other = if a == t {
+            b
+        } else if b == t {
+            a
+        } else {
+            return false;
+        };
+        included[other]
+    })
+}
+
+fn chain_satisfies_forced(constraints: &BranchConstraints, included: &[bool]) -> bool {
+    constraints
+        .forced_together
+        .iter()
+        .all(|&(a, b)| included[a] == included[b])
+}
+
 /// `min(h_cut, v_cut)` of a prefix block and a piece, clipped to the sheet.
 /// Empty result = the combination cannot fit on one sheet.
 fn compose(prefix: &StepFn, base: &StepFn, sheet_w: u32, sheet_h: u32) -> StepFn {
@@ -842,8 +984,10 @@ mod tests {
         }
     }
 
-    fn pricer(pieces: &[Piece], w: u32, h: u32) -> Pricer {
-        Pricer::new(pieces, w, h, PricingLimits::default())
+    fn pricer(pieces: &[Piece], w: u32, h: u32) -> (Pricer, GlfOracle) {
+        let limits = PricingLimits::default();
+        let oracle = GlfOracle::new(w, h, limits.max_cells, limits.max_splits);
+        (Pricer::new(pieces, w, h, limits), oracle)
     }
 
     /// Assert the pattern is internally consistent and guillotine-valid.
@@ -880,8 +1024,8 @@ mod tests {
     fn column_found_for_two_copies_same_type() {
         let pieces = vec![piece(5, 5, false), piece(5, 5, false)];
         let mu = [0.9, 0.9];
-        let mut pr = pricer(&pieces, 10, 5);
-        match pr.price(&mu) {
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 5);
+        match pr.price(&mu, &BranchConstraints::default(), &mut oracle) {
             PriceOutcome::Column(p) => {
                 assert_eq!(p.items.len(), 2);
                 check_pattern(&pieces, 10, 5, &p, &mu);
@@ -894,8 +1038,11 @@ mod tests {
     #[test]
     fn none_exists_when_duals_low() {
         let pieces = vec![piece(5, 5, false), piece(5, 5, false)];
-        let mut pr = pricer(&pieces, 10, 5);
-        assert!(matches!(pr.price(&[0.4, 0.4]), PriceOutcome::NoneExists));
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 5);
+        assert!(matches!(
+            pr.price(&[0.4, 0.4], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::NoneExists
+        ));
     }
 
     // A single piece whose dual alone exceeds 1: singleton pattern.
@@ -903,8 +1050,8 @@ mod tests {
     fn singleton_column_when_dual_exceeds_one() {
         let pieces = vec![piece(5, 5, false)];
         let mu = [1.5];
-        let mut pr = pricer(&pieces, 10, 10);
-        match pr.price(&mu) {
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 10);
+        match pr.price(&mu, &BranchConstraints::default(), &mut oracle) {
             PriceOutcome::Column(p) => {
                 assert_eq!(p.items, vec![0]);
                 check_pattern(&pieces, 10, 10, &p, &mu);
@@ -925,8 +1072,8 @@ mod tests {
             piece(4, 3, false),
         ];
         let mu = [0.3; 4];
-        let mut pr = pricer(&pieces, 10, 7);
-        match pr.price(&mu) {
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 7);
+        match pr.price(&mu, &BranchConstraints::default(), &mut oracle) {
             PriceOutcome::Column(p) => {
                 assert_eq!(p.items.len(), 4, "all four grid pieces must be in the pattern");
                 check_pattern(&pieces, 10, 7, &p, &mu);
@@ -948,8 +1095,80 @@ mod tests {
             piece(6, 3, false),
             piece(4, 3, false),
         ];
-        let mut pr = pricer(&pieces, 10, 6);
-        assert!(matches!(pr.price(&[0.55, 0.3, 0.3, 0.3]), PriceOutcome::NoneExists));
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 6);
+        assert!(matches!(
+            pr.price(&[0.55, 0.3, 0.3, 0.3], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::NoneExists
+        ));
+    }
+
+    // Same grid instance, uniform mu = 0.3 each (full grid profit = 1.2).
+    // Forbidding types 0 and 1 from co-occurring rules out the full grid;
+    // any triple excluding one of them only reaches profit 0.9, never
+    // exceeding the threshold -- so no improving pattern remains.
+    #[test]
+    fn forbidden_pair_blocks_the_combining_pattern() {
+        let pieces = vec![
+            piece(6, 4, false),
+            piece(4, 4, false),
+            piece(6, 3, false),
+            piece(4, 3, false),
+        ];
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 7);
+        let constraints = BranchConstraints::default().with_forbidden(0, 1);
+        assert!(matches!(
+            pr.price(&[0.3; 4], &constraints, &mut oracle),
+            PriceOutcome::NoneExists
+        ));
+    }
+
+    // mu tuned so the unconstrained chain heuristic finds the triple
+    // {0, 2, 3} (profit 1.05, excluding type 1) before the exact search is
+    // ever needed. Forcing types 0 and 1 together rules that triple out (it
+    // has 0 but not 1); the only pattern that both clears the profit
+    // threshold and satisfies the constraint is the full 4-item grid
+    // (profit 1.15) -- this exercises the leaf-level `satisfies_forced`
+    // check deferring acceptance past the triple, in both the chain
+    // heuristic and the exact search.
+    #[test]
+    fn forced_together_pair_requires_the_full_grid() {
+        let pieces = vec![
+            piece(6, 4, false),
+            piece(4, 4, false),
+            piece(6, 3, false),
+            piece(4, 3, false),
+        ];
+        let mu = [0.35, 0.1, 0.35, 0.35];
+
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 7);
+        match pr.price(&mu, &BranchConstraints::default(), &mut oracle) {
+            PriceOutcome::Column(p) => {
+                let mut items = p.items.clone();
+                items.sort_unstable();
+                assert_eq!(
+                    items,
+                    vec![0, 2, 3],
+                    "expected the unconstrained triple, excluding type 1"
+                );
+            }
+            _ => panic!("expected a column"),
+        }
+
+        let (mut pr2, mut oracle2) = pricer(&pieces, 10, 7);
+        let constraints = BranchConstraints::default().with_forced_together(0, 1);
+        match pr2.price(&mu, &constraints, &mut oracle2) {
+            PriceOutcome::Column(p) => {
+                let mut items = p.items.clone();
+                items.sort_unstable();
+                assert_eq!(
+                    items,
+                    vec![0, 1, 2, 3],
+                    "must include the full grid to satisfy forced-together"
+                );
+                check_pattern(&pieces, 10, 7, &p, &mu);
+            }
+            _ => panic!("expected the full grid under forced-together"),
+        }
     }
 
     // Rotatable 4x6 pieces on a 6x8 sheet: only the rotated stack fits.
@@ -957,8 +1176,8 @@ mod tests {
     fn rotation_used_in_pattern() {
         let pieces = vec![piece(4, 6, true), piece(4, 6, true)];
         let mu = [0.6, 0.6];
-        let mut pr = pricer(&pieces, 6, 8);
-        match pr.price(&mu) {
+        let (mut pr, mut oracle) = pricer(&pieces, 6, 8);
+        match pr.price(&mu, &BranchConstraints::default(), &mut oracle) {
             PriceOutcome::Column(p) => {
                 assert_eq!(p.items.len(), 2);
                 assert!(p.placements.iter().all(|pl| pl.rotated), "both pieces must be rotated");
@@ -983,8 +1202,12 @@ mod tests {
             max_cells: 200_000,
             max_splits: 2_000_000,
         };
+        let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
-        assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
+        assert!(matches!(
+            pr.price(&[0.3; 4], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::Aborted
+        ));
     }
 
     // GLF cell budget too small: the oracle aborts mid-DP.
@@ -1001,8 +1224,12 @@ mod tests {
             max_cells: 3,
             max_splits: 2_000_000,
         };
+        let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
-        assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
+        assert!(matches!(
+            pr.price(&[0.3; 4], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::Aborted
+        ));
     }
 
     // GLF split budget too small: even though every sub-key the top-level
@@ -1022,15 +1249,22 @@ mod tests {
             max_cells: 200_000,
             max_splits: 1,
         };
+        let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
-        assert!(matches!(pr.price(&[0.3; 4]), PriceOutcome::Aborted));
+        assert!(matches!(
+            pr.price(&[0.3; 4], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::Aborted
+        ));
     }
 
     // All duals are zero: no candidates at all.
     #[test]
     fn none_exists_for_zero_duals() {
         let pieces = vec![piece(5, 5, false)];
-        let mut pr = pricer(&pieces, 10, 10);
-        assert!(matches!(pr.price(&[0.0]), PriceOutcome::NoneExists));
+        let (mut pr, mut oracle) = pricer(&pieces, 10, 10);
+        assert!(matches!(
+            pr.price(&[0.0], &BranchConstraints::default(), &mut oracle),
+            PriceOutcome::NoneExists
+        ));
     }
 }

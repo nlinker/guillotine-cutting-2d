@@ -540,7 +540,10 @@ pub(crate) fn run_with_sink_any(
         return Ok(());
     }
     if matches!(algorithm, Algorithm::Bpc) {
-        let bpc_cfg = Arc::new(cut::exact::BpcConfig { progress_interval });
+        let bpc_cfg = Arc::new(cut::exact::BpcConfig {
+            progress_interval,
+            ..cut::exact::BpcConfig::default()
+        });
         let handle = cut::exact::run_bpc_bg(Arc::clone(&spec), bpc_cfg);
         return cut::exact::drain_bpc(handle, &spec, sink, sink_interval_ms).map_err(Into::into);
     }
