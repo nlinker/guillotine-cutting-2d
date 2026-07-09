@@ -8,9 +8,10 @@ use std::sync::Arc;
 use std::{fs, path::Path};
 
 use cut::{
+    expand::{expand_problem, shrink_solution},
     ga::GaConfig,
     glf::build_glf,
-    model::{ProblemSpec, Sheet},
+    model::{ProblemSpec, Sheet, Solution},
     parse::parse_problem,
     render::render_svg,
     slas::{decoder::decode_spec, ga as slas_ga},
@@ -20,7 +21,8 @@ const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
 
 fn main() {
     let base_spec = parse_problem(SPEC_STR).expect("parse error");
-    let glf = build_glf(&base_spec);
+    let base_problem = expand_problem(&base_spec);
+    let glf = build_glf(&base_problem);
     // println!("{}", glf.render(15));
 
     let (min_w, max_w) = glf.feasible_width_range().expect("problem is infeasible");
@@ -41,12 +43,21 @@ fn main() {
         let Some(height) = glf.eval_full_set(width) else {
             continue;
         };
-        let Some(sol) = glf.reconstruct(width) else { continue };
+        let Some(placements) = glf.reconstruct_flat(width) else {
+            continue;
+        };
 
         let spec = Arc::new(ProblemSpec {
             sheet: Sheet { width, height },
             ..base_spec.clone()
         });
+        let sol = shrink_solution(
+            &Solution {
+                placements,
+                leftovers: vec![],
+            },
+            &spec,
+        );
 
         // GLF exact solution
         let svg = render_svg(&spec, &sol).expect("render failed");

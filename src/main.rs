@@ -6,6 +6,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cut::{
+    expand::expand_problem,
     ga,
     ga::GaConfig,
     glas::ga as glas_ga,
@@ -179,8 +180,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Command::Glf { problem } => {
             let spec = parse_problem(&problem)?;
-            let table = build_glf(&spec);
-            let query_w = spec.sheet.width + spec.kerf;
+            let expanded = expand_problem(&spec);
+            let table = build_glf(&expanded);
+            let query_w = expanded.sheet.width;
             println!("{}", table.render(query_w));
             if let Some(h) = table.eval_full_set(query_w) {
                 println!("\nMinimum height for width={}: {}", spec.sheet.width, h - spec.kerf);
