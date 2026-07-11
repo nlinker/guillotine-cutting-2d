@@ -6,9 +6,28 @@ therefore reversed in `Ord`):
 
 | Level | Field                      | Direction    | Meaning                                                                                                                                                                             |
 |-------|----------------------------|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1     | `sheets_used`              | minimize     | Number of stock sheets consumed. Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels.                                          |
+| 1     | `sheets_used`              | minimize     | Fused float: sheet count in the integer part, last-sheet fill fraction in the fractional part (see below). Any *k*-sheet solution is strictly better than any *(k+1)*-sheet solution regardless of the other levels. |
 | 2     | `layout_score`             | **maximize** | Cut-line concentration score + strip-structure score (see below). Higher means internal cuts align into a few long, reusable lines and pieces stack into mono-width strips — easier to cut and fewer fence repositions. |
 | 3     | `drop_consolidation_score` | **maximize** | Sum of squared areas of the disjoint free-region partition of the **last sheet only**, computed straight from `placements`. Rewards a few large, reusable offcuts over many small scattered scraps. |
+
+## sheets_used (fused sheet-count + last-sheet-fill encoding)
+
+```
+sheets_used = (sheets_used_int - 1) + piece_area_on_last_sheet / sheet_area
+```
+
+This single `f64` folds two priorities into one `total_cmp`-comparable value, replacing
+what used to be a separate integer level plus a `piece_area_on_last_sheet` tie-break:
+the integer part is `sheets_used_int - 1` (so it lies in `[sheets_used_int - 1,
+sheets_used_int)`), and the fractional part is the fill fraction of the *last* sheet —
+`placements` on `sheets_used() - 1` weighted by piece area, divided by `sheet_area`.
+Because the fraction is always `< 1`, any *k*-sheet solution still strictly beats any
+*(k+1)*-sheet solution, exactly as the plain integer count did. Within the same sheet
+count, a *lower* fill fraction on the last sheet wins — i.e. the GA is pushed to
+consolidate placed area onto the earlier, already-committed sheets and leave the last
+one as empty as possible, rather than spreading the same total placed area evenly
+across the last two sheets. `Objective::sheets_used_int()` recovers the plain integer
+count when only that is needed (e.g. for display).
 
 ---
 
@@ -21,7 +40,7 @@ while placing pieces). This matters because guillotine free-space decomposition 
 unique: SLAS, GLAS, BFDH, ... can each split an identical final set of `placements`
 into differently-shaped `FreeRect` lists, so `Solution.leftovers` is not comparable as
 a single currency across algorithms — the same property that motivates computing
-`layout_score` from `placements` (see "How is it being computed?" below).
+`layout_score` from `placements` too (see the `layout_score` sections below).
 
 Why only the last sheet: on a single sheet, total free area splits into
 `trapped_waste = staircase_area - placed_area` (pockets boxed in between placed
@@ -130,10 +149,10 @@ chaotic region could rack up nonzero scores from incidental local matches, and i
 could not tell "several pairwise matches on the same coordinate — one continuous,
 reusable cut line" from "several unrelated short cuts that add up to a similar total").
 
-## How is it being computed?
-
-Computed from `Solution::placements` after decoding (piece dimensions are in the
-expanded flat coordinate system where kerf is already absorbed, so adjacent pieces touch directly).
+Both `layout_score` components are computed from `Solution::placements` after decoding
+(piece dimensions are in the expanded flat coordinate system where kerf is already
+absorbed, so adjacent pieces touch directly — decoders themselves stay kerf-agnostic;
+see `docs/slas.md`).
 
 ---
 
@@ -166,8 +185,11 @@ incentive that drives the GA toward grids of identical pieces. Mixed pieces shar
 width still earn partial credit, giving the GA a smoother gradient than an
 identical-pieces-only reward.
 
-The two components are summed: `layout_score = concentration + STRIP_WEIGHT · strip`,
-with `STRIP_WEIGHT = 1` (both are squared-length sums on the same scale).
+The two components are summed: `layout_score = CUT_LINE_WEIGHT · concentration + STRIP_WEIGHT · strip`,
+with `CUT_LINE_WEIGHT = 2, STRIP_WEIGHT = 3` (i.e. strip weighs 1.5x concentration; both
+are squared-length sums on the same scale, so the ratio is exact, not an approximation —
+scaling `layout_score` by a constant factor doesn't change `Ord` outcomes). Calibrated on
+`generator` instances; revisit if a different piece mix suggests otherwise.
 
 ---
 
