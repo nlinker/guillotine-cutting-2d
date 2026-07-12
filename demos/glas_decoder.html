@@ -221,11 +221,12 @@
   <div class="genome-classes" id="genome-classes"></div>
 </div>
 
+<div class="explain" id="explain">Press Decode to run step by step.</div>
+
 <div id="layout">
   <div id="left">
     <div class="panel-title">Sheets</div>
     <div class="sheets-wrap" id="sheets-wrap" style="display:grid"></div>
-    <div class="explain" id="explain">Press Decode to run step by step.</div>
     <div class="progress" id="progress-row"></div>
     <div class="ctrl">
       <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
@@ -289,7 +290,10 @@ function computeScale() {
 }
 
 // ── classification ─────────────────────────────────────────────────
-function classifyType(ps, sw, sh, ldRatio=0.29, laRatio=0.034) {
+// Matches Rust src/glas/ga.rs::piece_class's auto-derived thresholds:
+// long_dim_threshold = sheet_max * 0.3, large_area_threshold = sqrt(sheet_area * 0.05)
+// (a type is class 0 iff area >= large_area_threshold^2 = sheet_area * 0.05).
+function classifyType(ps, sw, sh, ldRatio=0.3, laRatio=0.05) {
   const maxDim  = Math.max(ps.width, ps.height);
   const sheetMax = Math.max(sw, sh);
   const area     = ps.width * ps.height;
