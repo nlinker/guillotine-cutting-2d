@@ -1,5 +1,5 @@
 use crate::model::{
-    FreeRect, Piece, PieceSpec, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec,
+    FreeRect, Piece, PieceType, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec,
 };
 
 /// Expand a `ProblemSpec` into a flat `Problem` (one `Piece` entry per physical copy).
@@ -17,7 +17,7 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
         spec.sheet.height,
     );
     let pieces = spec
-        .piespecs
+        .piece_types
         .iter()
         .flat_map(|ps| {
             (0..ps.count).map(|_| Piece {
@@ -43,7 +43,7 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
 /// spec. Copies of the same type are assigned flat indices in spec order.
 pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     let type_to_flat_start = spec
-        .piespecs
+        .piece_types
         .iter()
         .scan(0usize, |acc, ps| {
             let start = *acc;
@@ -51,7 +51,7 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
             Some(start)
         })
         .collect::<Vec<usize>>();
-    let mut type_used: Vec<usize> = vec![0; spec.piespecs.len()];
+    let mut type_used: Vec<usize> = vec![0; spec.piece_types.len()];
     let placements = sol
         .placements
         .iter()
@@ -77,10 +77,10 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
 /// Collapse a flat `Problem` into a `ProblemSpec` by grouping consecutive identical pieces.
 ///
 /// Pieces are grouped by run: consecutive pieces with matching `(name, width, height,
-/// can_rotate)` are merged into one `PieceSpec` with their combined count. Non-consecutive
+/// can_rotate)` are merged into one `PieceType` with their combined count. Non-consecutive
 /// identical pieces become separate entries.
 pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
-    let mut pieces: Vec<PieceSpec> = Vec::new();
+    let mut pieces: Vec<PieceType> = Vec::new();
     for p in &problem.pieces {
         if let Some(last) = pieces.last_mut()
             && last.name == p.name
@@ -90,7 +90,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
         {
             last.count += 1;
         } else {
-            pieces.push(PieceSpec {
+            pieces.push(PieceType {
                 name: p.name.clone(),
                 width: p.width,
                 height: p.height,
@@ -103,7 +103,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
         sheet: problem.sheet,
         kerf: 0,
         margin: 0,
-        piespecs: pieces,
+        piece_types: pieces,
     }
 }
 
@@ -115,7 +115,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
 pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
     let m = spec.margin;
     let flat_to_type = spec
-        .piespecs
+        .piece_types
         .iter()
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))
@@ -146,7 +146,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
 
 /// Build a `flat_to_type` mapping: `flat_to_type[flat_idx] = type_idx`.
 pub fn flat_to_type_map(spec: &ProblemSpec) -> Vec<usize> {
-    spec.piespecs
+    spec.piece_types
         .iter()
         .enumerate()
         .flat_map(|(ti, ps)| (0..ps.count).map(move |_| ti))

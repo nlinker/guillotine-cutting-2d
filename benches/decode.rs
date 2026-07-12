@@ -21,10 +21,10 @@ fn slas_genome(spec: &ProblemSpec) -> SlasGenome {
 }
 
 fn glas_genome(spec: &ProblemSpec) -> GlasGenome {
-    let mut indices: Vec<usize> = (0..spec.piespecs.len()).collect();
+    let mut indices: Vec<usize> = (0..spec.piece_types.len()).collect();
     indices.sort_unstable_by(|&a, &b| {
         let area = |i: usize| {
-            let ps = &spec.piespecs[i];
+            let ps = &spec.piece_types[i];
             (ps.width as u64) * (ps.height as u64) * (ps.count as u64)
         };
         area(b).cmp(&area(a))
@@ -32,7 +32,7 @@ fn glas_genome(spec: &ProblemSpec) -> GlasGenome {
     let genes: Vec<GlasGene> = indices
         .into_iter()
         .map(|type_idx| {
-            let count = spec.piespecs[type_idx].count as usize;
+            let count = spec.piece_types[type_idx].count as usize;
             GlasGene {
                 type_idx,
                 rotate: false,

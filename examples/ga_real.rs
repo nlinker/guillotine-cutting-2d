@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Instant};
 
 use cut::{
     ga::GaConfig,
-    model::{Objective, PieceSpec, ProblemSpec, SolutionSpec},
+    model::{Objective, PieceType, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     slas::{
         decoder::decode_spec,
@@ -29,11 +29,11 @@ fn ga_cfg() -> GaConfig {
 
 fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, String) {
     let last = sol.sheets_used().saturating_sub(1);
-    let on_last: Vec<&PieceSpec> = sol
+    let on_last: Vec<&PieceType> = sol
         .placements
         .iter()
         .filter(|pl| pl.sheet_idx == last)
-        .map(|pl| &spec.piespecs[pl.piespec_idx])
+        .map(|pl| &spec.piece_types[pl.piespec_idx])
         .collect();
     let count = on_last.len();
     let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
@@ -51,7 +51,7 @@ fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, Strin
 
 fn main() {
     let spec = parse_problem(PROBLEM).expect("parse error");
-    let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
+    let total: u32 = spec.piece_types.iter().map(|p| p.count).sum();
     let cfg = ga_cfg();
     let seeds = (0..N_PARALLEL as u64).collect::<Vec<_>>();
 
@@ -59,7 +59,7 @@ fn main() {
     println!(
         "Pieces   : {} ({} types)   Sheet: {}×{}",
         total,
-        spec.piespecs.len(),
+        spec.piece_types.len(),
         spec.sheet.width,
         spec.sheet.height
     );
@@ -116,7 +116,7 @@ fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
         println!("  Sheet {} ({}×{}):", sheet_idx, spec.sheet.width, spec.sheet.height);
         pls.sort_by_key(|p| (p.y, p.x));
         for pl in pls {
-            let p = &spec.piespecs[pl.piespec_idx];
+            let p = &spec.piece_types[pl.piespec_idx];
             let (pw, ph) = if pl.rotated {
                 (p.height, p.width)
             } else {

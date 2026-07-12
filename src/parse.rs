@@ -1,4 +1,4 @@
-use crate::model::{PieceSpec, ProblemSpec, Sheet};
+use crate::model::{PieceType, ProblemSpec, Sheet};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ParseError {
@@ -10,8 +10,8 @@ pub enum ParseError {
     InvalidKerf(String),
     #[error("invalid sheet spec '{0}': expected WxHR or WxHF (R = rotatable default, F = fixed default)")]
     InvalidSheet(String),
-    #[error("invalid piece spec '{0}': expected WxH, WxH/N, WxHr, WxHf, WxH/Nr, or WxH/Nf")]
-    InvalidPieceSpec(String),
+    #[error("invalid piece type '{0}': expected WxH, WxH/N, WxHr, WxHf, WxH/Nr, or WxH/Nf")]
+    InvalidPieceType(String),
     #[error("invalid integer in '{0}'")]
     InvalidInteger(String),
 }
@@ -34,7 +34,7 @@ pub enum ParseError {
 /// let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
-/// assert_eq!(p.piespecs.len(), 3); // 3 piece types; total count = 4+4+1 = 9
+/// assert_eq!(p.piece_types.len(), 3); // 3 piece types; total count = 4+4+1 = 9
 /// ```
 pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
     let (sheet_str, rest) = s.split_once(':').ok_or(ParseError::MissingSeparator)?;
@@ -52,7 +52,7 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
         sheet,
         kerf,
         margin: 0,
-        piespecs: pieces,
+        piece_types: pieces,
     };
     spec.normalize();
     Ok(spec)
@@ -76,8 +76,8 @@ fn parse_sheet(s: &str) -> Result<(Sheet, bool), ParseError> {
     Ok((Sheet { width, height }, default_rotate))
 }
 
-fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseError> {
-    let err = || ParseError::InvalidPieceSpec(s.to_string());
+fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceType, ParseError> {
+    let err = || ParseError::InvalidPieceType(s.to_string());
     let (base, can_rotate) = if let Some(stripped) = s.strip_suffix('r') {
         (stripped, true)
     } else if let Some(stripped) = s.strip_suffix('f') {
@@ -95,7 +95,7 @@ fn parse_piece_spec(s: &str, default_rotate: bool) -> Result<PieceSpec, ParseErr
     if width == 0 || height == 0 || count == 0 {
         return Err(err());
     }
-    Ok(PieceSpec {
+    Ok(PieceType {
         name: String::new(),
         width,
         height,
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn full_example() {
-        let tuple = |p: &PieceSpec| (p.width, p.height, p.count, p.can_rotate);
+        let tuple = |p: &PieceType| (p.width, p.height, p.count, p.can_rotate);
         let p = parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1020x620/4,1490x620/2,1750x900").unwrap();
         assert_eq!(
             p.sheet,
@@ -125,14 +125,14 @@ mod tests {
             }
         );
         assert_eq!(p.kerf, 7);
-        assert_eq!(p.piespecs.len(), 5);
-        assert_eq!(p.piespecs.iter().map(|p| p.count).sum::<u32>(), 15);
+        assert_eq!(p.piece_types.len(), 5);
+        assert_eq!(p.piece_types.iter().map(|p| p.count).sum::<u32>(), 15);
 
-        assert_eq!(tuple(&p.piespecs[0]), (620, 835, 4, true));
-        assert_eq!(tuple(&p.piespecs[1]), (1020, 620, 4, false));
-        assert_eq!(tuple(&p.piespecs[2]), (620, 1020, 4, true));
-        assert_eq!(tuple(&p.piespecs[3]), (620, 1490, 2, true));
-        assert_eq!(tuple(&p.piespecs[4]), (900, 1750, 1, true));
+        assert_eq!(tuple(&p.piece_types[0]), (620, 835, 4, true));
+        assert_eq!(tuple(&p.piece_types[1]), (1020, 620, 4, false));
+        assert_eq!(tuple(&p.piece_types[2]), (620, 1020, 4, true));
+        assert_eq!(tuple(&p.piece_types[3]), (620, 1490, 2, true));
+        assert_eq!(tuple(&p.piece_types[4]), (900, 1750, 1, true));
     }
 
     #[test]
@@ -140,19 +140,19 @@ mod tests {
         let p = parse_problem("8x100F : 0 : 7x5/4 , 6x4/4 , 4x6/4 , 5x7/4").unwrap();
         assert_eq!(p.sheet.width, 8);
         assert_eq!(p.kerf, 0);
-        assert_eq!(p.piespecs.len(), 4);
-        assert_eq!(p.piespecs.iter().map(|p| p.count).sum::<u32>(), 16);
+        assert_eq!(p.piece_types.len(), 4);
+        assert_eq!(p.piece_types.iter().map(|p| p.count).sum::<u32>(), 16);
     }
 
     #[test]
     fn normalize_effects() {
         // 4x7/3r + 7x4/2r -> same canonical type (4x7r, min first), merged count=5
         // 7x4/4f stays as (7,4,false) - fixed, no swap
-        let tuple = |p: &PieceSpec| (p.width, p.height, p.count, p.can_rotate);
+        let tuple = |p: &PieceType| (p.width, p.height, p.count, p.can_rotate);
         let p = parse_problem("10x10F:0:4x7/3r,7x4/2r,7x4/4f").unwrap();
-        assert_eq!(p.piespecs.len(), 2);
-        assert_eq!(tuple(&p.piespecs[0]), (4, 7, 5, true));
-        assert_eq!(tuple(&p.piespecs[1]), (7, 4, 4, false));
+        assert_eq!(p.piece_types.len(), 2);
+        assert_eq!(tuple(&p.piece_types[0]), (4, 7, 5, true));
+        assert_eq!(tuple(&p.piece_types[1]), (7, 4, 4, false));
     }
 
     #[test]
@@ -177,11 +177,11 @@ mod tests {
         );
         assert_eq!(
             parse_problem("1000x500F:0:abc").unwrap_err(),
-            ParseError::InvalidPieceSpec("abc".into())
+            ParseError::InvalidPieceType("abc".into())
         );
         assert_eq!(
             parse_problem("1000x500F:0:100x0").unwrap_err(),
-            ParseError::InvalidPieceSpec("100x0".into())
+            ParseError::InvalidPieceType("100x0".into())
         );
     }
 }

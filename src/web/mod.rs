@@ -13,7 +13,7 @@ use axum::{
     },
     routing::get,
 };
-use cut::model::{PieceSpec, ProblemSpec, Sheet};
+use cut::model::{PieceType, ProblemSpec, Sheet};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -143,7 +143,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
 
 fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
     let pieces =
-        serde_json::from_str::<Vec<PieceSpec>>(&params.pieces).map_err(|e| format!("invalid pieces JSON: {e}"))?;
+        serde_json::from_str::<Vec<PieceType>>(&params.pieces).map_err(|e| format!("invalid pieces JSON: {e}"))?;
     if pieces.is_empty() {
         return Err("no pieces specified".into());
     }
@@ -154,7 +154,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
         },
         kerf: params.kerf,
         margin: 0,
-        piespecs: pieces,
+        piece_types: pieces,
     };
     spec.normalize();
     Ok(spec)

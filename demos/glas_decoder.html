@@ -406,12 +406,12 @@ function flatGenes(genome) {
 
 // ── build steps ────────────────────────────────────────────────────
 function buildSteps(problem, genome) {
-  const {sheet, piespecs, kerf} = problem;
+  const {sheet, piece_types, kerf} = problem;
   const flat = flatGenes(genome);
 
   let free = [{sheet_idx:0, x:0, y:0, w:sheet.width+kerf, h:sheet.height+kerf}];
   let sheets_open = 1;
-  const placed_counts = piespecs.map(() => 0);
+  const placed_counts = piece_types.map(() => 0);
   const all_placements = [];
   const steps = [];
 
@@ -428,7 +428,7 @@ function buildSteps(problem, genome) {
   for (let fi = 0; fi < flat.length; fi++) {
     const {ci, gene} = flat[fi];
     const ti = gene.type_idx;
-    const ps = piespecs[ti];
+    const ps = piece_types[ti];
 
     // Same-sheet preference: steer each subsequent batch of this type to the
     // sheet that held the previous batch.  Matches Rust decoder's last_sheet.
@@ -602,32 +602,32 @@ function randomProblem() {
   const kerf = parseInt(document.getElementById('kerf').value)||0;
   const nTypes = Math.max(2, parseInt(document.getElementById('ntypes').value)||5);
 
-  const piespecs = [];
+  const piece_types = [];
   for (let i = 0; i < nTypes; i++) {
     const w = Math.max(2, 1 + Math.floor(Math.random() * sw * 0.65));
     const h = Math.max(2, 1 + Math.floor(Math.random() * sh * 0.65));
     const count = 1 + Math.floor(Math.random() * 4);
-    piespecs.push({width:w, height:h, count, can_rotate: Math.random()>0.3});
+    piece_types.push({width:w, height:h, count, can_rotate: Math.random()>0.3});
   }
-  problem = {sheet:{width:sw, height:sh}, piespecs, kerf};
-  genome  = buildRandomGenome(piespecs, sw, sh);
+  problem = {sheet:{width:sw, height:sh}, piece_types, kerf};
+  genome  = buildRandomGenome(piece_types, sw, sh);
   renderGenome();
   initDecoder();
 }
 
-function buildRandomGenome(piespecs, sw, sh) {
+function buildRandomGenome(piece_types, sw, sh) {
   const classes = [[],[],[]];
-  for (let ti = 0; ti < piespecs.length; ti++)
-    classes[classifyType(piespecs[ti], sw, sh)].push(ti);
+  for (let ti = 0; ti < piece_types.length; ti++)
+    classes[classifyType(piece_types[ti], sw, sh)].push(ti);
 
   return classes.map(cls => {
     cls.sort((a,b) => {
-      const av = piespecs[a].width * piespecs[a].height * piespecs[a].count;
-      const bv = piespecs[b].width * piespecs[b].height * piespecs[b].count;
+      const av = piece_types[a].width * piece_types[a].height * piece_types[a].count;
+      const bv = piece_types[b].width * piece_types[b].height * piece_types[b].count;
       return bv - av;
     });
     return cls.map(ti => {
-      const ps = piespecs[ti];
+      const ps = piece_types[ti];
       return {
         type_idx: ti,
         rotate: Math.random() > 0.5,
@@ -639,7 +639,7 @@ function buildRandomGenome(piespecs, sw, sh) {
 }
 
 // ── Genome import ──────────────────────────────────────────────────
-// Pastes a {problem: {sheet, kerf, piespecs}, genome} object copied from the
+// Pastes a {problem: {sheet, kerf, piece_types}, genome} object copied from the
 // web UI's "Copy genome JSON" button (see src/web/index.html) and replays the
 // real decode of that genome here, step by step.
 function showImportStatus(msg, isError) {
@@ -662,12 +662,12 @@ async function importGenomeFromClipboard() {
   catch (e) { return showImportError('Invalid JSON: ' + e.message); }
 
   const { problem: p, genome: g } = payload || {};
-  if (!p || !p.piespecs || !p.sheet || !Array.isArray(g))
-    return showImportError('Expected { problem: {sheet, kerf, piespecs}, genome }');
+  if (!p || !p.piece_types || !p.sheet || !Array.isArray(g))
+    return showImportError('Expected { problem: {sheet, kerf, piece_types}, genome }');
   if (g.length !== CLASS_NAMES.length)
     return showImportError(`genome must have ${CLASS_NAMES.length} classes (Large/Medium/Small)`);
   for (const cls of g) for (const gene of cls) {
-    const ps = p.piespecs[gene.type_idx];
+    const ps = p.piece_types[gene.type_idx];
     if (!ps) return showImportError(`Unknown type_idx=${gene.type_idx}`);
     if (gene.selectors.length !== ps.count || gene.inverses.length !== ps.count)
       return showImportError(`type_idx=${gene.type_idx}: selectors/inverses must have length ${ps.count}`);
@@ -677,7 +677,7 @@ async function importGenomeFromClipboard() {
   document.getElementById('sh').value   = p.sheet.height;
   document.getElementById('kerf').value = p.kerf || 0;
   showImportStatus('Loaded.', false);
-  problem = { sheet: p.sheet, kerf: p.kerf || 0, piespecs: p.piespecs };
+  problem = { sheet: p.sheet, kerf: p.kerf || 0, piece_types: p.piece_types };
   genome  = g;
   renderGenome();
   initDecoder();
@@ -712,7 +712,7 @@ function renderGenome() {
     } else {
       cls.forEach((gene, gi) => {
         const fi  = geneToFlat.get(`${ci}-${gi}`);
-        const ps  = problem.piespecs[gene.type_idx];
+        const ps  = problem.piece_types[gene.type_idx];
         const p   = pal(gene.type_idx);
         const card = document.createElement('div');
         card.className = `gene-card pal-${gene.type_idx % 8}`;
@@ -753,13 +753,13 @@ function renderStep(idx) {
     const isActive = fi === s.geneIdx;
     const isDone   = (fi < s.geneIdx) ||
                      (fi === s.geneIdx && (s.type==='place'||s.type==='done') &&
-                      s.placed_counts[gene.type_idx] >= problem.piespecs[gene.type_idx].count);
+                      s.placed_counts[gene.type_idx] >= problem.piece_types[gene.type_idx].count);
     card.classList.toggle('active', isActive);
     card.classList.toggle('done',   isDone && !isActive);
     const prog = document.getElementById(`gp-${fi}`);
     if (prog) {
       const cnt  = s.placed_counts[gene.type_idx];
-      const total = problem.piespecs[gene.type_idx].count;
+      const total = problem.piece_types[gene.type_idx].count;
       prog.textContent = (cnt > 0 && cnt < total) ? `${cnt}/${total}` : '';
     }
   });

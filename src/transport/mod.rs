@@ -6,7 +6,7 @@ pub mod windows;
 
 use serde::Serialize;
 
-use crate::model::{PieceSpec, SolutionSpec};
+use crate::model::{PieceType, SolutionSpec};
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -19,7 +19,7 @@ pub enum ProgressMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         solution: Option<SolutionSpec>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pieces: Option<Vec<PieceSpec>>,
+        pieces: Option<Vec<PieceType>>,
     },
     /// BPC-specific progress: emitted every `progress_interval` CG iterations
     /// and immediately on each UB improvement.
@@ -33,7 +33,7 @@ pub enum ProgressMessage {
         sheets_used: usize,
         cut_lengths: Vec<u64>,
         solution: SolutionSpec,
-        pieces: Vec<PieceSpec>,
+        pieces: Vec<PieceType>,
         #[serde(skip_serializing_if = "Option::is_none")]
         genome: Option<serde_json::Value>,
         /// BPC only: true = proven optimal, false = gap or stopped.

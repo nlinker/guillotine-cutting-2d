@@ -1,7 +1,7 @@
 {
   "sheet": { "width": 2800, "height": 2070 },
   "kerf": 7,
-  "piespecs": [
+  "piece_types": [
     { "name": "0-1",    "width":  568, "height": 520, "count":  1, "can_rotate": false },
     { "name": "0-2",    "width": 2248, "height":  46, "count":  5, "can_rotate": false },
     { "name": "0-5",    "width": 2248, "height":  44, "count":  8, "can_rotate": false },

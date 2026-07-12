@@ -151,7 +151,7 @@ function loadInstance(name) {
       document.getElementById('sheet-h').value = data.sheet.height;
       document.getElementById('kerf').value    = data.kerf;
       document.getElementById('pieces-tbody').innerHTML = '';
-      data.piespecs.forEach(addRow);
+      data.piece_types.forEach(addRow);
     });
 }
 
@@ -250,12 +250,12 @@ function buildRowColors(specs) {
 
 
 // == placements table =========================================================
-// Copies {problem: {sheet, kerf, piespecs}, genome} to the clipboard so it can
+// Copies {problem: {sheet, kerf, piece_types}, genome} to the clipboard so it can
 // be pasted into demos/glas_decoder.html for step-by-step inspection.
 function copyGenomeJson(d, statusEl) {
   const kerf = Number(document.getElementById('kerf').value) || 0;
   const payload = {
-    problem: { sheet: { width: d.sheet_w, height: d.sheet_h }, kerf, piespecs: d.pieces },
+    problem: { sheet: { width: d.sheet_w, height: d.sheet_h }, kerf, piece_types: d.pieces },
     genome: d.genome,
   };
   navigator.clipboard.writeText(JSON.stringify(payload))

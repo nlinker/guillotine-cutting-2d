@@ -66,7 +66,7 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
         }
 
         for pl in solution.placements.iter().filter(|p| p.sheet_idx == si) {
-            let piece = &spec.piespecs[pl.piespec_idx];
+            let piece = &spec.piece_types[pl.piespec_idx];
             let (pw, ph) = if pl.rotated {
                 (piece.height as f64 * scale, piece.width as f64 * scale)
             } else {
@@ -131,22 +131,22 @@ fn xml_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{PieceSpec, PlacementSpec, Sheet, SolutionSpec};
+    use crate::model::{PieceType, PlacementSpec, Sheet, SolutionSpec};
 
     fn make_spec() -> ProblemSpec {
         ProblemSpec {
             sheet: Sheet { width: 100, height: 80 },
             kerf: 0,
             margin: 0,
-            piespecs: vec![
-                PieceSpec {
+            piece_types: vec![
+                PieceType {
                     name: "A".into(),
                     width: 60,
                     height: 40,
                     count: 1,
                     can_rotate: false,
                 },
-                PieceSpec {
+                PieceType {
                     name: "B".into(),
                     width: 40,
                     height: 40,

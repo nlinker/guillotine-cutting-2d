@@ -14,7 +14,7 @@ pub type Selectors = SmallVec<[u32; 16]>;
 /// the batch that starts when `k` pieces of this type are already placed.
 pub type Inverses = SmallVec<[bool; 16]>;
 
-/// One gene per piece type: a permutation of `0..spec.piespecs.len()`.
+/// One gene per piece type: a permutation of `0..spec.piece_types.len()`.
 ///
 /// Unlike `slas::Gene` (one gene per physical piece), a single `Gene` here drives
 /// the placement of ALL copies of one piece type, batch by batch.
@@ -29,7 +29,7 @@ pub type Inverses = SmallVec<[bool; 16]>;
 /// lets crossover treat every index identically without special-casing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Gene {
-    /// Index into `spec.piespecs` — which piece type this gene handles.
+    /// Index into `spec.piece_types` — which piece type this gene handles.
     pub type_idx: usize,
     /// Prefer rotated orientation for every piece in this group.
     pub rotate: bool,
@@ -71,15 +71,15 @@ pub fn decode(problem: &Problem, spec: &ProblemSpec, genome: &Genome) -> Solutio
 /// Use when some sheets are pre-seeded from a partial solution.
 /// GLAS opens additional sheets starting at `initial_forest.sheets_open()`.
 pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome, mut forest: CutForest) -> Solution {
-    debug_assert_eq!(genome.iter().map(|c| c.len()).sum::<usize>(), spec.piespecs.len());
+    debug_assert_eq!(genome.iter().map(|c| c.len()).sum::<usize>(), spec.piece_types.len());
 
     // end_idxs[i] = one-past-last flat index for type i
     // next[i]     = next unassigned flat index for type i (starts equal to start offset)
-    let n_types = spec.piespecs.len();
+    let n_types = spec.piece_types.len();
     let mut end_idxs = Vec::with_capacity(n_types);
     let mut next = Vec::with_capacity(n_types);
     let mut acc = 0usize;
-    for ps in &spec.piespecs {
+    for ps in &spec.piece_types {
         next.push(acc);
         acc += ps.count as usize;
         end_idxs.push(acc);
@@ -88,7 +88,7 @@ pub fn decode_with_forest(problem: &Problem, spec: &ProblemSpec, genome: &Genome
 
     for class in genome {
         for gene in class {
-            let count = spec.piespecs[gene.type_idx].count as usize;
+            let count = spec.piece_types[gene.type_idx].count as usize;
             let end_idx = end_idxs[gene.type_idx];
             debug_assert_eq!(gene.selectors.len(), count);
             debug_assert_eq!(gene.inverses.len(), count);

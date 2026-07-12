@@ -331,11 +331,11 @@ fn run_calc_with_sink(
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
 
-    let total: u32 = spec.piespecs.iter().map(|p| p.count).sum();
+    let total: u32 = spec.piece_types.iter().map(|p| p.count).sum();
     eprintln!(
         "Pieces  : {} ({} types)   Sheet: {}×{}   Algorithm: {}",
         total,
-        spec.piespecs.len(),
+        spec.piece_types.len(),
         spec.sheet.width,
         spec.sheet.height,
         algorithm,
@@ -463,7 +463,7 @@ fn run_with_any_handle(
                             secondary_objective: pending.objective.secondary(),
                             seed: pending.seed,
                             solution: Some(sol),
-                            pieces: Some(spec.piespecs.clone()),
+                            pieces: Some(spec.piece_types.clone()),
                         };
                         if sink.send(&msg).is_err() {
                             break;
@@ -482,7 +482,7 @@ fn run_with_any_handle(
                         secondary_objective: pending.objective.secondary(),
                         seed: pending.seed,
                         solution: Some(sol),
-                        pieces: Some(spec.piespecs.clone()),
+                        pieces: Some(spec.piece_types.clone()),
                     })
                     .ok();
                 }
@@ -495,7 +495,7 @@ fn run_with_any_handle(
                     sheets_used: best_obj.sheets_used_int(),
                     cut_lengths,
                     solution: sol,
-                    pieces: spec.piespecs.clone(),
+                    pieces: spec.piece_types.clone(),
                     genome: genome_json,
                     proven_optimal: None,
                 })
@@ -530,7 +530,7 @@ pub(crate) fn run_with_sink_any(
             sheets_used: objective.sheets_used_int(),
             cut_lengths,
             solution: sol_spec,
-            pieces: spec.piespecs.clone(),
+            pieces: spec.piece_types.clone(),
             genome: None,
             proven_optimal: None,
         })?;

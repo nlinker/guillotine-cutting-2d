@@ -41,7 +41,7 @@ Each `Gene` drives all copies of one piece type:
 
 ```rust
 struct Gene {
-    type_idx:  usize,                // index into ProblemSpec.piespecs
+    type_idx:  usize,                // index into ProblemSpec.piece_types
     rotate:    bool,                 // prefer rotated orientation for every copy
     selectors: SmallVec<[u32; 16]>,  // selectors[k]: free-leaf selector for batch starting at copy k
     inverses:  SmallVec<[bool; 16]>, // inverses[k]:  false = TlH, true = TlV for that batch

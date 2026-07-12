@@ -7,7 +7,7 @@ use crate::{
     expand::expand_problem,
     ga::{self, GaConfig, GaDecoder},
     glas::decoder::{Gene, Genome, decode},
-    model::{Objective, PieceSpec, Problem, ProblemSpec},
+    model::{Objective, PieceType, Problem, ProblemSpec},
 };
 
 /// Concrete individual type for the GLAS decoder.
@@ -31,7 +31,7 @@ impl GaDecoder for GlasDecoder {
     }
 
     fn crossover<R: Rng>(&self, p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
-        ox_crossover(p1, p2, self.spec.piespecs.len(), rng)
+        ox_crossover(p1, p2, self.spec.piece_types.len(), rng)
     }
 
     fn mutate<R: Rng>(&self, genome: &mut Genome, config: &GaConfig, rng: &mut R) {
@@ -224,7 +224,7 @@ fn ox_at(p1: &[Gene], p2: &[Gene], lo: usize, hi: usize, n_types: usize) -> (Vec
     )
 }
 
-fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32) -> usize {
+fn piece_class(ps: &PieceType, spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32) -> usize {
     let sheet_max = spec.sheet.width.max(spec.sheet.height);
     let long_dim_threshold = if long_dim_threshold == 0 {
         (sheet_max as f64 * 0.3) as u32
@@ -252,17 +252,17 @@ fn piece_class(ps: &PieceSpec, spec: &ProblemSpec, long_dim_threshold: u32, larg
 /// Deterministic seed genome: within each size class, types sorted by max(w,h) desc,
 /// then area desc. Rotation preference: true when height > width.
 pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32) -> Genome {
-    let n = spec.piespecs.len();
+    let n = spec.piece_types.len();
     let mut classes: [Vec<usize>; 3] = [vec![], vec![], vec![]];
     for i in 0..n {
-        classes[piece_class(&spec.piespecs[i], spec, long_dim_threshold, large_area_threshold)].push(i);
+        classes[piece_class(&spec.piece_types[i], spec, long_dim_threshold, large_area_threshold)].push(i);
     }
     let mut genome = Genome::with_capacity(3);
     for class_indices in classes {
         let mut sorted = class_indices;
         sorted.sort_by(|&a, &b| {
-            let pa = &spec.piespecs[a];
-            let pb = &spec.piespecs[b];
+            let pa = &spec.piece_types[a];
+            let pb = &spec.piece_types[b];
             let ka = (pa.width.max(pa.height), pa.width * pa.height);
             let kb = (pb.width.max(pb.height), pb.width * pb.height);
             kb.cmp(&ka)
@@ -270,7 +270,7 @@ pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_thr
         let genes = sorted
             .into_iter()
             .map(|type_idx| {
-                let ps = &spec.piespecs[type_idx];
+                let ps = &spec.piece_types[type_idx];
                 let count = ps.count as usize;
                 Gene {
                     type_idx,
@@ -286,16 +286,16 @@ pub fn greedy_genome(spec: &ProblemSpec, long_dim_threshold: u32, large_area_thr
 }
 
 fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_threshold: u32, rng: &mut R) -> Genome {
-    let n = spec.piespecs.len();
+    let n = spec.piece_types.len();
     let mut classes: [Vec<usize>; 3] = [vec![], vec![], vec![]];
     for i in 0..n {
-        classes[piece_class(&spec.piespecs[i], spec, long_dim_threshold, large_area_threshold)].push(i);
+        classes[piece_class(&spec.piece_types[i], spec, long_dim_threshold, large_area_threshold)].push(i);
     }
     let mut genome = Genome::with_capacity(3);
     for mut indices in classes {
         indices.sort_unstable_by(|&a, &b| {
             let area = |i: usize| {
-                let ps = &spec.piespecs[i];
+                let ps = &spec.piece_types[i];
                 (ps.width as u64) * (ps.height as u64) * (ps.count as u64)
             };
             area(b).cmp(&area(a))
@@ -309,7 +309,7 @@ fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_t
         let genes = indices
             .into_iter()
             .map(|type_idx| {
-                let count = spec.piespecs[type_idx].count as usize;
+                let count = spec.piece_types[type_idx].count as usize;
                 Gene {
                     type_idx,
                     rotate: rng.next_u64() & 1 != 0,
@@ -618,7 +618,7 @@ mod tests {
     fn random_genome_valid_permutation() {
         let spec = parse_problem("10x10R:0:3x2/3,4x3/2,5x1/4").unwrap();
         let problem = expand_problem(&spec);
-        let n_types = spec.piespecs.len();
+        let n_types = spec.piece_types.len();
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
             problem: Arc::new(problem),

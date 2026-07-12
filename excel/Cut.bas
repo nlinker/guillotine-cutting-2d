@@ -808,7 +808,7 @@ Private Function BuildProblemJson(ws As Worksheet) As String
                        ",""height"":" & CStr(sheetHeight) & "}" & _
                        ",""kerf"":" & CStr(kerf) & _
                        ",""margin"":" & CStr(margin) & _
-                       ",""piespecs"":[" & sPieces & "]}"
+                       ",""piece_types"":[" & sPieces & "]}"
 End Function
 
 '' == Main macro ===============================================================

@@ -76,7 +76,7 @@ pub struct Sheet {
 /// `name`: caller-supplied label (empty string when parsed from CLI format).
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PieceSpec {
+pub struct PieceType {
     #[serde(default)]
     pub name: String,
     pub width: u32,
@@ -94,7 +94,7 @@ pub struct ProblemSpec {
     pub kerf: u32,
     #[serde(default)]
     pub margin: u32,
-    pub piespecs: Vec<PieceSpec>,
+    pub piece_types: Vec<PieceType>,
 }
 
 impl ProblemSpec {
@@ -104,14 +104,14 @@ impl ProblemSpec {
     /// Then merge entries with identical `(width, height, can_rotate)` by summing `count`.
     /// First-appearance order is preserved.
     pub fn normalize(&mut self) {
-        for ps in &mut self.piespecs {
+        for ps in &mut self.piece_types {
             if ps.can_rotate && ps.width > ps.height {
                 std::mem::swap(&mut ps.width, &mut ps.height);
             }
         }
         let mut seen: Vec<(u32, u32, bool)> = Vec::new();
-        let mut merged: Vec<PieceSpec> = Vec::new();
-        for ps in self.piespecs.drain(..) {
+        let mut merged: Vec<PieceType> = Vec::new();
+        for ps in self.piece_types.drain(..) {
             let key = (ps.width, ps.height, ps.can_rotate);
             if let Some(pos) = seen.iter().position(|&k| k == key) {
                 merged[pos].count += ps.count;
@@ -120,12 +120,12 @@ impl ProblemSpec {
                 merged.push(ps);
             }
         }
-        self.piespecs = merged;
+        self.piece_types = merged;
     }
 }
 
 /// Position of a placed piece in a type-indexed solution.
-/// `piespec_idx` is the 0-based index into `ProblemSpec::piespecs`.
+/// `piespec_idx` is the 0-based index into `ProblemSpec::piece_types`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlacementSpec {
     pub sheet_idx: usize,
@@ -171,7 +171,7 @@ impl SolutionSpec {
         let mut totals = vec![0u64; n];
 
         for pl in &self.placements {
-            let ps = &spec.piespecs[pl.piespec_idx];
+            let ps = &spec.piece_types[pl.piespec_idx];
             let (pw, ph) = if pl.rotated {
                 (ps.height, ps.width)
             } else {
@@ -220,7 +220,7 @@ impl SolutionSpec {
 
 /// A single physical piece instance in the flat expanded problem.
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
-/// `name`: carried from the originating `PieceSpec` for display purposes.
+/// `name`: carried from the originating `PieceType` for display purposes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Piece {
     pub name: String,
@@ -765,7 +765,7 @@ mod tests {
             },
             kerf: 0,
             margin: 0,
-            piespecs: vec![PieceSpec {
+            piece_types: vec![PieceType {
                 name: String::new(),
                 width: 50,
                 height: 50,
@@ -821,7 +821,7 @@ mod tests {
             },
             kerf: 0,
             margin: 10,
-            piespecs: vec![PieceSpec {
+            piece_types: vec![PieceType {
                 name: String::new(),
                 width: 50,
                 height: 50,
@@ -881,7 +881,7 @@ mod tests {
             },
             kerf: 10,
             margin: 0,
-            piespecs: vec![PieceSpec {
+            piece_types: vec![PieceType {
                 name: String::new(),
                 width: 50,
                 height: 50,

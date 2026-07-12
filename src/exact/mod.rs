@@ -207,7 +207,7 @@ pub fn drain_bpc(
                     sheets_used,
                     cut_lengths,
                     solution,
-                    pieces: spec.piespecs.clone(),
+                    pieces: spec.piece_types.clone(),
                     genome: None,
                     proven_optimal: Some(proven_optimal),
                 })?;
