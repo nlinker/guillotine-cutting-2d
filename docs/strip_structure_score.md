@@ -1,10 +1,12 @@
 # strip_structure_score
 
-`strip_structure_score` looks for mono-width/mono-height strips: the saw fence is set
-once to a piece's width (or height), the whole strip is ripped in a single pass, and
-only then chopped crosswise into individual pieces. This differs from
-`cut_line_concentration_score`, which only requires the *cut coordinate* to match —
-`strip_structure_score` additionally requires the piece *size* to match, i.e. it
+This metric rewards layouts where pieces of the same width (or height) stack flush into
+a single mono-width (or mono-height) strip — cut once at a fixed fence setting and then
+chopped to length — rather than mixing differently sized pieces along the same line, i.e.
+layouts built from uniform, single-pass strips.
+
+This differs from `cut_line_concentration_score`, which only requires the *cut coordinate*
+to match — `strip_structure_score` additionally requires the piece *size* to match, i.e. it
 literally needs the same column/row of same-width (or same-height) pieces, not just an
 incidentally aligned cut.
 
@@ -13,17 +15,16 @@ incidentally aligned cut.
 1. For each placement `(x, y, w, h)`, build a vertical key `(x, w)` with span `[y, y+h)`.
 2. Symmetrically, build a horizontal key `(y, h)` with span `[x, x+w)` for the "row" case.
 3. Within each key, sort the spans and merge the touching/overlapping ones into runs
-   (same helper, `sum_squared_runs_by_coordinate`, that `cut_line_concentration_score`
-   uses).
+   (same helper, `sum_squared_runs_by_coordinate`, that `cut_line_concentration_score` uses).
 4. Sum `run_length²` over both axes (same squaring rationale as
    `cut_line_concentration_score` — it rewards a few long runs over many short ones),
    then scale by `/10_000` (rounded to the nearest integer) to keep values manageable.
 
-![strip_structure_score.jpg](img/strip_structure_score.jpg)
-blue = vertical run (same `x, w`, `y`-spans merged)
-red dashed = horizontal run (same `y, h`, `x`-spans merged)
+## Example
 
-## Worked example
+![strip_structure_score.jpg](img/strip_structure_score.jpg)
+- blue = vertical run (same `x, w`, `y`-spans merged)
+- red dashed = horizontal run (same `y, h`, `x`-spans merged)
 
 Sheet 30×20.
 

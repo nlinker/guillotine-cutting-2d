@@ -1,5 +1,12 @@
 # SLAS — Shorter Leftover Axis Split
 
+SLAS is the decoder the genetic algorithm uses to turn a `Genome` into a `Solution`
+(`src/slas/decoder.rs::decode`): it places pieces in genome order and, after each
+placement, splits the remaining free rectangle into (at most) two children. It is not
+an optional or alternative component — every individual the GA evaluates is decoded
+through SLAS, so its splitting rule directly determines which guillotine cut trees the
+GA can reach.
+
 After placing a piece `pw × ph` in the top-left corner of a free rectangle `W × H`,
 two leftover strips remain. SLAS decides the split direction by comparing their sizes:
 

@@ -34,9 +34,9 @@ On the classic benchmark (Berkey&Wang 1987 + Martello&Vigo 1998, 500+500 instanc
 
 5. **The formal definition of guillotine-cuttability** (recursion: ≤3 items OR a through cut exists) -- the same definition implicitly implemented via `cut_tree`/decoders. Could be used as an independent oracle validator ("check that an arbitrary set of placements is guillotine-cuttable") separate from our decoders -- useful for tests if we ever need to validate solutions produced by algorithms other than our own (e.g., when comparing against GDRR/PS07).
 
-## Our implementation (`src/exact/`, plan `docs/plans/21_exact-bpc.md`)
+## Our implementation (`src/exact/`)
 
-A scaled-down adaptation of BPC for this codebase -- CG + RLMP + a pricing oracle at the root node (Phases 0-6), without the paper's K-scaled integer arithmetic (replaced by an epsilon margin when rounding the LP bound) and without Ryan-Foster branch-and-price (Phase 7, explicitly deferred as a sketch). See the plan itself for the design-deviation details.
+A scaled-down adaptation of BPC for this codebase -- CG + RLMP + a pricing oracle at the root node, plus Ryan-Foster branch-and-price on top (see below), without the paper's K-scaled integer arithmetic (replaced by an epsilon margin when rounding the LP bound).
 
 ### Verification on `real1.json` (2026-07-04)
 
@@ -57,7 +57,7 @@ The PNGs render at 12.93 px per unit (1293px = 100 units) with a 4px border stro
 
 #### Phase 7 (Ryan-Foster-style branch-and-price) implementation (2026-07-05)
 
-Implemented per `docs/plans/22_rf-branch-and-price.md`: `BranchConstraints` (forbidden/forced-together *type* pairs, not individual items -- see that plan's rationale), a shared `GlfOracle`/`Pricer` across the whole branch-and-bound tree, and a DFS tree of `BpcNode`s with `pick_fractional_type_pair` selecting the branching variable. Verified via:
+Implemented as `BranchConstraints` (forbidden/forced-together *type* pairs, not individual items -- branching on individual items doesn't work here since copies of a type are interchangeable throughout `Pricer`, so the LP would never converge), a shared `GlfOracle`/`Pricer` across the whole branch-and-bound tree, and a DFS tree of `BpcNode`s with `pick_fractional_type_pair` selecting the branching variable. Verified via:
 
 - Targeted `pricing.rs` unit tests (`forbidden_pair_blocks_the_combining_pattern`, `forced_together_pair_requires_the_full_grid`) confirming the pricing oracle actually respects both constraint kinds.
 - A `mod.rs` unit test (`pick_fractional_type_pair_finds_a_fractional_pair`) reproducing the textbook Ryan-Foster example (3 items, pairwise patterns only, LP optimum 1.5) and confirming the right type pair is found from a hand-built `Rlmp`/`BpcNode` fixture.
@@ -74,4 +74,4 @@ Instrumented `GlfOracle`'s three exhaustion points (`max_nodes`, `max_splits`, `
 
 That next wall is `max_cells`: the memoized GLF cache reaches its 1,000,000-entry cap after ~1900 root-node CG iterations on `real2.json`, confirmed by re-instrumenting that specific exhaustion path. Once full, no new multiset key can ever be cached again, so the root's CG aborts for good (branching, which only fires after a node's CG *converges*, never gets a chance to run). Tried raising `max_cells` 5x (to 5,000,000) as an experiment: no meaningful improvement -- the run didn't converge even after a 280s timeout (versus 80s to hit the wall at the 1M default), and per-iteration throughput fell roughly 3x (~24 iter/s to ~7 iter/s), consistent with each new cache insertion getting more expensive as the cache grows and as CG iterations progress toward harder-to-price dual vectors. Reverted `max_cells` back to 1,000,000 -- raising it further looks like a bad trade (much more memory and CPU for uncertain, possibly negative, payoff) rather than a path to convergence.
 
-**Conclusion:** this is a genuine scale limitation of the current pricing oracle (memoized GLF DP + backtracking search over individual items), not a shallow bug or a tunable-constant problem. An 80-item, mostly-count-1 instance has a combinatorial multiset space that the current oracle cannot exhaustively cache through before the root LP converges. Closing this gap for real would need the kind of algorithmic upgrade the plan already flagged as explicitly out of scope for this project (the paper's own G2KP solver with meet-in-the-middle, Cote & Iori 2018) -- not further constant-tuning of the existing oracle.
+**Conclusion:** this is a genuine scale limitation of the current pricing oracle (memoized GLF DP + backtracking search over individual items), not a shallow bug or a tunable-constant problem. An 80-item, mostly-count-1 instance has a combinatorial multiset space that the current oracle cannot exhaustively cache through before the root LP converges. Closing this gap for real would need an algorithmic upgrade considered out of scope for this project (the paper's own G2KP solver with meet-in-the-middle, Cote & Iori 2018) -- not further constant-tuning of the existing oracle.

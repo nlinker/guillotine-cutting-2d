@@ -1,8 +1,12 @@
 # GLAS — Group-based SLAS
 
-GLAS (Group-based SLAS) is the default decoder. Unlike [SLAS](slas.md), which places one
-physical piece per gene, GLAS groups all copies of the same piece *type* into a single gene
-and places them together in strips — one batch per free leaf.
+GLAS (Group-based SLAS) is the decoder the genetic algorithm uses by default
+(`src/glas/decoder.rs::decode_spec`, wired in as the GA's decoder in `main.rs`): it
+turns a `Genome` into a `Solution`, and every individual the GA evaluates in the
+default `calc`/`serve` path is decoded through it — it is a required part of the GA
+loop, not optional tooling. Unlike [SLAS](slas.md), which places one physical piece per
+gene, GLAS groups all copies of the same piece *type* into a single gene and places
+them together in strips — one batch per free leaf.
 
 ## Piece classification
 

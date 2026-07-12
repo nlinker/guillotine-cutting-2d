@@ -6,18 +6,18 @@
 ///
 /// ## Algorithm outline
 ///
-/// Phases 2-6 (`docs/plans/21_exact-bpc.md`) are implemented: LB0/UB0 (area
-/// bound / Jylanki heuristic), the RLMP (`rlmp`), the pricing oracle
-/// (`pricing`), column generation, and gap-closing rounding (`round_gap`).
-/// Phase 7 (`docs/plans/22_rf-branch-and-price.md`) adds Ryan-Foster-style
-/// branch-and-bound on top of the root: when a converged node's LP bound
-/// still falls short of the incumbent after rounding, `pick_fractional_type_pair`
-/// finds a pair of *types* with a fractional aggregated co-occurrence and
-/// branches into a "together" and an "apart" child (`BpcNode`), each with its
-/// own restricted column pool. Branching on individual items (rather than
-/// types) doesn't work here because copies of a type are interchangeable
-/// throughout `Pricer` -- see that plan's Context section. `GlfOracle` and
-/// `Pricer` are shared across every node of the tree (constructed once,
+/// LB0/UB0 (area bound / Jylanki heuristic), the RLMP (`rlmp`), the pricing
+/// oracle (`pricing`), column generation, and gap-closing rounding
+/// (`round_gap`) are implemented, plus Ryan-Foster-style branch-and-bound on
+/// top of the root: when a converged node's LP bound still falls short of
+/// the incumbent after rounding, `pick_fractional_type_pair` finds a pair of
+/// *types* with a fractional aggregated co-occurrence and branches into a
+/// "together" and an "apart" child (`BpcNode`), each with its own restricted
+/// column pool. Branching on individual items (rather than types) doesn't
+/// work here because copies of a type are interchangeable throughout
+/// `Pricer` (the exact search only tracks per-type counts, not which
+/// specific copy is used). `GlfOracle` and `Pricer` are shared across every
+/// node of the tree (constructed once,
 /// below) so the memoized GLF cache isn't rebuilt per node.
 ///
 /// ## Soundness of the reported lower bound
@@ -407,12 +407,12 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
                             // into a UB candidate if it improved things, and
                             // node_lb is now a fully resolved bound for this
                             // subtree -- nothing left to explore), or the
-                            // rare edge case docs/plans/22_rf-branch-and-price.md
-                            // flags: some lambda is still fractional but no
-                            // type pair captures it. The Vanderbeck-style
-                            // aggregated fallback for that case isn't
-                            // implemented; detect it and report it honestly
-                            // instead of silently over-claiming optimality.
+                            // rare edge case where some lambda is still
+                            // fractional but no type pair captures it. The
+                            // Vanderbeck-style aggregated fallback for that
+                            // case isn't implemented; detect it and report it
+                            // honestly instead of silently over-claiming
+                            // optimality.
                             if node_has_fractional_lambda(&node) {
                                 any_node_incomplete = true;
                             }
@@ -610,8 +610,8 @@ fn singleton_pattern(piece_idx: usize, problem: &Problem) -> Pattern {
 /// guillotine layout intact) only if none of its items were already placed
 /// by a higher-lambda pattern — each accepted pattern gets its own new sheet,
 /// so no cross-pattern overlap checking is needed. This is deliberately not
-/// the paper's tabu-search rounding (see `docs/plans/21_exact-bpc.md`), just
-/// a cheap best-effort improvement over `incumbent_sheets`.
+/// the paper's tabu-search rounding, just a cheap best-effort improvement
+/// over `incumbent_sheets`.
 ///
 /// Returns `None` if the rounded solution does not strictly improve on
 /// `incumbent_sheets` (the caller keeps the existing incumbent).

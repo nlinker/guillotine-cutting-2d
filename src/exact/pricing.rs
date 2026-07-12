@@ -92,8 +92,8 @@ impl Default for PricingLimits {
 /// already takes a mu-descending prefix of a type's copies, `DfsState`
 /// tracks only per-type counts) -- branching on two copies of the same type
 /// changes nothing (either copy is as good as the other), so the LP would
-/// never converge. See `docs/plans/22_rf-branch-and-price.md` for the
-/// rationale. Both fields hold `(a, b)` with `a < b`.
+/// never converge; branching on types instead sidesteps that degeneracy.
+/// Both fields hold `(a, b)` with `a < b`.
 #[derive(Clone, Default)]
 pub(crate) struct BranchConstraints {
     /// A pattern may not contain a copy of both types.
@@ -304,7 +304,7 @@ impl Pricer {
     /// was dropped in `new` (cannot fit the sheet in any orientation). Used
     /// by the branch-and-bound tree driver (`mod.rs`) to translate a
     /// pattern's flat item indices into type indices for RF-style type-pair
-    /// branching (`docs/plans/22_rf-branch-and-price.md`).
+    /// branching.
     pub(crate) fn type_of(&self, flat_idx: usize) -> Option<usize> {
         self.ptypes.iter().position(|t| t.copies.contains(&flat_idx))
     }
