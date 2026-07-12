@@ -12,11 +12,11 @@ them together in strips — one batch per free leaf.
 
 Before the GA runs, each piece type is assigned to one of three priority classes:
 
-| Class | Name   | Condition                                                               |
-|-------|--------|-------------------------------------------------------------------------|
+| Class | Name   | Condition                                                              |
+|-------|--------|------------------------------------------------------------------------|
 | 0     | Large  | `max_dim >= long_dim_threshold`  AND  `area >= large_area_threshold^2` |
 | 1     | Medium | `max_dim >= long_dim_threshold`  AND  `area <  large_area_threshold^2` |
-| 2     | Small  | `max_dim <  long_dim_threshold`                                         |
+| 2     | Small  | `max_dim <  long_dim_threshold`                                        |
 
 Auto-derived thresholds (when the config or CLI supplies `0`):
 
@@ -40,9 +40,9 @@ Genome = Vec<Vec<Gene>>
 Each `Gene` drives all copies of one piece type:
 
 ```rust
-Gene {
-    type_idx:  usize,                 // index into ProblemSpec.piespecs
-    rotate:    bool,                  // prefer rotated orientation for every copy
+struct Gene {
+    type_idx:  usize,                // index into ProblemSpec.piespecs
+    rotate:    bool,                 // prefer rotated orientation for every copy
     selectors: SmallVec<[u32; 16]>,  // selectors[k]: free-leaf selector for batch starting at copy k
     inverses:  SmallVec<[bool; 16]>, // inverses[k]:  false = TlH, true = TlV for that batch
 }
@@ -127,20 +127,20 @@ as if it were a standalone genome, which preserves the class invariant across ge
 
 **Mutation** per gene:
 
-| Parameter  | Effect                                                                  |
-|------------|-------------------------------------------------------------------------|
-| `swap_p`   | swap gene with a random other gene **within the same class**           |
-| `flip_p`   | flip `rotate`                                                           |
-| `point_p`  | per selector: nudge `selectors[k]` by ±`point_delta` (wrapping)        |
-| `inverse_p`| per inverse: flip `inverses[k]` (toggles TlH <-> TlV for that batch)  |
+| Parameter   | Effect                                                               |
+|-------------|----------------------------------------------------------------------|
+| `swap_p`    | swap gene with a random other gene **within the same class**         |
+| `flip_p`    | flip `rotate`                                                        |
+| `point_p`   | per selector: nudge `selectors[k]` by ±`point_delta` (wrapping)      |
+| `inverse_p` | per inverse: flip `inverses[k]` (toggles TlH <-> TlV for that batch) |
 
 ## Comparison with SLAS
 
-| Aspect            | SLAS                              | GLAS                                      |
-|-------------------|-----------------------------------|-------------------------------------------|
-| Gene granularity  | one gene per physical piece       | one gene per piece *type*                 |
-| Genome size       | N genes (N = total copies)        | T genes across 3 classes (T = types)     |
-| Placement order   | single GA-evolved permutation     | Large -> Medium -> Small, GA within class |
-| Split heuristic   | SLAS shorter-leftover-axis        | strip fill + GA-evolved TlH/TlV per batch |
-| Batch placement   | no (one piece per step)           | yes (all remaining copies of one type)    |
-| `inverse` array   | one bool per gene                 | one bool per copy (`inverses[k]`)         |
+| Aspect           | SLAS                          | GLAS                                      |
+|------------------|-------------------------------|-------------------------------------------|
+| Gene granularity | one gene per physical piece   | one gene per piece *type*                 |
+| Genome size      | N genes (N = total copies)    | T genes across 3 classes (T = types)      |
+| Placement order  | single GA-evolved permutation | Large -> Medium -> Small, GA within class |
+| Split heuristic  | SLAS shorter-leftover-axis    | strip fill + GA-evolved TlH/TlV per batch |
+| Batch placement  | no (one piece per step)       | yes (all remaining copies of one type)    |
+| `inverse` array  | one bool per gene             | one bool per copy (`inverses[k]`)         |

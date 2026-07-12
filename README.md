@@ -28,42 +28,52 @@ and this combinatorics makes the problem hard:
 
 - Enforces **guillotine**-cut constraints.
 - Three-level lexicographic **Objective**
-  `(sheets_used, layout_score, drop_consolidation_score)` — minimizes sheet count first,
+  `(sheets_used, layout_score, drop_consolidation_score)` - minimizes sheet count first,
   then maximizes concentration of cuts into long, reusable lines, then maximizes
   consolidation of leftover waste into a few large, reusable offcuts rather than many
   small scraps (see [docs/objective.md](docs/objective.md)).
-- **Kerf** — blade thickness subtracted from each internal cut; sheet boundary edges are exempt.
+- **Kerf** - blade thickness subtracted from each internal cut; sheet boundary edges are exempt.
   Internally baked into piece and sheet dimensions in `expand_problem`.
-- **Margin** — border excluded from all four sheet edges before solving;
+- **Margin** - border excluded from all four sheet edges before solving;
   output coordinates are shifted back by `+margin`.
-- Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over
+- Exact single-sheet optimization via **GLF** (Guillotine Layout Function) - a DP on step functions over
   all guillotine-cut subsets. Supports piece rotation.
-- **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
+- Exact **multiple-sheet** optimization via **BPC** (Branch-Price-and-Cut) - column
+  generation over cutting patterns priced by the GLF oracle, with branch-and-bound that
+  forces pairs of piece types onto the same sheet or apart until the LP relaxation
+  matches an integer solution. Minimizes sheet count only (not layout/drop-consolidation
+  scores).
+- **GA** - evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`.
-- **Island-model GA** — `run_ga_mt` spawns one independent island (population) per seed.
-  Islands evolve in parallel; every `migration_interval` generations they synchronise via a
+- **Island-model GA** - `run_ga_mt` spawns one independent island (population) per seed.
+  Islands evolve in parallel; every `migration_interval` generations they synchronize via a
   shared barrier, injecting the global best into each island's worst slot.
   The final result is the best individual found across all islands.
-- Three **Algorithms** (`--algorithm slas|glas|bfdh`):
-  - GA with **SLAS** decoder — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
+- Four **Algorithms** (`--algorithm slas|glas|bfdh|jylanki`):
+  - GA with **SLAS** decoder - one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
     (see [docs/slas.md](docs/slas.md)).
-  - GA with **GLAS** decoder (default) — grouped SLAS, one gene per piece *type*;
+  - GA with **GLAS** decoder (default) - grouped SLAS, one gene per piece *type*;
     pieces grouped into Large / Medium / Small classes so large pieces are always placed first.
     Each batch chooses horizontal or vertical strip (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
     See [docs/glas.md](docs/glas.md).
-  - **BFDH** — Best Fit Decreasing Height — greedy shelf heuristic, very fast
-- **Genome** (GLAS): `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
-  inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
-  independently within each class. For SLAS it is just `Vec<Gene>`.
-- Problem instance **Generator** — creates random problem instances with a known optimal solution.
+  - **BFDH** - Best Fit Decreasing Height - greedy shelf heuristic, very fast
+  - **Jylanki** - portfolio greedy packer (per Jylanki's [A Thousand Ways to Pack the Bin.pdf](docs/pdf/A%20Thousand%20Ways%20to%20Pack%20the%20Bin.pdf)):
+    runs every combination of sort key x direction x selection rule x split rule
+    (144 deterministic passes), keeps the best by `Objective`.
+- **Genome** - :
+  - SLAS: `Vec<Gene>` - just the ordered sequence of `Gene`s.
+  - GLAS: `Vec<Vec<Gene>>` - outer index = class (0 Large, 1 Medium, 2 Small);
+    inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
+    independently within each class.
+- Problem instance **Generator** - creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
 - Cross-platform self-contained console executable - the solver that receives the JSON
   specifying the problem instance and produces JSON with the solution.
-  - **Problem** — stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
+  - **Problem** - stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
     Each piece has an opaque external label, dimensions, and a rotation flag.
     Pieces are addressed internally by their 0-based index in the list.
-  - **Solution** — vector of placements + vector of free rectangles.
+  - **Solution** - vector of placements + vector of free rectangles.
 - _Not a black box_: the algorithm exposes a progress feedback channel `ProgressSink`
   and cancellation via `GaHandle`.
   - `FifoSink` uses FIFO under Linux (via `mkfifo`).
@@ -161,11 +171,11 @@ fn main() {
 
 `parse_problem` accepts a compact string: `"<sheet>:<kerf>:<pieces>"`.
 
-- `<sheet>` — `WxHR` or `WxHF` in mm; the suffix sets the **default rotation** for pieces:
-  - `R` — pieces are rotatable by default
-  - `F` — pieces are fixed (no rotation) by default
-- `<kerf>` — blade kerf width in mm (non-negative integer)
-- `<pieces>` — comma-separated piece tokens; per-piece suffix overrides the sheet default:
+- `<sheet>` - `WxHR` or `WxHF` in mm; the suffix sets the **default rotation** for pieces:
+  - `R` - pieces are rotatable by default
+  - `F` - pieces are fixed (no rotation) by default
+- `<kerf>` - blade kerf width in mm (non-negative integer)
+- `<pieces>` - comma-separated piece tokens; per-piece suffix overrides the sheet default:
 
 | Piece token | Meaning                                        |
 |-------------|------------------------------------------------|
@@ -180,8 +190,8 @@ To control the orientation of a fixed piece, put the shorter side first or last 
 `620x1020` places 620 mm along X and 1020 mm along Y.
 
 Examples:
-- `"3000x4000R:7:835x620/4,1020x620/4f,1750x900"` — R default; only the `1020x620` batch is fixed
-- `"2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r"` — F default; only `150x450` is rotatable
+- `"3000x4000R:7:835x620/4,1020x620/4f,1750x900"` - R default; only the `1020x620` batch is fixed
+- `"2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r"` - F default; only `150x450` is rotatable
 
 
 ## Development commands
