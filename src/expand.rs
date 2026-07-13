@@ -39,7 +39,7 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
 
 /// Convert a `SolutionSpec` (type-indexed) into a flat `Solution`.
 ///
-/// Each `PlacementSpec.piespec_idx` (type) is mapped to a flat piece index using the
+/// Each `PlacementSpec.ptype_idx` (type) is mapped to a flat piece index using the
 /// spec. Copies of the same type are assigned flat indices in spec order.
 pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     let type_to_flat_start = spec
@@ -56,7 +56,7 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
         .placements
         .iter()
         .map(|pl| {
-            let ti = pl.piespec_idx;
+            let ti = pl.ptype_idx;
             let flat_idx = type_to_flat_start[ti] + type_used[ti];
             type_used[ti] += 1;
             Placement {
@@ -125,7 +125,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
         .iter()
         .map(|pl| PlacementSpec {
             sheet_idx: pl.sheet_idx,
-            piespec_idx: flat_to_type[pl.piece_idx],
+            ptype_idx: flat_to_type[pl.piece_idx],
             x: pl.x + m,
             y: pl.y + m,
             rotated: pl.rotated,

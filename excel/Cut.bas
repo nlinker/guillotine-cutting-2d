@@ -259,7 +259,7 @@ Private Sub RenderPlacements(ws As Worksheet, sol As Object, pieces As Object)
     Dim pl As Object, idx As Long, pieceName As String, pw As Long, ph As Long
     For i = 1 To n
         Set pl = pls(ord(i))
-        idx = pl("piespec_idx") + 1
+        idx = pl("ptype_idx") + 1
         pieceName = pieces(idx)("name")
         If pl("rotated") Then
             pw = pieces(idx)("height"): ph = pieces(idx)("width")
@@ -358,7 +358,7 @@ Private Sub DrawLayout(ws As Worksheet, sol As Object, pieces As Object, _
     ' Draw pieces (rotated 90° CCW: display_x = solver_y, display_y = solver_x)
     Dim pIdx As Long: pIdx = 0
     For Each pl In sol("placements")
-        Dim idx   As Long: idx   = pl("piespec_idx") + 1
+        Dim idx   As Long: idx   = pl("ptype_idx") + 1
         Dim shIdx As Long: shIdx = pl("sheet_idx")
 
         Dim pw As Long, ph As Long

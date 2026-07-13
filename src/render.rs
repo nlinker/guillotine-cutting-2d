@@ -66,7 +66,7 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
         }
 
         for pl in solution.placements.iter().filter(|p| p.sheet_idx == si) {
-            let piece = &spec.piece_types[pl.piespec_idx];
+            let piece = &spec.piece_types[pl.ptype_idx];
             let (pw, ph) = if pl.rotated {
                 (piece.height as f64 * scale, piece.width as f64 * scale)
             } else {
@@ -74,7 +74,7 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
             };
             let px = ox + pl.x as f64 * scale;
             let py = oy + pl.y as f64 * scale;
-            let fill = PALETTE[pl.piespec_idx % PALETTE.len()];
+            let fill = PALETTE[pl.ptype_idx % PALETTE.len()];
 
             writeln!(
                 s,
@@ -86,7 +86,7 @@ pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String,
             let min_dim = dw * 0.04;
             if pw >= min_dim && ph >= min_dim {
                 let label = if piece.name.is_empty() {
-                    format!("#{}", pl.piespec_idx)
+                    format!("#{}", pl.ptype_idx)
                 } else {
                     xml_escape(&piece.name)
                 };
@@ -164,14 +164,14 @@ mod tests {
             placements: vec![
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 0,
                     y: 0,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 1,
-                    piespec_idx: 1,
+                    ptype_idx: 1,
                     x: 0,
                     y: 0,
                     rotated: false,

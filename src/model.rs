@@ -125,11 +125,11 @@ impl ProblemSpec {
 }
 
 /// Position of a placed piece in a type-indexed solution.
-/// `piespec_idx` is the 0-based index into `ProblemSpec::piece_types`.
+/// `ptype_idx` is the 0-based index into `ProblemSpec::piece_types`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlacementSpec {
     pub sheet_idx: usize,
-    pub piespec_idx: usize,
+    pub ptype_idx: usize,
     pub x: u32,
     pub y: u32,
     pub rotated: bool,
@@ -171,7 +171,7 @@ impl SolutionSpec {
         let mut totals = vec![0u64; n];
 
         for pl in &self.placements {
-            let ps = &spec.piece_types[pl.piespec_idx];
+            let ps = &spec.piece_types[pl.ptype_idx];
             let (pw, ph) = if pl.rotated {
                 (ps.height, ps.width)
             } else {
@@ -777,28 +777,28 @@ mod tests {
             placements: vec![
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 0,
                     y: 0,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 50,
                     y: 0,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 0,
                     y: 50,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 50,
                     y: 50,
                     rotated: false,
@@ -833,28 +833,28 @@ mod tests {
             placements: vec![
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 10,
                     y: 10,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 60,
                     y: 10,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 10,
                     y: 60,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 60,
                     y: 60,
                     rotated: false,
@@ -893,28 +893,28 @@ mod tests {
             placements: vec![
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 0,
                     y: 0,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 60,
                     y: 0,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 0,
                     y: 60,
                     rotated: false,
                 },
                 PlacementSpec {
                     sheet_idx: 0,
-                    piespec_idx: 0,
+                    ptype_idx: 0,
                     x: 60,
                     y: 60,
                     rotated: false,

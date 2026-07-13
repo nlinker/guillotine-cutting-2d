@@ -309,7 +309,7 @@ function drawLayout(solution, pieces, sheetW, sheetH, kerf, drawKerf, rowColor) 
   }
 
   for (const pl of placements) {
-    const pc = pieces[pl.piespec_idx];
+    const pc = pieces[pl.ptype_idx];
     const pw = (pl.rotated ? pc.height : pc.width) + pad;
     const ph = (pl.rotated ? pc.width  : pc.height) + pad;
     const col = pl.sheet_idx % COLS, row = Math.floor(pl.sheet_idx / COLS);
@@ -317,9 +317,9 @@ function drawLayout(solution, pieces, sheetW, sheetH, kerf, drawKerf, rowColor) 
     const rx = ox + pl.x * scale, ry = oy + pl.y * scale;
     const rw = Math.max(pw * scale, 0.5), rh = Math.max(ph * scale, 0.5);
     draw.rect(rw, rh).move(rx, ry)
-      .fill(rowColor[pl.piespec_idx]).stroke({ color: T.pieceStroke, width: 0.5 });
+      .fill(rowColor[pl.ptype_idx]).stroke({ color: T.pieceStroke, width: 0.5 });
     if (rw > 30 && rh > 14) {
-      draw.plain(pc.name || ('#' + pl.piespec_idx))
+      draw.plain(pc.name || ('#' + pl.ptype_idx))
         .font({ size: 9, family: 'monospace' }).fill(T.pieceText)
         .attr({ x: rx + 2, y: ry + 10 });
     }

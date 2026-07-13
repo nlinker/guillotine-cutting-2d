@@ -33,7 +33,7 @@ fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, Strin
         .placements
         .iter()
         .filter(|pl| pl.sheet_idx == last)
-        .map(|pl| &spec.piece_types[pl.piespec_idx])
+        .map(|pl| &spec.piece_types[pl.ptype_idx])
         .collect();
     let count = on_last.len();
     let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
@@ -116,7 +116,7 @@ fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
         println!("  Sheet {} ({}×{}):", sheet_idx, spec.sheet.width, spec.sheet.height);
         pls.sort_by_key(|p| (p.y, p.x));
         for pl in pls {
-            let p = &spec.piece_types[pl.piespec_idx];
+            let p = &spec.piece_types[pl.ptype_idx];
             let (pw, ph) = if pl.rotated {
                 (p.height, p.width)
             } else {
@@ -124,7 +124,7 @@ fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {
             };
             println!(
                 "    idx={:2}  {}×{}  at ({:4},{:4}){}",
-                pl.piespec_idx,
+                pl.ptype_idx,
                 pw,
                 ph,
                 pl.x,
