@@ -16,10 +16,10 @@ All cuts are guillotine cuts, i.e. straight lines across the full remaining rect
 The problem is NP-hard, so for large inputs exact computation is infeasible;
 the GA finds good approximations instead.
 
-For example, here are the solutions of one instance of the problem for widths = 20..43.
+For example, here are the solutions of one instance of the problem for `widths = 20..43`.
 Each frame shows the exact optimal placement of the same piece set
 for a given sheet width, minimizing height.
-You can see that for any width W the optimums for W and W+1 are totally different,
+You can see that for any width W the optima for `W` and `W+1` almost always _are very different_,
 and this combinatorics makes the problem hard:
 
 ![optimal_solutions.avif](docs/img/optimal_solutions.avif)
@@ -202,7 +202,7 @@ cargo test
 cargo test <test_name>                              # single test
 cargo clippy -- -D warnings
 cargo +nightly fmt
-cargo run --example ga_benchmark --release          # GA quality benchmark
+cargo run --example benchmark --release              # GA + BPC quality benchmark
 ```
 
 ## Demos
