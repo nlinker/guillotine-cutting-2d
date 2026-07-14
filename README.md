@@ -19,7 +19,7 @@ the GA finds good approximations instead.
 For example, here are the solutions of one instance of the problem for `widths = 20..43`.
 Each frame shows the exact optimal placement of the same piece set
 for a given sheet width, minimizing height.
-You can see that for any width W the optima for `W` and `W+1` almost always _are very different_,
+You can see that for any width `W` for `W` and `W+1` the optima almost always _are very different_,
 and this combinatorics makes the problem hard:
 
 ![optimal_solutions.avif](docs/img/optimal_solutions.avif)

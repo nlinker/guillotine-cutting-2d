@@ -1,11 +1,12 @@
-﻿use std::{
+use std::{
     fmt,
     sync::{
         Arc, Barrier, Mutex,
         atomic::{AtomicBool, Ordering},
     },
+    thread::ScopedJoinHandle,
 };
-use std::thread::ScopedJoinHandle;
+
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -73,7 +74,6 @@ pub struct GaConfig {
     /// A long piece is "large" if width*height >= large_area_threshold^2; otherwise "medium".
     /// 0 = auto-derive: sqrt(sheet.width * sheet.height * 0.05).
     pub large_area_threshold: u32,
-
 }
 
 impl fmt::Display for GaConfig {
@@ -278,7 +278,9 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
     let (handle, ctx) = ga_channel::<D::Genome>(progress_interval);
     std::thread::spawn(move || {
         let n = seeds.len();
-        let bests = (0..n).map(|_| Mutex::new(None)).collect::<Vec<Mutex<Option<Individual<D::Genome>>>>>();
+        let bests = (0..n)
+            .map(|_| Mutex::new(None))
+            .collect::<Vec<Mutex<Option<Individual<D::Genome>>>>>();
         let barrier1 = Barrier::new(n);
         let barrier2 = Barrier::new(n);
         let d = &*decoder;

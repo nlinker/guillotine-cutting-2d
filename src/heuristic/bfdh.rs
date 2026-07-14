@@ -46,7 +46,13 @@ pub fn bfdh_solve(problem: &Problem) -> Solution {
 
         if let Some(idx) = best_idx {
             let s = &mut shelves[idx];
-            placements.push(Placement { sheet_idx: s.sheet_idx, piece_idx: orig_idx, x: s.x_cursor, y: s.y, rotated });
+            placements.push(Placement {
+                sheet_idx: s.sheet_idx,
+                piece_idx: orig_idx,
+                x: s.x_cursor,
+                y: s.y,
+                rotated,
+            });
             s.x_cursor += pw;
         } else {
             let target = sheet_y
@@ -60,10 +66,24 @@ pub fn bfdh_solve(problem: &Problem) -> Solution {
                 (sidx, 0)
             });
             sheet_y[sidx] += ph;
-            placements.push(Placement { sheet_idx: sidx, piece_idx: orig_idx, x: 0, y: shelf_y, rotated });
-            shelves.push(Shelf { sheet_idx: sidx, y: shelf_y, h: ph, x_cursor: pw });
+            placements.push(Placement {
+                sheet_idx: sidx,
+                piece_idx: orig_idx,
+                x: 0,
+                y: shelf_y,
+                rotated,
+            });
+            shelves.push(Shelf {
+                sheet_idx: sidx,
+                y: shelf_y,
+                h: ph,
+                x_cursor: pw,
+            });
         }
     }
 
-    Solution { placements, leftovers: vec![] }
+    Solution {
+        placements,
+        leftovers: vec![],
+    }
 }

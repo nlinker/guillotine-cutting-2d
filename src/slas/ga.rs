@@ -394,7 +394,10 @@ mod tests {
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
         assert_eq!(
-            (winner.objective.sheets_used_int(), winner.objective.drop_consolidation_score),
+            (
+                winner.objective.sheets_used_int(),
+                winner.objective.drop_consolidation_score
+            ),
             (0, 20)
         );
     }

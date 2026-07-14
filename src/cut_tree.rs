@@ -237,7 +237,6 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
     None
 }
 
-
 /// Orientation of a guillotine cut produced by a blueprint.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Orient {
@@ -553,7 +552,11 @@ impl CutForest {
                 }
                 let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
                 let fits = (node.w / pw).max(node.h / ph);
-                if fits >= min_fit { Some((free_pos, pw, ph, rotated)) } else { None }
+                if fits >= min_fit {
+                    Some((free_pos, pw, ph, rotated))
+                } else {
+                    None
+                }
             })
             .collect();
         if candidates.is_empty() {
@@ -576,7 +579,11 @@ impl CutForest {
                 let node = &self.nodes[self.free_leaves[free_pos]];
                 let (pw, ph, rotated) = piece_fits_in(node.w, node.h, piece, prefer_rotate)?;
                 let fits = (node.w / pw).max(node.h / ph);
-                if fits >= min_fit { Some((free_pos, pw, ph, rotated)) } else { None }
+                if fits >= min_fit {
+                    Some((free_pos, pw, ph, rotated))
+                } else {
+                    None
+                }
             })
             .collect::<Vec<(usize, u32, u32, bool)>>();
         if candidates.is_empty() {
@@ -606,8 +613,6 @@ pub(crate) fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) 
     }
     None
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -722,5 +727,4 @@ mod tests {
         assert_eq!((bx, by), (0, 0));
         assert_eq!(free_rects(&forest), vec![(100, 0, 100, 100)]);
     }
-
 }

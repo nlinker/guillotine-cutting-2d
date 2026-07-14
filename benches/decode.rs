@@ -62,7 +62,11 @@ fn bench_decode(c: &mut Criterion) {
     });
     g.bench_function("glas", |b| {
         b.iter(|| {
-            glas_decode(black_box(&synth_problem), black_box(&synth_spec), black_box(&synth_glas))
+            glas_decode(
+                black_box(&synth_problem),
+                black_box(&synth_spec),
+                black_box(&synth_glas),
+            )
         })
     });
     g.finish();

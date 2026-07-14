@@ -302,7 +302,11 @@ impl Solution {
     pub fn eval(&self, problem: &Problem) -> Objective {
         let n = self.sheets_used();
         if n == 0 {
-            return Objective { sheets_used: 0.0, drop_consolidation_score: 0, layout_score: 0 };
+            return Objective {
+                sheets_used: 0.0,
+                drop_consolidation_score: 0,
+                layout_score: 0,
+            };
         }
         let last_idx = n - 1;
         let piece_area_last: u64 = self
