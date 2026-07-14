@@ -79,9 +79,8 @@ tall pieces spill onto a second sheet. `lw=12 ≤ lh=23` forces this branch unco
 — SLAS has no way to choose the vertical cut.
 
 `point_selector` only steers which free rect to try first; it cannot override the split
-direction. `decode(encode(glf_solution))` therefore uses more sheets than the GLF optimum
-whenever the cut trees diverge — the encoder is a warm-start hint for the GA, not an
-exact inverse of an arbitrary cut tree.
+direction. A decoder locked to `lw ≤ lh` therefore cannot reach the GLF optimum whenever
+the optimal cut tree needs the other direction.
 
 ## The `inverse` flag
 
