@@ -27,6 +27,7 @@ and this combinatorics makes the problem hard:
 ## Distinctive features
 
 - Enforces **guillotine**-cut constraints.
+- Supports per-piece **rotation** (rotatable or fixed).
 - Three-level lexicographic **Objective**
   `(sheets_used, layout_score, drop_consolidation_score)` - minimizes sheet count first,
   then maximizes concentration of cuts into long, reusable lines, then maximizes
@@ -209,11 +210,13 @@ cargo run --example benchmark --release              # GA + BPC quality benchmar
 
 Interactive visualizations (open in browser, no server needed):
 
-(**NOTE**: it is AI-generated from the Rust code and might not be accurate enough)
+(**NOTE**: they are AI-generated from the Rust code and might not be accurate enough)
 
-| Demo                                                                                                       | What it shows                                         |
+| Demo                                                                                                     | What it shows                                         |
 |------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| [SLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/slas_decoder.html)                   | SLAS genome → sheet placements step by step           |
 | [GLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/glas_decoder.html)                   | GLAS genome → sheet placements step by step           |
+| [GLF Table Visualizer](https://nlinker.github.io/guillotine-cutting-2d/demos/glf_table.html)               | GLF DP table build + reconstruction step by step       |
 | [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                  | OX and CX operators animated                          |
 | [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)                 | swap / flip / point-selector mutation animated        |
 | [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html)   | random problem generation with known optimal solution |
