@@ -14,50 +14,6 @@
     .pal-4 .gtype { color: #633806; } .pal-5 .gtype { color: #72243E; }
     .pal-6 .gtype { color: #27500A; } .pal-7 .gtype { color: #501313; }
 
-    @media (prefers-color-scheme: dark) {
-      body                { background: #1a1a18; color: #e8e6df; }
-      .gene-card          { background: #232320; border-color: #3d3d3a; }
-      .gene-card.active   { background: #2d1a00; border-color: #EF9F27; }
-      .gene-card.done     { opacity: .4; }
-      .gene-card .ginfo   { color: #7a7874; }
-      .pal-0 .gtype { color: #a8a3ff; } .pal-1 .gtype { color: #3ecf97; }
-      .pal-2 .gtype { color: #ff8a68; } .pal-3 .gtype { color: #60b8ff; }
-      .pal-4 .gtype { color: #ffbe50; } .pal-5 .gtype { color: #ff82b0; }
-      .pal-6 .gtype { color: #8ed638; } .pal-7 .gtype { color: #ff7a7a; }
-      .gene-card.active .gtype { color: #1a1a18; }
-      .explain            { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
-      .explain strong     { color: #e8e6df; }
-      .t-find  { background: #0a1e30; color: #60b8ff; }
-      .t-place { background: #16133a; color: #a8a3ff; }
-      .t-new   { background: #2a1500; color: #ffbe50; }
-      .t-done  { background: #071a12; color: #3ecf97; }
-      .t-init  { background: #232320; color: #c4c2b8; }
-      .t-slas-h { background: #0a1e30; color: #60b8ff; }
-      .t-slas-v { background: #2a1500; color: #ffbe50; }
-      .sheet-canvas       { border-color: #3d3d3a; }
-      .sheet-label        { color: #7a7874; }
-      .ctrl button        { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
-      .ctrl button:hover  { background: #2e2e2b; }
-      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
-      .ctrl button:disabled { opacity: .3; }
-      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
-      .sc  { color: #7a7874; }
-      .pdot { background: #3d3d3a; }
-      .panel-title { color: #7a7874; }
-      .free-list { color: #c4c2b8; }
-      .free-item { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
-      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; }
-      .legend { color: #c4c2b8; }
-      .settings label { color: #b4b2a9; }
-      .settings-group { background: #232320; border-color: #2e2e2b; }
-      .settings input { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .scale-info { background: #232320; border-color: #2e2e2b; color: #7a7874; }
-      .mfg-value { color: #ff8a68; }
-      .mfg-detail { color: #7a7874; }
-      .genome-wrap { border-color: #3d3d3a; background: #232320; }
-      .inv-tag { background: #2a0030; border-color: #9944aa; color: #d080e0; }
-    }
-
     #layout { display: flex; gap: 12px; align-items: flex-start; }
     #left   { flex: 1; min-width: 0; }
     #right  { width: 220px; flex-shrink: 0; }
@@ -139,7 +95,53 @@
     .settings input[type=number] { width: 52px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
     .settings-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
     .scale-info     { font-size: 10px; color: #888780; padding: 2px 6px; background: #f5f4f0; border-radius: 3px; border: 0.5px solid #e8e6df; }
-  </style>
+
+  /* Placed last so it wins the cascade tie against the light-mode rules
+     above for the same selectors -- @media alone does not add specificity. */
+  @media (prefers-color-scheme: dark) {
+      body                { background: #1a1a18; color: #e8e6df; }
+      .gene-card          { background: #232320; border-color: #3d3d3a; }
+      .gene-card.active   { background: #2d1a00; border-color: #EF9F27; }
+      .gene-card.done     { opacity: .4; }
+      .gene-card .ginfo   { color: #7a7874; }
+      .pal-0 .gtype { color: #a8a3ff; } .pal-1 .gtype { color: #3ecf97; }
+      .pal-2 .gtype { color: #ff8a68; } .pal-3 .gtype { color: #60b8ff; }
+      .pal-4 .gtype { color: #ffbe50; } .pal-5 .gtype { color: #ff82b0; }
+      .pal-6 .gtype { color: #8ed638; } .pal-7 .gtype { color: #ff7a7a; }
+      .gene-card.active .gtype { color: #1a1a18; }
+      .explain            { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
+      .explain strong     { color: #e8e6df; }
+      .t-find  { background: #0a1e30; color: #60b8ff; }
+      .t-place { background: #16133a; color: #a8a3ff; }
+      .t-new   { background: #2a1500; color: #ffbe50; }
+      .t-done  { background: #071a12; color: #3ecf97; }
+      .t-init  { background: #232320; color: #c4c2b8; }
+      .t-slas-h { background: #0a1e30; color: #60b8ff; }
+      .t-slas-v { background: #2a1500; color: #ffbe50; }
+      .sheet-canvas       { border-color: #3d3d3a; }
+      .sheet-label        { color: #7a7874; }
+      .ctrl button        { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover  { background: #2e2e2b; }
+      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .ctrl button:disabled { opacity: .3; }
+      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
+      .sc  { color: #7a7874; }
+      .pdot { background: #3d3d3a; }
+      .panel-title { color: #7a7874; }
+      .free-list { color: #c4c2b8; }
+      .free-item { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
+      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; }
+      .legend { color: #c4c2b8; }
+      .settings label { color: #b4b2a9; }
+      .settings-group { background: #232320; border-color: #2e2e2b; }
+      .settings input { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .scale-info { background: #232320; border-color: #2e2e2b; color: #7a7874; }
+      .mfg-value { color: #ff8a68; }
+      .mfg-detail { color: #7a7874; }
+      .genome-wrap { border-color: #3d3d3a; background: #232320; }
+      .inv-tag { background: #2a0030; border-color: #9944aa; color: #d080e0; }
+    }
+</style>
 </head>
 <body>
 

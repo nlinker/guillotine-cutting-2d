@@ -25,85 +25,6 @@
     .pal-6 .gtype { color: #27500A; }
     .pal-7 .gtype { color: #501313; }
 
-    @media (prefers-color-scheme: dark) {
-      body               { background: #1a1a18; color: #e8e6df; }
-
-      /* Gene cards */
-      .gene-card         { background: #232320; border-color: #3d3d3a; }
-      .gene-card.active  { background: #2d1a00; border-color: #EF9F27; }
-      .gene-card.done    { opacity: .4; }
-      .gene-card .ginfo  { color: #7a7874; }
-      .gene-card .gprog  { color: #ffb840; }
-
-      /* Per-palette text — bright/readable on dark bg */
-      .pal-0 .gtype { color: #a8a3ff; }
-      .pal-1 .gtype { color: #3ecf97; }
-      .pal-2 .gtype { color: #ff8a68; }
-      .pal-3 .gtype { color: #60b8ff; }
-      .pal-4 .gtype { color: #ffbe50; }
-      .pal-5 .gtype { color: #ff82b0; }
-      .pal-6 .gtype { color: #8ed638; }
-      .pal-7 .gtype { color: #ff7a7a; }
-      /* Active card has light bg — restore dark text */
-      .gene-card.active .pal-0 .gtype,
-      .gene-card.active .gtype { color: #1a1a18; }
-
-      /* Class blocks */
-      .cls-block         { background: #232320; border-color: #3d3d3a; }
-      .cls-block.cls-0   { border-color: #D85A3066; }
-      .cls-block.cls-1   { border-color: #EF9F2766; }
-      .cls-block.cls-2   { border-color: #378ADD66; }
-      .cls-label.cls-0   { color: #e07050; }
-      .cls-label.cls-1   { color: #ffbe50; }
-      .cls-label.cls-2   { color: #60b8ff; }
-      .cls-empty         { color: #4a4a46; }
-
-      /* Explain + tags */
-      .explain           { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
-      .explain strong    { color: #e8e6df; }
-      .t-find  { background: #0a1e30; color: #60b8ff; }
-      .t-place { background: #16133a; color: #a8a3ff; }
-      .t-new   { background: #2a1500; color: #ffbe50; }
-      .t-done  { background: #071a12; color: #3ecf97; }
-      .t-init  { background: #232320; color: #c4c2b8; }
-      .t-batch { background: #0f2010; color: #8ed638; }
-
-      /* Sheet canvas border */
-      .sheet-canvas      { border-color: #3d3d3a; }
-      .sheet-label       { color: #7a7874; }
-
-      /* Controls */
-      .ctrl button         { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
-      .ctrl button:hover   { background: #2e2e2b; }
-      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
-      .ctrl button:disabled { opacity: .3; }
-      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
-      .sc  { color: #7a7874; }
-
-      /* Progress dots */
-      .pdot { background: #3d3d3a; }
-
-      /* Panel titles */
-      .panel-title { color: #7a7874; }
-
-      /* Free rect list */
-      .free-list        { color: #c4c2b8; }
-      .free-item        { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
-      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; color: #e0dcd0; }
-
-      /* Legend */
-      .legend { color: #c4c2b8; }
-
-      /* Settings */
-      .settings label  { color: #b4b2a9; }
-      .settings-group  { background: #232320; border-color: #2e2e2b; }
-      .settings input  { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
-      .scale-info      { background: #232320; border-color: #2e2e2b; color: #7a7874; }
-
-      /* Right-panel hint */
-      #right .legend + div { color: #7a7874 !important; }
-    }
-
     #layout  { display: flex; gap: 12px; align-items: flex-start; }
     #left    { flex: 1; min-width: 0; }
     #right   { width: 210px; flex-shrink: 0; }
@@ -192,7 +113,88 @@
     .settings input[type=number] { width: 52px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
     .settings-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
     .scale-info     { font-size: 10px; color: #888780; padding: 2px 6px; background: #f5f4f0; border-radius: 3px; border: 0.5px solid #e8e6df; }
-  </style>
+
+  /* Placed last so it wins the cascade tie against the light-mode rules
+     above for the same selectors -- @media alone does not add specificity. */
+  @media (prefers-color-scheme: dark) {
+      body               { background: #1a1a18; color: #e8e6df; }
+
+      /* Gene cards */
+      .gene-card         { background: #232320; border-color: #3d3d3a; }
+      .gene-card.active  { background: #2d1a00; border-color: #EF9F27; }
+      .gene-card.done    { opacity: .4; }
+      .gene-card .ginfo  { color: #7a7874; }
+      .gene-card .gprog  { color: #ffb840; }
+
+      /* Per-palette text — bright/readable on dark bg */
+      .pal-0 .gtype { color: #a8a3ff; }
+      .pal-1 .gtype { color: #3ecf97; }
+      .pal-2 .gtype { color: #ff8a68; }
+      .pal-3 .gtype { color: #60b8ff; }
+      .pal-4 .gtype { color: #ffbe50; }
+      .pal-5 .gtype { color: #ff82b0; }
+      .pal-6 .gtype { color: #8ed638; }
+      .pal-7 .gtype { color: #ff7a7a; }
+      /* Active card has light bg — restore dark text */
+      .gene-card.active .pal-0 .gtype,
+      .gene-card.active .gtype { color: #1a1a18; }
+
+      /* Class blocks */
+      .cls-block         { background: #232320; border-color: #3d3d3a; }
+      .cls-block.cls-0   { border-color: #D85A3066; }
+      .cls-block.cls-1   { border-color: #EF9F2766; }
+      .cls-block.cls-2   { border-color: #378ADD66; }
+      .cls-label.cls-0   { color: #e07050; }
+      .cls-label.cls-1   { color: #ffbe50; }
+      .cls-label.cls-2   { color: #60b8ff; }
+      .cls-empty         { color: #4a4a46; }
+
+      /* Explain + tags */
+      .explain           { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
+      .explain strong    { color: #e8e6df; }
+      .t-find  { background: #0a1e30; color: #60b8ff; }
+      .t-place { background: #16133a; color: #a8a3ff; }
+      .t-new   { background: #2a1500; color: #ffbe50; }
+      .t-done  { background: #071a12; color: #3ecf97; }
+      .t-init  { background: #232320; color: #c4c2b8; }
+      .t-batch { background: #0f2010; color: #8ed638; }
+
+      /* Sheet canvas border */
+      .sheet-canvas      { border-color: #3d3d3a; }
+      .sheet-label       { color: #7a7874; }
+
+      /* Controls */
+      .ctrl button         { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
+      .ctrl button:hover   { background: #2e2e2b; }
+      .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .ctrl button:disabled { opacity: .3; }
+      .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
+      .sc  { color: #7a7874; }
+
+      /* Progress dots */
+      .pdot { background: #3d3d3a; }
+
+      /* Panel titles */
+      .panel-title { color: #7a7874; }
+
+      /* Free rect list */
+      .free-list        { color: #c4c2b8; }
+      .free-item        { background: #0f1c2e; border-left-color: #4a7aaa; color: #d8d6cf; }
+      .free-item.chosen { background: #1e1100; border-left-color: #EF9F27; color: #e0dcd0; }
+
+      /* Legend */
+      .legend { color: #c4c2b8; }
+
+      /* Settings */
+      .settings label  { color: #b4b2a9; }
+      .settings-group  { background: #232320; border-color: #2e2e2b; }
+      .settings input  { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+      .scale-info      { background: #232320; border-color: #2e2e2b; color: #7a7874; }
+
+      /* Right-panel hint */
+      #right .legend + div { color: #7a7874 !important; }
+    }
+</style>
 </head>
 <body>
 
