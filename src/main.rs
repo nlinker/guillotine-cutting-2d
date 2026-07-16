@@ -14,6 +14,7 @@ use cut::{
     model::{Objective, ProblemSpec, SolutionSpec},
     parse_compact, parse_json,
     render::render_svg,
+    slas::ga as slas_ga,
     transport::{ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
@@ -26,6 +27,8 @@ mod web;
 #[derive(clap::ValueEnum, serde::Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Algorithm {
+    /// SLAS genetic algorithm (one gene per physical piece)
+    Slas,
     /// Group-SLAS genetic algorithm (one gene per piece type)
     #[default]
     Glas,
@@ -40,6 +43,7 @@ pub(crate) enum Algorithm {
 impl std::fmt::Display for Algorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Algorithm::Slas => write!(f, "slas"),
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
             Algorithm::Jylanki => write!(f, "jylanki"),
@@ -278,6 +282,16 @@ fn make_any_handle(
     algorithm: Algorithm,
 ) -> AnyHandle {
     match algorithm {
+        Algorithm::Slas => {
+            let handle = slas_ga::run_ga_mt(
+                Arc::clone(&spec),
+                Arc::clone(&cfg),
+                seeds,
+                progress_interval,
+                progress_interval,
+            );
+            ga_handle_to_any(handle, |g, spec| cut::slas::decoder::decode_spec(spec, g))
+        }
         Algorithm::Glas => {
             let handle = glas_ga::run_ga_mt(
                 Arc::clone(&spec),
@@ -568,7 +582,7 @@ fn run_calc_render(
             // BPC render uses jylanki UB as the initial feasible solution
             Algorithm::Jylanki | Algorithm::Bpc => cut::heuristic::jylanki_solve(&problem),
             // TODO what this should return really?
-            Algorithm::Glas => cut::heuristic::bfdh_solve(&problem),
+            Algorithm::Glas | Algorithm::Slas => cut::heuristic::bfdh_solve(&problem),
         };
         let sol_spec = cut::expand::shrink_solution(&flat_sol, spec);
         print!("{}", render_svg(spec, &sol_spec)?);

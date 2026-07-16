@@ -76,6 +76,7 @@
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <label>Algorithm <select id="algorithm">
+      <option value="slas">SLAS</option>
       <option value="glas" selected>GLAS</option>
       <option value="bfdh">BFDH</option>
       <option value="jylanki">Jylanki</option>
@@ -442,7 +443,7 @@ document.getElementById('cancel').addEventListener('click', () => {
 
 const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
 function applyAlgorithmState(value) {
-  const isGA = value === 'glas';
+  const isGA = value === 'glas' || value === 'slas';
   const useProgress = isGA || value === 'bpc';
   gaOnlyIds.forEach(id => {
     const el = document.getElementById(id);

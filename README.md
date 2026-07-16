@@ -38,19 +38,19 @@ and this combinatorics makes the problem hard:
 - **Margin** - border excluded from all four sheet edges before solving;
   output coordinates are shifted back by `+margin`.
 - Exact single-sheet optimization via **GLF** (Guillotine Layout Function) - a DP on step functions over
-  all guillotine-cut subsets. Supports piece rotation.
+  all guillotine-cut subsets. Supports piece rotation. See GLF visualizer in [Demos](#demos)
 - Exact **multiple-sheet** optimization via **BPC** (Branch-Price-and-Cut) - column
   generation over cutting patterns priced by the GLF oracle, with branch-and-bound that
   forces pairs of piece types onto the same sheet or apart until the LP relaxation
   matches an integer solution. Minimizes sheet count only (not layout/drop-consolidation
-  scores).
+  scores). _Warning_: current performance is poor; exploring approaches to improve it.
 - **GA** - evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`.
 - **Island-model GA** - `run_ga_mt` spawns one independent island (population) per seed.
   Islands evolve in parallel; every `migration_interval` generations they synchronize via a
   shared barrier, injecting the global best into each island's worst slot.
   The final result is the best individual found across all islands.
-- Four **Algorithms** (`--algorithm slas|glas|bfdh|jylanki`):
+- Five **Algorithms** (`--algorithm slas|glas|bfdh|jylanki|bpc`, also selectable in the web UI):
   - GA with **SLAS** decoder - one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
     (see [docs/slas.md](docs/slas.md)).
   - GA with **GLAS** decoder (default) - grouped SLAS, one gene per piece *type*;
@@ -61,6 +61,7 @@ and this combinatorics makes the problem hard:
   - **Jylanki** - portfolio greedy packer (per Jylanki's [A Thousand Ways to Pack the Bin.pdf](docs/pdf/A%20Thousand%20Ways%20to%20Pack%20the%20Bin.pdf)):
     runs every combination of sort key x direction x selection rule x split rule
     (144 deterministic passes), keeps the best by `Objective`.
+  - **BPC** - exact multi-sheet solver, see above.
 - **Genome** - :
   - SLAS: `Vec<Gene>` - just the ordered sequence of `Gene`s.
   - GLAS: `Vec<Vec<Gene>>` - outer index = class (0 Large, 1 Medium, 2 Small);
