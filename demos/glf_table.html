@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>GLF Table Visualizer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 13px; padding: 16px; background: #ffffff; color: #1a1a18; }
+
+  .pal-0 .gtype { color: #3C3489; } .pal-1 .gtype { color: #085041; }
+  .pal-2 .gtype { color: #712B13; } .pal-3 .gtype { color: #0C447C; }
+
+  #layout { display: flex; gap: 12px; align-items: flex-start; }
+  #left   { flex: 1.5; min-width: 0; }
+  #right  { width: 260px; flex-shrink: 0; }
+
+  .explain { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 9px 12px; background: #f5f4f0; font-size: 12px; line-height: 1.65; color: #444441; min-height: 44px; margin: 8px 0; }
+  .explain strong { color: #1a1a18; }
+
+  .tag { display: inline-block; font-size: 10px; font-weight: 500; border-radius: 3px; padding: 1px 6px; margin-right: 4px; vertical-align: middle; }
+  .t-base  { background: #E1F5EE; color: #085041; }
+  .t-split { background: #E6F1FB; color: #0C447C; }
+  .t-done  { background: #FAEEDA; color: #633806; }
+  .t-recon { background: #EEEDFE; color: #3C3489; }
+  .t-place { background: #E1F5EE; color: #085041; }
+  .t-back  { background: #FCEBEB; color: #712B13; }
+  .t-init  { background: #F1EFE8; color: #444441; }
+
+  .card { border: 0.5px solid #e8e6df; border-radius: 8px; padding: 10px; background: #faf9f7; margin-bottom: 10px; }
+  .panel-title { font-size: 10px; font-weight: 500; color: #888780; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+
+  .plot-svg { width: 100%; height: 230px; background: #fbfaf8; border-radius: 6px; display: block; }
+  .plot-axis { stroke: #c8c6bc; stroke-width: 1; }
+  .plot-tick { font-size: 9px; fill: #888780; }
+  .plot-inf  { fill: #e8e6df; opacity: .5; }
+  .plot-label { font-size: 10px; fill: #888780; }
+
+  .mini-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; min-height: 138px; }
+  .mini-card { flex: 1; min-width: 150px; }
+  .mini-title { font-size: 10px; color: #888780; margin-bottom: 4px; text-align: center; }
+  .shape-svg { width: 100%; height: 100px; background: #fbfaf8; border-radius: 6px; display: block; }
+  .shape-lbl { font-size: 9.5px; fill: #444441; }
+
+  .legend-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10.5px; color: #444441; margin-top: 6px; min-height: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-sw { width: 16px; height: 3px; border-radius: 2px; border: none; }
+
+  .problem-info { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; }
+  .problem-item { display: flex; align-items: center; gap: 5px; }
+  .problem-sw { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+  .table-list { font-size: 10.5px; line-height: 1.5; max-height: 260px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .table-row { padding: 2px 5px; border-radius: 3px; display: flex; gap: 6px; justify-content: space-between; }
+  .table-row.cur { background: #FAEEDA; font-weight: 600; }
+  .table-row .fn { color: #888780; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .recur-list { font-size: 10.5px; line-height: 1.6; max-height: 260px; overflow-y: auto; }
+  .recur-row { padding: 1px 4px; border-radius: 3px; white-space: nowrap; }
+  .recur-row.cur { background: #EEEDFE; font-weight: 600; }
+  .recur-row.fail { color: #A0392E; }
+
+  .sheet-canvas { display: block; border: 0.5px solid #d3d1c7; border-radius: 4px; margin: 0 auto; }
+
+  .settings       { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .settings label { font-size: 12px; color: #444441; }
+  .settings input[type=number] { width: 52px; font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; }
+  .settings-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 5px 8px; border-radius: 8px; border: 0.5px solid #e8e6df; background: #f5f4f0; }
+
+  .ctrl               { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .ctrl button        { font-size: 12px; padding: 4px 11px; border-radius: 8px; border: 0.5px solid #d3d1c7; background: #ffffff; color: #1a1a18; cursor: pointer; transition: background .15s; }
+  .ctrl button:hover  { background: #f5f4f0; }
+  .ctrl button:disabled { opacity: .35; cursor: default; }
+  .ctrl button.primary       { background: #1a1a18; color: #ffffff; border-color: #1a1a18; }
+  .ctrl button.primary:hover { opacity: .85; }
+  .kbd { font-size: 10px; background: #f5f4f0; border: 0.5px solid #d3d1c7; border-radius: 3px; padding: 1px 5px; color: #888780; margin-left: 2px; }
+  .sc  { font-size: 11px; color: #888780; margin-left: auto; }
+
+  .progress { display: flex; gap: 3px; margin: 6px 0; flex-wrap: wrap; min-height: 16px; align-items: center; }
+  .pdot     { width: 6px; height: 6px; border-radius: 50%; background: #d3d1c7; transition: background .2s, transform .2s; flex-shrink: 0; }
+  .pdot.done { background: #1D9E75; }
+  .pdot.cur  { background: #EF9F27; transform: scale(1.5); }
+  .pdot.recon { background: #7F77DD; }
+
+  /* Placed last so it wins the cascade tie against the light-mode rules
+     above for the same selectors — @media alone doesn't add specificity. */
+  @media (prefers-color-scheme: dark) {
+    body                { background: #1a1a18; color: #e8e6df; }
+    .explain            { background: #232320; border-color: #2e2e2b; color: #c4c2b8; }
+    .explain strong      { color: #e8e6df; }
+    .t-base  { background: #071a12; color: #3ecf97; }
+    .t-split { background: #0a1e30; color: #60b8ff; }
+    .t-done  { background: #2a1500; color: #ffbe50; }
+    .t-recon { background: #16133a; color: #a8a3ff; }
+    .t-place { background: #071a12; color: #3ecf97; }
+    .t-back  { background: #2a0808; color: #ff7a7a; }
+    .t-init  { background: #232320; color: #c4c2b8; }
+    .panel-title { color: #7a7874; }
+    .ctrl button        { background: #232320; border-color: #3d3d3a; color: #e8e6df; }
+    .ctrl button:hover  { background: #2e2e2b; }
+    .ctrl button.primary { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+    .ctrl button:disabled { opacity: .3; }
+    .kbd { background: #2e2e2b; border-color: #3d3d3a; color: #7a7874; }
+    .sc  { color: #7a7874; }
+    .pdot { background: #3d3d3a; }
+    .settings label { color: #b4b2a9; }
+    .settings-group { background: #232320; border-color: #2e2e2b; }
+    .settings input, .settings select { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
+    .card { background: #232320; border-color: #2e2e2b; }
+    .table-list { color: #c4c2b8; }
+    .table-row.cur { background: #2d1a00; }
+    .table-row .fn { color: #7a7874; }
+    .recur-list { color: #c4c2b8; }
+    .recur-row.cur { background: #16133a; }
+    .recur-row.fail { color: #ff8a8a; }
+    .sheet-canvas { border-color: #3d3d3a; }
+    .plot-svg { background: #1f1f1c; }
+    .plot-axis { stroke: #55534d; }
+    .plot-tick { fill: #7a7874; }
+    .plot-inf  { fill: #2e2e2b; }
+    .legend-sw { border-color: #3d3d3a; }
+    .shape-lbl { fill: #c4c2b8; }
+    .shape-svg { background: #1f1f1c; }
+    .mini-title { color: #7a7874; }
+    .plot-label { fill: #7a7874; }
+    .legend-row { color: #c4c2b8; }
+  }
+</style>
+</head>
+<body>
+
+<div class="settings">
+  <div class="settings-group">
+    <label>Problem:</label>
+    <select id="preset" onchange="loadPreset(true)">
+      <option value="demo">Demo (2A + rotatable B + C)</option>
+      <option value="tutorial">Tutorial (crate test, 8 pieces)</option>
+      <option value="random">Random (small)</option>
+    </select>
+  </div>
+  <div class="settings-group">
+    <label>Query width:</label>
+    <input id="qwidth" type="number" value="6" min="1" max="60"/>
+    <span id="feasible-info" style="font-size:10.5px;color:#888780"></span>
+  </div>
+  <button onclick="loadPreset(false)">&#x21BB; Rebuild</button>
+</div>
+
+<div class="card" style="padding:7px 12px;margin-bottom:8px">
+  <div class="panel-title">Problem instance</div>
+  <div class="problem-info" id="problem-info">&mdash;</div>
+</div>
+
+<div class="explain" id="explain">Loading&hellip;</div>
+
+<div id="layout">
+  <div id="left">
+    <div class="card" id="plot-card">
+      <div class="panel-title" id="plot-title">Step function</div>
+      <svg id="plot-svg" class="plot-svg"></svg>
+      <div class="legend-row" id="plot-legend"></div>
+      <div class="mini-row" id="mini-row"></div>
+    </div>
+
+    <div class="card" id="sheet-card" style="display:none">
+      <div class="panel-title">Reconstruction &mdash; sheet layout</div>
+      <canvas id="sheet-canvas" class="sheet-canvas"></canvas>
+    </div>
+
+    <div class="progress" id="progress-row"></div>
+    <div class="ctrl">
+      <button id="btn-prev" onclick="goPrev()" disabled>&#x25C4;<span class="kbd">&larr;</span></button>
+      <button id="btn-next" onclick="goNext()" disabled>&#x25BA;<span class="kbd">&rarr;</span></button>
+      <button id="btn-auto" onclick="toggleAuto()" disabled>&#x25B7; Auto<span class="kbd">Space</span></button>
+      <button id="btn-skip" onclick="skipToRecon()">&#x23ED; Skip to reconstruction</button>
+      <span class="sc" id="sc"></span>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="panel-title">GLF table (built so far)</div>
+    <div class="card" style="padding:6px 8px">
+      <div class="table-list" id="table-list">&mdash;</div>
+    </div>
+
+    <div class="panel-title">Recursion trace</div>
+    <div class="card" style="padding:6px 8px">
+      <div class="recur-list" id="recur-list">&mdash;</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// GLF core (ported 1:1 from src/exact/glf.rs, verified against its own
+// #[cfg(test)] cases: eval_f_basic, eval_f_inv_basic, h_cut_basic,
+// v_cut_basic, combined_ca, tutorial_example, reconstruct_flat_*).
+// ============================================================================
+
+function evalF(f, x) { let r = null; for (const [xi, hi] of f) { if (xi <= x) r = hi; else break; } return r; }
+function evalFInv(f, h) { for (const [xi, hi] of f) if (hi <= h) return xi; return null; }
+
+function simplify(pts) {
+  if (pts.length <= 1) return pts.slice();
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) if (pts[i][1] < out[out.length - 1][1]) out.push(pts[i]);
+  return out;
+}
+
+// H-cut: stack f1 on top of f2 (same width, heights add).
+function hCut(f1, f2) {
+  if (!f1.length || !f2.length) return [];
+  const xs = [...new Set([...f1.map(p => p[0]), ...f2.map(p => p[0])])].sort((a, b) => a - b);
+  const r = [];
+  for (const x of xs) { const h1 = evalF(f1, x), h2 = evalF(f2, x); if (h1 !== null && h2 !== null) r.push([x, h1 + h2]); }
+  return simplify(r);
+}
+
+// V-cut: place f1 and f2 side by side (same height, widths add) — computed
+// via the INVERSE functions f1⁻¹, f2⁻¹ (width as a function of height).
+function vCut(f1, f2) {
+  if (!f1.length || !f2.length) return [];
+  const hs = [...new Set([...f1.map(p => p[1]), ...f2.map(p => p[1])])].sort((a, b) => b - a);
+  const r = [];
+  for (const h of hs) { const w1 = evalFInv(f1, h), w2 = evalFInv(f2, h); if (w1 !== null && w2 !== null) r.push([w1 + w2, h]); }
+  r.sort((a, b) => a[0] - b[0]);
+  return simplify(r);
+}
+
+function minFn(f1, f2) {
+  if (!f1.length) return f2.slice();
+  if (!f2.length) return f1.slice();
+  const xs = [...new Set([...f1.map(p => p[0]), ...f2.map(p => p[0])])].sort((a, b) => a - b);
+  const r = [];
+  for (const x of xs) {
+    const h1 = evalF(f1, x), h2 = evalF(f2, x);
+    if (h1 !== null && h2 !== null) r.push([x, Math.min(h1, h2)]);
+    else if (h1 !== null) r.push([x, h1]);
+    else if (h2 !== null) r.push([x, h2]);
+  }
+  return simplify(r);
+}
+
+// f⁻¹ expressed as the same [x,h]-ascending / height-descending shape as a
+// normal StepFn, just with the axes swapped (height plays the "x" role).
+function inverseAsStepFn(f) {
+  return f.slice().reverse().map(([x, h]) => [h, x]);
+}
+
+function invPoint(f, h) { const x = evalFInv(f, h); return x === null ? null : x; }
+
+function buildTypes(pieces) {
+  const typeMap = new Map(); const types = []; const typeToFlat = [];
+  pieces.forEach((p, idx) => {
+    const key = `${p.width}x${p.height}x${p.can_rotate}`;
+    if (typeMap.has(key)) { const ti = typeMap.get(key); types[ti].count++; typeToFlat[ti].push(idx); }
+    else { const ti = types.length; typeMap.set(key, ti); types.push({ width: p.width, height: p.height, count: 1, can_rotate: p.can_rotate }); typeToFlat.push([idx]); }
+  });
+  return { types, typeToFlat };
+}
+function decodeIndex(types, idx) { const c = new Array(types.length).fill(0); for (let i = 0; i < types.length; i++) { const m = types[i].count + 1; c[i] = idx % m; idx = Math.floor(idx / m); } return c; }
+function decodeSplit(ranges, idx) { const r = new Array(ranges.length).fill(0); for (let i = 0; i < ranges.length; i++) { const m = ranges[i] + 1; r[i] = idx % m; idx = Math.floor(idx / m); } return r; }
+function flatIndex(strides, counts) { return counts.reduce((s, k, i) => s + k * strides[i], 0); }
+
+function subsetLabel(labels, counts) {
+  const parts = counts.map((k, i) => k > 0 ? (k === 1 ? labels[i] : `${k}·${labels[i]}`) : null).filter(Boolean);
+  return `{${parts.join(',')}}`;
+}
+
+// ── build the table, emitting one step per base case, per split tried
+// within a composite cell, and per finished cell ──────────────────────────
+function buildGlfTableWithSteps(pieces) {
+  const { types, typeToFlat } = buildTypes(pieces);
+  const labels = types.map((_, i) => String.fromCharCode(65 + i));
+  const t = types.length;
+  const strides = new Array(t).fill(1);
+  for (let i = 1; i < t; i++) strides[i] = strides[i - 1] * (types[i - 1].count + 1);
+  const total = t === 0 ? 1 : strides[t - 1] * (types[t - 1].count + 1);
+  const cells = new Array(total).fill(null).map(() => []);
+  const steps = [];
+  const lbl = (counts) => subsetLabel(labels, counts);
+
+  steps.push({ phase: 'build', type: 'init', types, pieceCount: pieces.length, nonEmptyCells: total - 1,
+    text: `Grouping <strong>${pieces.length}</strong> physical piece(s) into <strong>${types.length}</strong> distinct type(s) `+
+          `(by width&times;height&times;rotatable). The table has one cell per count-vector `+
+          `(how many copies of each type), <strong>${total - 1}</strong> non-empty cell(s) total. `+
+          `Cells are filled in order of increasing piece count, so every split a cell needs is already known.` });
+
+  let subsets = [];
+  for (let flat = 1; flat < total; flat++) {
+    const counts = decodeIndex(types, flat);
+    const totalPieces = counts.reduce((a, b) => a + b, 0);
+    subsets.push({ flat, counts, totalPieces });
+  }
+  subsets.sort((a, b) => a.totalPieces - b.totalPieces);
+
+  for (const { flat, counts, totalPieces } of subsets) {
+    const label = lbl(counts);
+    if (totalPieces === 1) {
+      const ti = counts.findIndex(k => k === 1);
+      const ty = types[ti];
+      const fNormal = [[ty.width, ty.height]];
+      const rotatable = ty.can_rotate && ty.width !== ty.height;
+      const fRot = rotatable ? [[ty.height, ty.width]] : null;
+      const f = rotatable ? minFn(fNormal, fRot) : fNormal;
+      cells[flat] = f;
+      steps.push({ phase: 'build', type: 'base', label, flat, ty, f, fNormal, fRot,
+        text: rotatable
+          ? `Base case <strong>${label}</strong>: one ${ty.width}&times;${ty.height} piece, rotatable. `+
+            `Normal orientation needs width&nbsp;&ge;&nbsp;${ty.width} to get height&nbsp;${ty.height}; `+
+            `rotated needs width&nbsp;&ge;&nbsp;${ty.height} to get height&nbsp;${ty.width}. `+
+            `The type's real function is the pointwise <strong>minimum</strong> of the two &mdash; `+
+            `whichever orientation is shorter at a given width wins.`
+          : `Base case <strong>${label}</strong>: one ${ty.width}&times;${ty.height} piece`+
+            `${ty.can_rotate ? ' (square &mdash; rotation changes nothing)' : ' (fixed orientation)'}. `+
+            `One point: needs width&nbsp;&ge;&nbsp;${ty.width} to fit at height&nbsp;${ty.height}.` });
+    } else {
+      const ranges = counts.slice();
+      const splitCount = ranges.reduce((a, k) => a * (k + 1), 1);
+      const validSplits = [];
+      for (let sf = 0; sf < splitCount; sf++) {
+        const d1 = decodeSplit(ranges, sf);
+        const d1t = d1.reduce((a, b) => a + b, 0);
+        if (d1t === 0 || d1t === totalPieces) continue;
+        const d2 = counts.map((k, i) => k - d1[i]);
+        const d1f = flatIndex(strides, d1), d2f = flatIndex(strides, d2);
+        if (d1f > d2f) continue;
+        if (!cells[d1f].length || !cells[d2f].length) continue;
+        validSplits.push({ d1, d2, d1f, d2f });
+      }
+
+      let best = [];
+      validSplits.forEach((sp, i) => {
+        const f1 = cells[sp.d1f], f2 = cells[sp.d2f];
+        const fh = hCut(f1, f2);
+        const fv = vCut(f1, f2);
+        const candidate = minFn(fh, fv);
+        const bestBefore = best;
+        best = minFn(best, candidate);
+
+        // Representative concrete instances for the geometric shape preview
+        // (one real breakpoint from each cut's own result — not a made-up example).
+        let hShape = null, vShape = null;
+        if (fh.length) { const [x0, htot] = fh[0]; hShape = { w: x0, h1: evalF(f1, x0), h2: evalF(f2, x0), htot }; }
+        if (fv.length) { const [wtot, h0] = fv[0]; vShape = { h: h0, w1: invPoint(f1, h0), w2: invPoint(f2, h0), wtot }; }
+
+        steps.push({ phase: 'build', type: 'split', label, flat,
+          splitIdx: i + 1, splitTotal: validSplits.length,
+          d1Label: lbl(sp.d1), d2Label: lbl(sp.d2),
+          f1, f2, fh, fv, candidate, bestBefore, bestAfter: best, hShape, vShape,
+          text: `<strong>${label}</strong> &mdash; split ${i + 1}/${validSplits.length}: `+
+                `<strong>${lbl(sp.d1)}</strong> | <strong>${lbl(sp.d2)}</strong>. `+
+                `H-cut stacks them (heights add at shared width); V-cut places them side by side `+
+                `(widths add at shared height, computed via the inverse functions). `+
+                `Pointwise min of the two cuts is this split's candidate; folding it into the `+
+                `running best for ${label} keeps whichever split/direction wins at each width.` });
+      });
+      cells[flat] = best;
+      steps.push({ phase: 'build', type: 'cell_done', label, flat, f: best, nSplits: validSplits.length,
+        text: `<strong>${label}</strong> finished: combined ${validSplits.length} split(s) into the final step function.` });
+    }
+  }
+
+  const fullFlat = flatIndex(strides, types.map(t => t.count));
+  steps.push({ phase: 'build', type: 'table_done', f: cells[fullFlat],
+    text: `Table complete &mdash; <strong>${total - 1}</strong> cell(s) filled. `+
+          `The full-set cell now answers "what's the minimum height at width W?" for any W.` });
+
+  return { types, typeToFlat, strides, cells, labels, steps, total };
+}
+
+// ── reconstruct a placement for the full set at a given width, emitting one
+// step per split attempted (both cut directions), per leaf placement, and
+// per backtrack ─────────────────────────────────────────────────────────
+function reconstructWithSteps(table, width) {
+  const { types, typeToFlat, strides, cells, labels } = table;
+  const lbl = (counts) => subsetLabel(labels, counts);
+  const fullCounts = types.map(t => t.count);
+  const height = evalF(cells[flatIndex(strides, fullCounts)], width);
+  const steps = [];
+  if (height === null) {
+    steps.push({ phase: 'recon', type: 'infeasible',
+      text: `Width <strong>${width}</strong> is infeasible for the full set &mdash; no placement exists at this width.` });
+    return { placements: null, steps, height: null };
+  }
+  steps.push({ phase: 'recon', type: 'recon_start', width, height,
+    text: `Reconstructing at width <strong>${width}</strong>: the table says the full set needs `+
+          `height <strong>${height}</strong> there. Walking the table backwards from the root, `+
+          `trying each split's both cut directions until the arithmetic matches.` });
+
+  const placements = [];
+  const used = new Array(types.length).fill(0);
+
+  function snapshot() { return placements.map(p => ({ ...p })); }
+
+  function recon(counts, x, y, w, h, depth) {
+    const total = counts.reduce((a, b) => a + b, 0);
+    const label = lbl(counts);
+    if (total === 0) return true;
+    if (total === 1) {
+      const ti = counts.findIndex(k => k === 1);
+      const ty = types[ti];
+      const pieceIdx = typeToFlat[ti][used[ti]]; used[ti]++;
+      const rotated = ty.can_rotate && ty.width !== ty.height && h === ty.width;
+      const w_ = rotated ? ty.height : ty.width, h_ = rotated ? ty.width : ty.height;
+      placements.push({ piece_idx: pieceIdx, ti, x, y, w: w_, h: h_, rotated, ty });
+      steps.push({ phase: 'recon', type: 'place', label, x, y, w: w_, h: h_, rotated, depth,
+        placementsSoFar: snapshot(),
+        text: `${'&nbsp;'.repeat(depth * 2)}<strong>${label}</strong> at (${x},${y}): place the `+
+              `${ty.width}&times;${ty.height} piece${rotated ? ' <em>rotated</em>' : ''}.` });
+      return true;
+    }
+    const ranges = counts.slice();
+    const splitCount = ranges.reduce((a, k) => a * (k + 1), 1);
+    for (let sf = 0; sf < splitCount; sf++) {
+      const d1 = decodeSplit(ranges, sf);
+      const d1t = d1.reduce((a, b) => a + b, 0);
+      if (d1t === 0 || d1t === total) continue;
+      const d2 = counts.map((k, i) => k - d1[i]);
+      const f1 = cells[flatIndex(strides, d1)], f2 = cells[flatIndex(strides, d2)];
+      if (!f1.length || !f2.length) continue;
+      const d1Label = lbl(d1), d2Label = lbl(d2);
+
+      const h1 = evalF(f1, w), h2 = evalF(f2, w);
+      if (h1 !== null && h2 !== null) {
+        const matches = h1 + h2 === h;
+        steps.push({ phase: 'recon', type: 'try_h', label, d1Label, d2Label, x, y, w, h, h1, h2, depth, matches,
+          placementsSoFar: snapshot(),
+          text: `${'&nbsp;'.repeat(depth * 2)}<strong>${label}</strong> at (${x},${y}) ${w}&times;${h}: `+
+                `try <strong>${d1Label}</strong>|<strong>${d2Label}</strong>, `+
+                `<span class="tag t-split">H-cut</span> ${h1}+${h2}${matches ? '=' : '&ne;'}${h}`+
+                `${matches ? ' &mdash; matches, recurse top/bottom.' : ' &mdash; no match, skip.'}` });
+        if (matches) {
+          const snap = placements.length, usedSnap = used.slice();
+          const leftOk = recon(d1, x, y, w, h1, depth + 1);
+          const rightOk = leftOk && recon(d2, x, y + h1, w, h2, depth + 1);
+          if (leftOk && rightOk) return true;
+          steps.push({ phase: 'recon', type: 'backtrack', label, depth, placementsSoFar: snapshot(),
+            text: `${'&nbsp;'.repeat(depth * 2)}<strong>${label}</strong>: that H-cut split didn't pan out deeper &mdash; backtracking.` });
+          placements.length = snap; used.splice(0, used.length, ...usedSnap);
+        }
+      }
+      const w1 = evalFInv(f1, h), w2 = evalFInv(f2, h);
+      if (w1 !== null && w2 !== null) {
+        const matches = w1 + w2 <= w;
+        steps.push({ phase: 'recon', type: 'try_v', label, d1Label, d2Label, x, y, w, h, w1, w2, depth, matches,
+          placementsSoFar: snapshot(),
+          text: `${'&nbsp;'.repeat(depth * 2)}<strong>${label}</strong> at (${x},${y}) ${w}&times;${h}: `+
+                `try <strong>${d1Label}</strong>|<strong>${d2Label}</strong>, `+
+                `<span class="tag t-split">V-cut</span> ${w1}+${w2}${matches ? '&le;' : '&gt;'}${w}`+
+                `${matches ? ' &mdash; matches, recurse left/right.' : ' &mdash; no match, skip.'}` });
+        if (matches) {
+          const hh1 = evalF(f1, w1) ?? h, hh2 = evalF(f2, w2) ?? h;
+          const snap = placements.length, usedSnap = used.slice();
+          const leftOk = recon(d1, x, y, w1, hh1, depth + 1);
+          const rightOk = leftOk && recon(d2, x + w1, y, w2, hh2, depth + 1);
+          if (leftOk && rightOk) return true;
+          steps.push({ phase: 'recon', type: 'backtrack', label, depth, placementsSoFar: snapshot(),
+            text: `${'&nbsp;'.repeat(depth * 2)}<strong>${label}</strong>: that V-cut split didn't pan out deeper &mdash; backtracking.` });
+          placements.length = snap; used.splice(0, used.length, ...usedSnap);
+        }
+      }
+    }
+    return false;
+  }
+
+  const ok = recon(fullCounts, 0, 0, width, height, 0);
+  steps.push({ phase: 'recon', type: 'recon_done', ok, placementsSoFar: snapshot(),
+    text: ok
+      ? `All ${typeToFlat.reduce((a, l) => a + l.length, 0)} piece(s) placed. Final layout: ${width}&times;${height}.`
+      : `No placement found &mdash; this shouldn't happen if the table is consistent.` });
+
+  return { placements: ok ? placements : null, steps, height };
+}
+
+// ============================================================================
+// Presets
+// ============================================================================
+function presetDemo() {
+  return [
+    { width: 2, height: 3, can_rotate: false },
+    { width: 2, height: 3, can_rotate: false },
+    { width: 4, height: 2, can_rotate: true },
+    { width: 6, height: 3, can_rotate: false },
+  ];
+}
+function presetTutorial() {
+  // "10x8F:0:2x3/4,4x3,8x3,5x2/2" from src/exact/glf.rs's own tests
+  return [
+    ...Array(4).fill(0).map(() => ({ width: 2, height: 3, can_rotate: false })),
+    { width: 4, height: 3, can_rotate: false },
+    { width: 8, height: 3, can_rotate: false },
+    ...Array(2).fill(0).map(() => ({ width: 5, height: 2, can_rotate: false })),
+  ];
+}
+function presetRandom() {
+  const nTypes = 2 + (Math.random() * 2 | 0); // 2-3
+  const pieces = [];
+  for (let t = 0; t < nTypes; t++) {
+    const w = 2 + (Math.random() * 5 | 0), h = 2 + (Math.random() * 5 | 0);
+    const count = 1 + (Math.random() * 2 | 0); // 1-2
+    const rot = Math.random() > 0.5;
+    for (let i = 0; i < count; i++) pieces.push({ width: w, height: h, can_rotate: rot });
+    if (pieces.length >= 5) break;
+  }
+  return pieces;
+}
+
+// ============================================================================
+// Rendering
+// ============================================================================
+const PAL = [
+  { fill: '#EEEDFE99', stroke: '#7F77DD', text: '#3C3489' },
+  { fill: '#E1F5EE99', stroke: '#1D9E75', text: '#085041' },
+  { fill: '#FAECE799', stroke: '#D85A30', text: '#712B13' },
+  { fill: '#E6F1FB99', stroke: '#378ADD', text: '#0C447C' },
+];
+const palFor = i => PAL[i % PAL.length];
+
+// The "final answer" curve is drawn straight into inline SVG, so it can't
+// pick up the page's CSS dark-mode overrides -- pick a legible color by hand.
+const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function inkColor() { return darkModeQuery.matches ? '#e8e6df' : '#1a1a18'; }
+function redColor() { return darkModeQuery.matches ? '#ff8a8a' : '#B23A3A'; }
+
+let table = null, pieces = null, buildSteps = null, reconSteps = null, allSteps = null, stepIdx = -1, autoRunning = false;
+
+function renderProblemInfo() {
+  const el = document.getElementById('problem-info');
+  el.innerHTML = table.types.map((ty, ti) => {
+    const pc = palFor(ti);
+    return `<span class="problem-item"><span class="problem-sw" style="background:${pc.fill};border:1.5px solid ${pc.stroke}"></span>`+
+           `<strong>${table.labels[ti]}</strong>: ${ty.width}&times;${ty.height}`+
+           `${ty.can_rotate ? ' &#x21BB;' : ''} &times; ${ty.count}</span>`;
+  }).join('') + `<span style="color:#888780">(${pieces.length} piece(s) total)</span>`;
+}
+
+function loadPreset(resetWidth) {
+  const which = document.getElementById('preset').value;
+  pieces = which === 'demo' ? presetDemo() : which === 'tutorial' ? presetTutorial() : presetRandom();
+  table = buildGlfTableWithSteps(pieces);
+  buildSteps = table.steps;
+  renderProblemInfo();
+
+  const fullCounts = table.types.map(t => t.count);
+  const fullFn = table.cells[flatIndex(table.strides, fullCounts)];
+  const info = document.getElementById('feasible-info');
+  if (fullFn.length) {
+    info.textContent = `feasible from w=${fullFn[0][0]} (min height ${fullFn[fullFn.length - 1][1]} beyond w=${fullFn[fullFn.length - 1][0]})`;
+    // A fresh random problem has a new shape each rebuild, so a width kept
+    // from the previous instance could easily be infeasible for this one.
+    if (resetWidth || which === 'random') document.getElementById('qwidth').value = fullFn[0][0];
+  } else {
+    info.textContent = '(infeasible for any width?)';
+  }
+
+  const width = parseInt(document.getElementById('qwidth').value) || fullFn[0]?.[0] || 6;
+  const recon = reconstructWithSteps(table, width);
+  reconSteps = recon.steps;
+
+  allSteps = [...buildSteps, ...reconSteps];
+  stepIdx = 0;
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+  reserveExplainHeight();
+  renderStep(0);
+}
+
+// Reserve enough height for the longest explain text among all steps, so
+// switching between one-line and multi-line messages doesn't reflow the
+// plot/canvas below it. Measured against the current viewport width, so it
+// stays correct at any window size (recomputed on resize, debounced).
+function reserveExplainHeight() {
+  const explain = document.getElementById('explain');
+  if (!allSteps || !allSteps.length) return;
+  explain.style.minHeight = '0';
+  const probe = explain.cloneNode(false);
+  probe.id = '';
+  probe.style.visibility = 'hidden';
+  probe.style.position = 'absolute';
+  probe.style.minHeight = '0';
+  probe.style.width = explain.clientWidth + 'px';
+  document.body.appendChild(probe);
+  let max = 0;
+  for (const s of allSteps) {
+    probe.innerHTML = s.text || '';
+    max = Math.max(max, probe.offsetHeight);
+  }
+  document.body.removeChild(probe);
+  explain.style.minHeight = max + 'px';
+}
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(reserveExplainHeight, 150);
+});
+
+darkModeQuery.addEventListener('change', () => { if (allSteps) renderStep(stepIdx); });
+
+// ── generic step-function SVG plot ─────────────────────────────────────────
+// series: [{f, color, dash, width, dots, label}], opts: {xMax,yMax,xLabel,yLabel,hatchFirst}
+function renderPlot(svgEl, series, opts) {
+  const nonEmpty = series.filter(s => s.f && s.f.length);
+  const xMax = opts.xMax ?? Math.max(4, ...nonEmpty.map(s => s.f[s.f.length - 1][0])) * 1.2;
+  const yMax = opts.yMax ?? Math.max(4, ...nonEmpty.map(s => s.f[0][1])) * 1.2;
+
+  const W = svgEl.clientWidth || 480, H = 230;
+  const mL = 34, mR = 10, mT = 10, mB = 26;
+  const PW = W - mL - mR, PH = H - mT - mB;
+  const sx = x => mL + (x / xMax) * PW;
+  const sy = h => mT + PH - (h / yMax) * PH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">`;
+
+  // infeasible hatch for the first series with data
+  if (opts.hatchFirst !== false && nonEmpty.length) {
+    const x0 = nonEmpty[0].f[0][0];
+    if (x0 > 0) svg += `<rect class="plot-inf" x="${mL}" y="${mT}" width="${sx(x0) - mL}" height="${PH}"/>`;
+  }
+
+  // axes
+  svg += `<line class="plot-axis" x1="${mL}" y1="${mT}" x2="${mL}" y2="${mT + PH}"/>`;
+  svg += `<line class="plot-axis" x1="${mL}" y1="${mT + PH}" x2="${mL + PW}" y2="${mT + PH}"/>`;
+  svg += `<text class="plot-label" x="${mL + PW / 2}" y="${H - 4}" text-anchor="middle">${opts.xLabel || 'width'}</text>`;
+  svg += `<text class="plot-label" x="10" y="${mT + 8}" text-anchor="start">${opts.yLabel || 'height'}</text>`;
+
+  // ticks: every breakpoint value actually present
+  const xs = new Set(), hs = new Set();
+  for (const s of nonEmpty) for (const [x, h] of s.f) { xs.add(x); hs.add(h); }
+  for (const x of xs) {
+    const px = sx(x);
+    svg += `<line class="plot-axis" x1="${px}" y1="${mT + PH}" x2="${px}" y2="${mT + PH + 3}"/>`;
+    svg += `<text class="plot-tick" x="${px}" y="${mT + PH + 13}" text-anchor="middle">${x}</text>`;
+  }
+  for (const h of hs) {
+    const py = sy(h);
+    svg += `<line class="plot-axis" x1="${mL - 3}" y1="${py}" x2="${mL}" y2="${py}"/>`;
+    svg += `<text class="plot-tick" x="${mL - 6}" y="${py + 3}" text-anchor="end">${h}</text>`;
+  }
+
+  // series
+  for (const s of series) {
+    if (!s.f || !s.f.length) continue;
+    const pts = [];
+    for (let i = 0; i < s.f.length; i++) {
+      const [x, h] = s.f[i];
+      if (i === 0) pts.push([x, h]); else pts.push([x, s.f[i - 1][1]]), pts.push([x, h]);
+    }
+    pts.push([xMax, s.f[s.f.length - 1][1]]);
+    const path = pts.map(([x, h]) => `${sx(x).toFixed(1)},${sy(h).toFixed(1)}`).join(' ');
+    svg += `<polyline points="${path}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}"`+
+           `${s.dash ? ' stroke-dasharray="5,3"' : ''}/>`;
+    if (s.dots) for (const [x, h] of s.f) svg += `<circle cx="${sx(x)}" cy="${sy(h)}" r="3" fill="${s.color}"/>`;
+  }
+
+  // optional query-width guide
+  if (opts.guideX != null && opts.guideX <= xMax) {
+    svg += `<line x1="${sx(opts.guideX)}" y1="${mT}" x2="${sx(opts.guideX)}" y2="${mT + PH}" `+
+           `stroke="#EF9F27" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+  }
+
+  svg += `</svg>`;
+  svgEl.innerHTML = svg;
+}
+
+function legendRow(items) {
+  return items.map(it => `<div class="legend-item"><span class="legend-sw" style="background:${it.color}${it.dash ? ';border-top:2px dashed ' + it.color + ';background:none' : ''}"></span>${it.label}</div>`).join('');
+}
+
+// ── small geometric shape preview: stacked (h-cut) or side-by-side (v-cut) ──
+function shapePreview(mode, d) {
+  const W = 200, H = 100;
+  if (!d) return `<svg class="shape-svg" viewBox="0 0 ${W} ${H}"></svg>`;
+  const pad = 14;
+  if (mode === 'h') {
+    const totalH = d.h1 + d.h2;
+    const scale = Math.min((W - 2 * pad) / d.w, (H - 2 * pad) / totalH);
+    const w = d.w * scale, h1 = d.h1 * scale, h2 = d.h2 * scale;
+    const x0 = (W - w) / 2, y0 = (H - (h1 + h2)) / 2;
+    return `<svg class="shape-svg" viewBox="0 0 ${W} ${H}">`+
+      `<rect x="${x0}" y="${y0}" width="${w}" height="${h1}" fill="#EEEDFE99" stroke="#7F77DD"/>`+
+      `<rect x="${x0}" y="${y0 + h1}" width="${w}" height="${h2}" fill="#E6F1FB99" stroke="#378ADD"/>`+
+      `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 + h1 / 2 + 3}" text-anchor="middle">h1=${d.h1}</text>`+
+      `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 + h1 + h2 / 2 + 3}" text-anchor="middle">h2=${d.h2}</text>`+
+      `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 - 4}" text-anchor="middle">w=${d.w}</text>`+
+      `<text class="shape-lbl" x="${x0 + w + 4}" y="${y0 + (h1 + h2) / 2}" text-anchor="start">=${d.htot}</text>`+
+      `</svg>`;
+  } else {
+    const totalW = d.w1 + d.w2;
+    const scale = Math.min((W - 2 * pad) / totalW, (H - 2 * pad) / d.h);
+    const w1 = d.w1 * scale, w2 = d.w2 * scale, h = d.h * scale;
+    const x0 = (W - (w1 + w2)) / 2, y0 = (H - h) / 2;
+    return `<svg class="shape-svg" viewBox="0 0 ${W} ${H}">`+
+      `<rect x="${x0}" y="${y0}" width="${w1}" height="${h}" fill="#EEEDFE99" stroke="#7F77DD"/>`+
+      `<rect x="${x0 + w1}" y="${y0}" width="${w2}" height="${h}" fill="#E6F1FB99" stroke="#378ADD"/>`+
+      `<text class="shape-lbl" x="${x0 + w1 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w1=${d.w1}</text>`+
+      `<text class="shape-lbl" x="${x0 + w1 + w2 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w2=${d.w2}</text>`+
+      `<text class="shape-lbl" x="${x0 + (w1 + w2) / 2}" y="${y0 - 4}" text-anchor="middle">=${d.wtot}</text>`+
+      `<text class="shape-lbl" x="${x0 + w1 + w2 + 4}" y="${y0 + h / 2}" text-anchor="start">h=${d.h}</text>`+
+      `</svg>`;
+  }
+}
+
+function fmtFn(f) { return f.length ? '[' + f.map(([x, h]) => `(${x},${h})`).join(' ') + ']' : '&infin; (infeasible)'; }
+
+function renderTablePanel(curLabel, showAll) {
+  const el = document.getElementById('table-list');
+  const seen = new Set();
+  const order = [];
+  for (const s of buildSteps) {
+    if ((s.type === 'cell_done' || s.type === 'base') && !seen.has(s.label)) { seen.add(s.label); order.push(s); }
+    if (!showAll && s.label === curLabel) break;
+  }
+  el.innerHTML = order.map(s => {
+    const isCur = s.label === curLabel;
+    return `<div class="table-row${isCur ? ' cur' : ''}"><span>${s.label}</span><span class="fn">${fmtFn(s.f)}</span></div>`;
+  }).join('') || '&mdash;';
+  if (order.length) el.scrollTop = el.scrollHeight;
+}
+
+function renderReconPanel(idx) {
+  const el = document.getElementById('recur-list');
+  const rows = reconSteps.slice(0, idx + 1).filter(s => ['try_h', 'try_v', 'place', 'backtrack'].includes(s.type));
+  el.innerHTML = rows.map((s, i) => {
+    const isCur = i === rows.length - 1;
+    const indent = '&nbsp;'.repeat((s.depth || 0) * 2);
+    const failClass = (s.matches === false) ? ' fail' : (s.type === 'backtrack' ? ' fail' : '');
+    let txt;
+    if (s.type === 'try_h') txt = `${indent}${s.label} H: ${s.d1Label}|${s.d2Label} ${s.matches ? '&#10003;' : '&#10007;'}`;
+    else if (s.type === 'try_v') txt = `${indent}${s.label} V: ${s.d1Label}|${s.d2Label} ${s.matches ? '&#10003;' : '&#10007;'}`;
+    else if (s.type === 'place') txt = `${indent}${s.label} &rarr; place @ (${s.x},${s.y})`;
+    else txt = `${indent}${s.label}: backtrack`;
+    return `<div class="recur-row${isCur ? ' cur' : ''}${failClass}">${txt}</div>`;
+  }).join('') || '&mdash;';
+  if (rows.length) el.scrollTop = el.scrollHeight;
+}
+
+function drawSheet(step) {
+  const canvas = document.getElementById('sheet-canvas');
+  const fullCounts = table.types.map(t => t.count);
+  const width = parseInt(document.getElementById('qwidth').value) || 6;
+  const height = reconSteps.find(s => s.type === 'recon_start')?.height || 10;
+  const SCALE = Math.max(8, Math.min(38, Math.floor(440 / Math.max(width, height))));
+  canvas.width = width * SCALE; canvas.height = height * SCALE;
+  canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#faf9f7'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const placed = step.placementsSoFar || [];
+  placed.forEach((p, i) => {
+    const pc = palFor(p.ti);
+    const x = p.x * SCALE, y = p.y * SCALE, w = p.w * SCALE, h = p.h * SCALE;
+    const isJust = step.type === 'place' && step.x === p.x && step.y === p.y;
+    ctx.fillStyle = isJust ? pc.stroke + '55' : pc.fill;
+    ctx.strokeStyle = pc.stroke; ctx.lineWidth = isJust ? 2.5 : 1;
+    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = pc.text; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(`${p.w}×${p.h}`, x + w / 2, y + h / 2);
+  });
+
+  if (step.type === 'try_h' || step.type === 'try_v' || step.type === 'backtrack') {
+    const x = step.x * SCALE, y = step.y * SCALE, w = step.w * SCALE, h = step.h * SCALE;
+    ctx.strokeStyle = step.type === 'backtrack' ? '#D85A30' : '#EF9F27';
+    ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    if (step.type === 'try_h' && step.matches) {
+      const yy = y + step.h1 * SCALE;
+      ctx.strokeStyle = '#378ADD'; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke();
+    }
+    if (step.type === 'try_v' && step.matches) {
+      const xx = x + step.w1 * SCALE;
+      ctx.strokeStyle = '#D85A30'; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx, y + h); ctx.stroke();
+    }
+  }
+
+  ctx.strokeStyle = '#d3d1c7'; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+}
+
+function renderStep(idx) {
+  stepIdx = idx;
+  const s = allSteps[idx];
+  document.getElementById('explain').innerHTML = s.text || '';
+
+  const isRecon = s.phase === 'recon';
+  document.getElementById('plot-card').style.display = isRecon ? 'none' : 'block';
+  document.getElementById('sheet-card').style.display = isRecon ? 'block' : 'none';
+
+  if (!isRecon) {
+    document.getElementById('plot-title').textContent =
+      s.type === 'init' ? 'Overview' :
+      s.type === 'base' ? `Base case ${s.label}` :
+      s.type === 'split' ? `${s.label} — split ${s.splitIdx}/${s.splitTotal}` :
+      s.type === 'cell_done' ? `${s.label} — final` : 'Table complete';
+
+    const svg = document.getElementById('plot-svg');
+    const mini = document.getElementById('mini-row');
+    const legend = document.getElementById('plot-legend');
+    mini.innerHTML = ''; legend.innerHTML = '';
+
+    if (s.type === 'init') {
+      renderPlot(svg, [], { xMax: 10, yMax: 10 });
+      legend.innerHTML = '';
+    } else if (s.type === 'table_done') {
+      renderPlot(svg, [{ f: s.f, color: inkColor(), width: 3, dots: true }], {});
+      legend.innerHTML = legendRow([{ color: inkColor(), label: 'full-set function' }]);
+    } else if (s.type === 'base') {
+      const series = [{ f: s.f, color: inkColor(), width: 2.5, dots: true, label: 'type function' }];
+      if (s.fRot) {
+        series.push({ f: s.fNormal, color: '#378ADD', dash: true, width: 1.5, label: 'normal' });
+        series.push({ f: s.fRot, color: '#D85A30', dash: true, width: 1.5, label: 'rotated' });
+      }
+      renderPlot(svg, series, {});
+      legend.innerHTML = legendRow(s.fRot
+        ? [{ color: '#378ADD', dash: true, label: 'normal' }, { color: '#D85A30', dash: true, label: 'rotated' }, { color: inkColor(), label: 'min(normal,rotated)' }]
+        : [{ color: inkColor(), label: `${s.ty.width}×${s.ty.height}` }]);
+    } else if (s.type === 'split') {
+      renderPlot(svg, [
+        { f: s.f1, color: '#7F77DD', width: 1.5, label: 'f1' },
+        { f: s.f2, color: '#EF9F27', width: 1.5, label: 'f2' },
+        { f: s.fh, color: '#1D9E75', dash: true, width: 1.5, label: 'H-cut' },
+        { f: s.fv, color: '#D85A30', dash: true, width: 1.5, label: 'V-cut' },
+        { f: s.candidate, color: inkColor(), width: 3, label: 'min(H,V)' },
+      ], { hatchFirst: false });
+      legend.innerHTML = legendRow([
+        { color: '#7F77DD', label: `f1 = ${s.d1Label}` },
+        { color: '#EF9F27', label: `f2 = ${s.d2Label}` },
+        { color: '#1D9E75', dash: true, label: 'H-cut (stack)' },
+        { color: '#D85A30', dash: true, label: 'V-cut (side by side)' },
+        { color: inkColor(), label: 'this split’s candidate' },
+      ]);
+      mini.innerHTML =
+        `<div class="mini-card"><div class="mini-title">H-cut geometry</div>${shapePreview('h', s.hShape)}</div>`+
+        `<div class="mini-card"><div class="mini-title">V-cut geometry</div>${shapePreview('v', s.vShape)}</div>`+
+        `<div class="mini-card"><div class="mini-title">f1&#8315;&sup1;, f2&#8315;&sup1; (inverse view, used by V-cut)</div>`+
+        `<svg class="shape-svg" id="inv-mini"></svg></div>`;
+      renderPlot(document.getElementById('inv-mini'), [
+        { f: inverseAsStepFn(s.f1), color: redColor(), width: 1.5, label: 'f1⁻¹' },
+        { f: inverseAsStepFn(s.f2), color: redColor(), dash: true, width: 1.5, label: 'f2⁻¹' },
+      ], { xLabel: 'height', yLabel: 'width' });
+    } else if (s.type === 'cell_done') {
+      renderPlot(svg, [{ f: s.f, color: inkColor(), width: 3, dots: true }], {});
+      legend.innerHTML = legendRow([{ color: inkColor(), label: `final f(${s.label})` }]);
+    }
+  } else {
+    drawSheet(s);
+  }
+
+  renderTablePanel(s.label, isRecon || s.type === 'table_done');
+  renderReconPanel(isRecon ? idx - buildSteps.length : -1);
+
+  const pr = document.getElementById('progress-row'); pr.innerHTML = '';
+  allSteps.forEach((st, i) => {
+    const d = document.createElement('div');
+    d.className = 'pdot' + (i < idx ? ' done' : i === idx ? ' cur' : (st.phase === 'recon' ? ' recon' : ''));
+    pr.appendChild(d);
+  });
+  document.getElementById('sc').textContent = `${idx + 1} / ${allSteps.length}` + (isRecon ? ' (reconstruct)' : ' (build)');
+  document.getElementById('btn-prev').disabled = idx === 0;
+  document.getElementById('btn-next').disabled = idx === allSteps.length - 1;
+  document.getElementById('btn-auto').disabled = false;
+}
+
+function goNext() { if (stepIdx < allSteps.length - 1) renderStep(stepIdx + 1); }
+function goPrev() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+function skipToRecon() { renderStep(buildSteps.length); }
+
+async function toggleAuto() {
+  if (autoRunning) { autoRunning = false; document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>'; return; }
+  autoRunning = true;
+  document.getElementById('btn-auto').innerHTML = '&#x23F8; Pause<span class="kbd">Space</span>';
+  while (autoRunning && stepIdx < allSteps.length - 1) { goNext(); await new Promise(r => setTimeout(r, 550)); }
+  autoRunning = false;
+  document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
+}
+
+document.addEventListener('keydown', ev => {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); goNext(); }
+  if (ev.key === 'ArrowLeft') { ev.preventDefault(); goPrev(); }
+  if (ev.code === 'Space') { ev.preventDefault(); toggleAuto(); }
+});
+
+setTimeout(() => loadPreset(true), 30);
+</script>
+</body>
+</html>
