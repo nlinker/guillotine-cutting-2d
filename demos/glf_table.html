@@ -41,6 +41,7 @@
   .mini-title { font-size: 10px; color: #888780; margin-bottom: 4px; text-align: center; }
   .shape-svg { width: 100%; height: 100px; background: #fbfaf8; border-radius: 6px; display: block; }
   .shape-lbl { font-size: 9.5px; fill: #444441; }
+  .shape-lbl-fill { font-size: 9.5px; fill: #33322e; }
 
   .legend-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10.5px; color: #444441; margin-top: 6px; min-height: 16px; }
   .legend-item { display: flex; align-items: center; gap: 4px; }
@@ -115,14 +116,14 @@
     .recur-row.fail { color: #ff8a8a; }
     .sheet-canvas { border-color: #3d3d3a; }
     .plot-svg { background: #1f1f1c; }
-    .plot-axis { stroke: #55534d; }
-    .plot-tick { fill: #7a7874; }
+    .plot-axis { stroke: #726f66; }
+    .plot-tick { fill: #a8a59a; }
     .plot-inf  { fill: #2e2e2b; }
     .legend-sw { border-color: #3d3d3a; }
     .shape-lbl { fill: #c4c2b8; }
     .shape-svg { background: #1f1f1c; }
-    .mini-title { color: #7a7874; }
-    .plot-label { fill: #7a7874; }
+    .mini-title { color: #9c9a90; }
+    .plot-label { fill: #a8a59a; }
     .legend-row { color: #c4c2b8; }
   }
 </style>
@@ -681,8 +682,8 @@ function shapePreview(mode, d) {
     return `<svg class="shape-svg" viewBox="0 0 ${W} ${H}">`+
       `<rect x="${x0}" y="${y0}" width="${w}" height="${h1}" fill="#EEEDFE99" stroke="#7F77DD"/>`+
       `<rect x="${x0}" y="${y0 + h1}" width="${w}" height="${h2}" fill="#E6F1FB99" stroke="#378ADD"/>`+
-      `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 + h1 / 2 + 3}" text-anchor="middle">h1=${d.h1}</text>`+
-      `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 + h1 + h2 / 2 + 3}" text-anchor="middle">h2=${d.h2}</text>`+
+      `<text class="shape-lbl-fill" x="${x0 + w / 2}" y="${y0 + h1 / 2 + 3}" text-anchor="middle">h1=${d.h1}</text>`+
+      `<text class="shape-lbl-fill" x="${x0 + w / 2}" y="${y0 + h1 + h2 / 2 + 3}" text-anchor="middle">h2=${d.h2}</text>`+
       `<text class="shape-lbl" x="${x0 + w / 2}" y="${y0 - 4}" text-anchor="middle">w=${d.w}</text>`+
       `<text class="shape-lbl" x="${x0 + w + 4}" y="${y0 + (h1 + h2) / 2}" text-anchor="start">=${d.htot}</text>`+
       `</svg>`;
@@ -694,8 +695,8 @@ function shapePreview(mode, d) {
     return `<svg class="shape-svg" viewBox="0 0 ${W} ${H}">`+
       `<rect x="${x0}" y="${y0}" width="${w1}" height="${h}" fill="#EEEDFE99" stroke="#7F77DD"/>`+
       `<rect x="${x0 + w1}" y="${y0}" width="${w2}" height="${h}" fill="#E6F1FB99" stroke="#378ADD"/>`+
-      `<text class="shape-lbl" x="${x0 + w1 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w1=${d.w1}</text>`+
-      `<text class="shape-lbl" x="${x0 + w1 + w2 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w2=${d.w2}</text>`+
+      `<text class="shape-lbl-fill" x="${x0 + w1 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w1=${d.w1}</text>`+
+      `<text class="shape-lbl-fill" x="${x0 + w1 + w2 / 2}" y="${y0 + h / 2 + 3}" text-anchor="middle">w2=${d.w2}</text>`+
       `<text class="shape-lbl" x="${x0 + (w1 + w2) / 2}" y="${y0 - 4}" text-anchor="middle">=${d.wtot}</text>`+
       `<text class="shape-lbl" x="${x0 + w1 + w2 + 4}" y="${y0 + h / 2}" text-anchor="start">h=${d.h}</text>`+
       `</svg>`;
