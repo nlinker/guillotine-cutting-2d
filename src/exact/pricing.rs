@@ -37,7 +37,7 @@
 
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::Pattern;
+use super::bpc::Pattern;
 use crate::{
     cut_tree::build_cut_tree,
     glf::{StepFn, eval_f, eval_f_inv, h_cut, min_fn, v_cut},
