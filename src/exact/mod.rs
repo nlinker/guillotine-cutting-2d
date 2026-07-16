@@ -1,5 +1,6 @@
 //! Exact 2BPP-G solving. See [`bpc`] for the branch-price-and-cut solver.
 mod bpc;
+pub mod glf;
 mod pricing;
 mod rlmp;
 

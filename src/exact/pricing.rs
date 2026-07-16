@@ -37,10 +37,12 @@
 
 use std::collections::{HashMap, hash_map::Entry};
 
-use super::bpc::Pattern;
+use super::{
+    bpc::Pattern,
+    glf::{StepFn, eval_f, eval_f_inv, h_cut, min_fn, v_cut},
+};
 use crate::{
     cut_tree::build_cut_tree,
-    glf::{StepFn, eval_f, eval_f_inv, h_cut, min_fn, v_cut},
     model::{Piece, Placement, Problem, Sheet},
 };
 

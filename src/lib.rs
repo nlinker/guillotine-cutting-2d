@@ -6,7 +6,6 @@ pub mod expand;
 pub mod ga;
 pub mod generator;
 pub mod glas;
-pub mod glf;
 pub mod heuristic;
 pub mod model;
 pub mod parse;

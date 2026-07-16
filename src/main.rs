@@ -6,11 +6,11 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cut::{
+    exact::glf::build_glf,
     expand::expand_problem,
     ga,
     ga::GaConfig,
     glas::ga as glas_ga,
-    glf::build_glf,
     model::{Objective, ProblemSpec, SolutionSpec},
     parse::parse_problem,
     parse_json::parse_problem_json,

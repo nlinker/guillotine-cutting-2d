@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::{fs, path::Path};
 
 use cut::{
+    exact::glf::build_glf,
     expand::{expand_problem, shrink_solution},
     ga::GaConfig,
-    glf::build_glf,
     model::{ProblemSpec, Sheet, Solution},
     parse::parse_problem,
     render::render_svg,
