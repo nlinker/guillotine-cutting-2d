@@ -516,7 +516,7 @@ fn decode_split(ranges: &[u32], mut idx: usize) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse::parse_problem};
+    use crate::{expand::expand_problem, parse_compact::parse_problem};
 
     #[test]
     fn eval_f_basic() {

@@ -617,7 +617,7 @@ pub(crate) fn piece_fits_in(w: u32, h: u32, piece: &Piece, prefer_rotate: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse::parse_problem, slas::decoder::decode};
+    use crate::{expand::expand_problem, parse_compact::parse_problem, slas::decoder::decode};
 
     #[test]
     fn single_piece_fills_sheet() {

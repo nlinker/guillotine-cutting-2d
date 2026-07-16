@@ -116,7 +116,7 @@ pub fn jylanki_solve(problem: &Problem) -> Solution {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse::parse_problem};
+    use crate::{expand::expand_problem, parse_compact::parse_problem};
 
     fn problem(s: &str) -> Problem {
         expand_problem(&parse_problem(s).expect("Error parsing problem"))

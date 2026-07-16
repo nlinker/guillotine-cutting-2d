@@ -3,8 +3,7 @@ use cut::{
     expand::expand_problem,
     glas::decoder::{Gene as GlasGene, Genome as GlasGenome, decode as glas_decode},
     model::ProblemSpec,
-    parse::parse_problem,
-    parse_json::parse_problem_json,
+    parse_compact, parse_json,
     slas::decoder::{Gene as SlasGene, Genome as SlasGenome, decode as slas_decode},
 };
 
@@ -46,12 +45,13 @@ fn glas_genome(spec: &ProblemSpec) -> GlasGenome {
 
 fn bench_decode(c: &mut Criterion) {
     let real_json = include_str!("../src/web/real1.json");
-    let real_spec = parse_problem_json(real_json).expect("parse real1.json");
+    let real_spec = parse_json::parse_problem(real_json).expect("parse real1.json");
     let real_problem = expand_problem(&real_spec);
     let real_slas = slas_genome(&real_spec);
     let real_glas = glas_genome(&real_spec);
 
-    let synth_spec = parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
+    let synth_spec =
+        parse_compact::parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
     let synth_problem = expand_problem(&synth_spec);
     let synth_slas = slas_genome(&synth_spec);
     let synth_glas = glas_genome(&synth_spec);
@@ -83,11 +83,12 @@ fn bench_decode(c: &mut Criterion) {
 
 fn bench_staircase_area(c: &mut Criterion) {
     let real_json = include_str!("../src/web/real1.json");
-    let real_spec = parse_problem_json(real_json).expect("parse real1.json");
+    let real_spec = parse_json::parse_problem(real_json).expect("parse real1.json");
     let real_problem = expand_problem(&real_spec);
     let real_sol = slas_decode(&real_problem, &slas_genome(&real_spec));
 
-    let synth_spec = parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
+    let synth_spec =
+        parse_compact::parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
     let synth_problem = expand_problem(&synth_spec);
     let synth_sol = slas_decode(&synth_problem, &slas_genome(&synth_spec));
 

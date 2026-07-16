@@ -246,7 +246,7 @@ pub(crate) fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse::parse_problem};
+    use crate::{expand::expand_problem, parse_compact::parse_problem};
 
     fn g(piece_id: usize, rotate: bool, point_selector: u32) -> Gene {
         Gene {

@@ -8,7 +8,7 @@ pub mod generator;
 pub mod glas;
 pub mod heuristic;
 pub mod model;
-pub mod parse;
+pub mod parse_compact;
 pub mod parse_json;
 pub mod render;
 pub mod slas;

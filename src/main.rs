@@ -12,8 +12,7 @@ use cut::{
     ga::GaConfig,
     glas::ga as glas_ga,
     model::{Objective, ProblemSpec, SolutionSpec},
-    parse::parse_problem,
-    parse_json::parse_problem_json,
+    parse_compact, parse_json,
     render::render_svg,
     transport::{ProgressMessage, ProgressSink},
 };
@@ -176,7 +175,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             print!("{}", render_svg(&spec, &sol)?);
         }
         Command::Glf { problem } => {
-            let spec = parse_problem(&problem)?;
+            let spec = parse_compact::parse_problem(&problem)?;
             let expanded = expand_problem(&spec);
             let table = build_glf(&expanded);
             let query_w = expanded.sheet.width;
@@ -309,10 +308,10 @@ fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<ProblemSpec
     match (compact, json) {
         (Some(_), Some(_)) => Err("--compact and --json are mutually exclusive".into()),
         (None, None) => Err("provide exactly one of --compact <string> or --json <path>".into()),
-        (Some(s), None) => Ok(parse_problem(s)?),
+        (Some(s), None) => Ok(parse_compact::parse_problem(s)?),
         (None, Some(path)) => {
             let s = std::fs::read_to_string(path)?;
-            Ok(parse_problem_json(&s)?)
+            Ok(parse_json::parse_problem(&s)?)
         }
     }
 }

@@ -11,7 +11,7 @@ use crate::model::ProblemSpec;
 ///   ]
 /// }
 /// ```
-pub fn parse_problem_json(s: &str) -> Result<ProblemSpec, serde_json::Error> {
+pub fn parse_problem(s: &str) -> Result<ProblemSpec, serde_json::Error> {
     serde_json::from_str(s)
 }
 
@@ -29,7 +29,7 @@ mod tests {
                 {"name": "полка",  "width": 150, "height": 80,  "count": 2, "can_rotate": true}
             ]
         }"#;
-        let p = parse_problem_json(json).unwrap();
+        let p = parse_problem(json).unwrap();
         assert_eq!(p.sheet.width, 1000);
         assert_eq!(p.kerf, 3);
         assert_eq!(p.piece_types.len(), 2);
