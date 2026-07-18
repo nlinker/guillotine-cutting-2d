@@ -55,7 +55,7 @@ and this combinatorics makes the problem hard:
     (see [docs/slas.md](docs/slas.md)).
   - GA with **GLAS** decoder (default) - grouped SLAS, one gene per piece *type*;
     pieces grouped into Large / Medium / Small classes so large pieces are always placed first.
-    Each batch chooses horizontal or vertical strip (whichever fits more copies) and TlH / TlV split (GA-evolved `inverses` flag).
+    Each batch chooses horizontal or vertical strip (whichever fits more copies) and split direction (GA-evolved `inverses` flag).
     See [docs/glas.md](docs/glas.md).
   - **BFDH** - Best Fit Decreasing Height - greedy shelf heuristic, very fast
   - **Jylanki** - portfolio greedy packer (per Jylanki's [A Thousand Ways to Pack the Bin.pdf](docs/pdf/A%20Thousand%20Ways%20to%20Pack%20the%20Bin.pdf)):
@@ -70,12 +70,14 @@ and this combinatorics makes the problem hard:
 - Problem instance **Generator** - creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
-- Cross-platform self-contained console executable - the solver that receives the JSON
+  See the corresponding generator demo in [Demos](#demos).
+- **Cross-platform** self-contained console executable - the solver that receives the JSON
   specifying the problem instance and produces JSON with the solution.
-  - **Problem** - stock sheet dimensions, blade kerf, and an ordered list of `Piece` values.
-    Each piece has an opaque external label, dimensions, and a rotation flag.
-    Pieces are addressed internally by their 0-based index in the list.
-  - **Solution** - vector of placements + vector of free rectangles.
+  - **`ProblemSpec`** - stock sheet dimensions, blade kerf, and a list of `PieceType` values,
+    each with an opaque external label, dimensions, a rotation flag, and a `count`
+    (how many copies of that type are needed).
+  - **`SolutionSpec`** - vector of `PlacementSpec` (sheet index + piece-type index + position +
+    rotation) plus a vector of free rectangles.
 - _Not a black box_: the algorithm exposes a progress feedback channel `ProgressSink`
   and cancellation via `GaHandle`.
   - `FifoSink` uses FIFO under Linux (via `mkfifo`).

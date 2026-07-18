@@ -44,7 +44,7 @@ struct Gene {
     type_idx:  usize,                // index into ProblemSpec.piece_types
     rotate:    bool,                 // prefer rotated orientation for every copy
     selectors: SmallVec<[u32; 16]>,  // selectors[k]: free-leaf selector for batch starting at copy k
-    inverses:  SmallVec<[bool; 16]>, // inverses[k]:  false = TlH, true = TlV for that batch
+    inverses:  SmallVec<[bool; 16]>, // inverses[k]:  split direction for that batch (see below)
 }
 ```
 
@@ -70,19 +70,19 @@ For each class in order, then for each gene within that class:
 
    Pick vertical if `count_v > count_h`; otherwise horizontal.
 
-5. **Apply blueprint** — split the free leaf around the composite box `cw x ch`:
-   - `inv = false` → TlH (horizontal cut)
-   - `inv = true`  → TlV (vertical cut)
+5. **Split the free leaf** around the composite box `cw x ch`:
+   - `inv = false` → horizontal cut
+   - `inv = true`  → vertical cut
 
 6. Place all `count` pieces in the strip (left-to-right or top-to-bottom).
 7. Advance `placed` by `count` and go back to step 1 until all copies are placed.
 
-## Blueprint: TlH vs TlV
+## Splitting the free leaf (`inverse` flag)
 
 Given a free leaf at `(x, y)` with dimensions `nw x nh`, composite box `cw x ch`,
 `lw = nw - cw`, `lh = nh - ch`:
 
-**TlH** (`inv = false`) — horizontal cut; right strip is capped to the batch height:
+`inv = false` — horizontal cut; right strip is capped to the batch height:
 
 ```
 +------------+----------+
@@ -94,7 +94,7 @@ Given a free leaf at `(x, y)` with dimensions `nw x nh`, composite box `cw x ch`
 +-----------------------+
 ```
 
-**TlV** (`inv = true`) — vertical cut; right strip keeps the full leaf height:
+`inv = true` — vertical cut; right strip keeps the full leaf height:
 
 ```
 +------------+----------+
@@ -106,18 +106,12 @@ Given a free leaf at `(x, y)` with dimensions `nw x nh`, composite box `cw x ch`
 +------------+----------+
 ```
 
-TlH and TlV are the same two cases as the `inverse` flag in [SLAS](slas.md), but applied
+This is the same `inverse` flag as in [SLAS](slas.md), but applied
 to a composite box instead of a single piece.
 
-## Post-processing: `improve_tl_corners`
-
-After decoding, `decode_spec` runs `improve_tl_corners`. This pass reorders pieces within
-their existing cut-tree slots so that same-size pieces cluster together, reducing
-manufacturing cost (fewer distinct cut lengths per sheet). The blueprint structure and
-sheet count are unchanged; only positions within committed slots are permuted.
-
-`eval` (called inside the GA fitness loop) skips this pass to keep evaluation fast.
-The improvement is applied only once, to the final genome sent to the caller.
+There is currently no post-processing pass after decoding (an earlier `improve_tl_corners`
+pass that reordered pieces within committed slots to cluster same-size pieces was tried
+and removed; see git history around `8570d81`).
 
 ## Crossover and mutation
 
@@ -132,7 +126,7 @@ as if it were a standalone genome, which preserves the class invariant across ge
 | `swap_p`    | swap gene with a random other gene **within the same class**         |
 | `flip_p`    | flip `rotate`                                                        |
 | `point_p`   | per selector: nudge `selectors[k]` by ±`point_delta` (wrapping)      |
-| `inverse_p` | per inverse: flip `inverses[k]` (toggles TlH <-> TlV for that batch) |
+| `inverse_p` | per inverse: flip `inverses[k]` (toggles the split direction for that batch) |
 
 ## Comparison with SLAS
 
@@ -141,6 +135,6 @@ as if it were a standalone genome, which preserves the class invariant across ge
 | Gene granularity | one gene per physical piece   | one gene per piece *type*                 |
 | Genome size      | N genes (N = total copies)    | T genes across 3 classes (T = types)      |
 | Placement order  | single GA-evolved permutation | Large -> Medium -> Small, GA within class |
-| Split heuristic  | SLAS shorter-leftover-axis    | strip fill + GA-evolved TlH/TlV per batch |
+| Split heuristic  | SLAS shorter-leftover-axis    | strip fill + GA-evolved split direction per batch |
 | Batch placement  | no (one piece per step)       | yes (all remaining copies of one type)    |
 | `inverse` array  | one bool per gene             | one bool per copy (`inverses[k]`)         |

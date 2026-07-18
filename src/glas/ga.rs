@@ -158,7 +158,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome, n_types: usize) -> (Genome, Genome
 /// - with probability `swap_p`: swap it with a random other gene within the same class
 /// - with probability `flip_p`: flip `rotate`
 /// - for each `selectors[k]` with probability `point_p`: nudge by +/-`point_delta` (wrapping)
-/// - for each `inverses[k]` with probability `inverse_p`: flip the boolean (TlH <-> TlV)
+/// - for each `inverses[k]` with probability `inverse_p`: flip the boolean
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     swap_p: f64,
