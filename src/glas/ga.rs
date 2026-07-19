@@ -61,7 +61,7 @@ pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, 
     ga::run_ga(&decoder, config, rng)
 }
 
-/// Multi-threaded GLAS GA. Takes a `ProblemSpec` (expanded internally).
+/// Multithreaded GLAS GA. Takes a `ProblemSpec` (expanded internally).
 pub fn run_ga_mt(
     spec: Arc<ProblemSpec>,
     config: Arc<GaConfig>,

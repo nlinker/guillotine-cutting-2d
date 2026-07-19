@@ -121,20 +121,20 @@ as if it were a standalone genome, which preserves the class invariant across ge
 
 **Mutation** per gene:
 
-| Parameter   | Effect                                                               |
-|-------------|----------------------------------------------------------------------|
-| `swap_p`    | swap gene with a random other gene **within the same class**         |
-| `flip_p`    | flip `rotate`                                                        |
-| `point_p`   | per selector: nudge `selectors[k]` by ±`point_delta` (wrapping)      |
+| Parameter   | Effect                                                                       |
+|-------------|------------------------------------------------------------------------------|
+| `swap_p`    | swap gene with a random other gene **within the same class**                 |
+| `flip_p`    | flip `rotate`                                                                |
+| `point_p`   | per selector: nudge `selectors[k]` by ±`point_delta` (wrapping)              |
 | `inverse_p` | per inverse: flip `inverses[k]` (toggles the split direction for that batch) |
 
 ## Comparison with SLAS
 
-| Aspect           | SLAS                          | GLAS                                      |
-|------------------|-------------------------------|-------------------------------------------|
-| Gene granularity | one gene per physical piece   | one gene per piece *type*                 |
-| Genome size      | N genes (N = total copies)    | T genes across 3 classes (T = types)      |
-| Placement order  | single GA-evolved permutation | Large -> Medium -> Small, GA within class |
+| Aspect           | SLAS                          | GLAS                                              |
+|------------------|-------------------------------|---------------------------------------------------|
+| Gene granularity | one gene per physical piece   | one gene per piece *type*                         |
+| Genome size      | N genes (N = total copies)    | T genes across 3 classes (T = types)              |
+| Placement order  | single GA-evolved permutation | Large -> Medium -> Small, GA within class         |
 | Split heuristic  | SLAS shorter-leftover-axis    | strip fill + GA-evolved split direction per batch |
-| Batch placement  | no (one piece per step)       | yes (all remaining copies of one type)    |
-| `inverse` array  | one bool per gene             | one bool per copy (`inverses[k]`)         |
+| Batch placement  | no (one piece per step)       | yes (all remaining copies of one type)            |
+| `inverse` array  | one bool per gene             | one bool per copy (`inverses[k]`)                 |

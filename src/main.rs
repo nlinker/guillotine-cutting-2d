@@ -7,7 +7,7 @@ use std::{
 use clap::{Parser, Subcommand};
 use cut::{
     exact::glf::build_glf,
-    expand::expand_problem,
+    expand::{expand_problem, shrink_solution},
     ga,
     ga::GaConfig,
     glas::ga as glas_ga,
@@ -530,13 +530,13 @@ pub(crate) fn run_with_sink_any(
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(algorithm, Algorithm::Bfdh | Algorithm::Jylanki) {
-        let problem = cut::expand::expand_problem(&spec);
+        let problem = expand_problem(&spec);
         let flat_sol = match algorithm {
             Algorithm::Jylanki => cut::heuristic::jylanki_solve(&problem),
             _ => cut::heuristic::bfdh_solve(&problem),
         };
         let objective = flat_sol.eval(&problem);
-        let sol_spec = cut::expand::shrink_solution(&flat_sol, &spec);
+        let sol_spec = shrink_solution(&flat_sol, &spec);
         let cut_lengths = sol_spec.cut_lengths(&spec);
         sink.send(&ProgressMessage::Done {
             seed: 0,
@@ -576,7 +576,7 @@ fn run_calc_render(
     algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     if matches!(algorithm, Algorithm::Bfdh | Algorithm::Jylanki | Algorithm::Bpc) {
-        let problem = cut::expand::expand_problem(spec);
+        let problem = expand_problem(spec);
         let flat_sol = match algorithm {
             Algorithm::Bfdh => cut::heuristic::bfdh_solve(&problem),
             // BPC render uses jylanki UB as the initial feasible solution
@@ -584,7 +584,7 @@ fn run_calc_render(
             // TODO what this should return really?
             Algorithm::Glas | Algorithm::Slas => cut::heuristic::bfdh_solve(&problem),
         };
-        let sol_spec = cut::expand::shrink_solution(&flat_sol, spec);
+        let sol_spec = shrink_solution(&flat_sol, spec);
         print!("{}", render_svg(spec, &sol_spec)?);
         return Ok(());
     }
