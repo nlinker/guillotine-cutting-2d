@@ -36,9 +36,9 @@ mod tests {
         assert_eq!(p.piece_types.iter().map(|p| p.count).sum::<u32>(), 5);
         assert_eq!(p.piece_types[0].name, "стойка");
         assert_eq!(p.piece_types[0].count, 3);
-        assert_eq!(p.piece_types[0].can_rotate, false);
+        assert!(!p.piece_types[0].can_rotate);
         assert_eq!(p.piece_types[1].name, "полка");
         assert_eq!(p.piece_types[1].count, 2);
-        assert_eq!(p.piece_types[1].can_rotate, true);
+        assert!(p.piece_types[1].can_rotate);
     }
 }

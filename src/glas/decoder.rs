@@ -457,8 +457,8 @@ mod tests {
         Gene {
             type_idx,
             rotate: false,
-            selectors: std::iter::repeat(0u32).take(count).collect(),
-            inverses: std::iter::repeat(false).take(count).collect(),
+            selectors: std::iter::repeat_n(0u32, count).collect(),
+            inverses: std::iter::repeat_n(false, count).collect(),
         }
     }
 
