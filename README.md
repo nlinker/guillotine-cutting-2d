@@ -44,18 +44,21 @@ since the number of possible solutions is huge and this combinatorics makes the 
   scores). _Warning_: current performance is poor; exploring approaches to improve it.
 - **GA** - evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`.
-- **Island-model GA** - `run_ga_mt` spawns one independent island (population) per seed.
-  Islands evolve in parallel; every `migration_interval` generations they synchronize via a
-  shared barrier, injecting the global best into each island's worst slot.
-  The final result is the best individual found across all islands.
+- **Island-model GA** - `run_ga_mt` spawns one independent island (population) per thread.
+  Islands evolve in parallel, synchronizing via a shared barrier every `migration_interval`
+  generations. The final result is the best individual found across all islands.
+- **Migration** - the mechanism by which islands share progress: at each synchronization
+  barrier (every `migration_interval` generations), the best individual across all islands
+  overwrites the worst individual on every island, so a strong genome found on one island
+  can seed and improve the others.
 - Five **Algorithms** (`--algorithm slas|glas|bfdh|jylanki|bpc`, also selectable in the web UI):
   - GA with **SLAS** decoder - one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
     (see [docs/slas.md](docs/slas.md)).
-  - GA with **GLAS** decoder (default) - grouped SLAS, one gene per piece *type*;
+  - GA with **GLAS** decoder (default) - Grouped SLAS, one gene per piece *type*;
     pieces grouped into Large / Medium / Small classes so large pieces are always placed first.
-    Each batch chooses horizontal or vertical strip (whichever fits more copies) and split direction (GA-evolved `inverses` flag).
-    See [docs/glas.md](docs/glas.md).
-  - **BFDH** - Best Fit Decreasing Height - greedy shelf heuristic, very fast
+    Each batch chooses horizontal or vertical strip (whichever fits more copies) and split direction
+    (GA-evolved `inverses` flag). See [docs/glas.md](docs/glas.md).
+  - **BFDH** - Best Fit Decreasing Height - greedy shelf heuristic, very fast.
   - **Jylanki** - portfolio greedy packer (per Jylanki's [A Thousand Ways to Pack the Bin.pdf](docs/pdf/A%20Thousand%20Ways%20to%20Pack%20the%20Bin.pdf)):
     runs every combination of sort key x direction x selection rule x split rule
     (144 deterministic passes), keeps the best by `Objective`.
@@ -71,7 +74,7 @@ since the number of possible solutions is huge and this combinatorics makes the 
   See the corresponding generator demo in [Demos](#demos).
 - **Cross-platform** self-contained console executable - the solver that receives the JSON
   specifying the problem instance and produces JSON with the solution.
-  - **`ProblemSpec`** - stock sheet dimensions, blade kerf, and a list of `PieceType` values,
+  - **`ProblemSpec`** - stock sheet dimensions, blade kerf, margin, and a list of `PieceType` values,
     each with an opaque external label, dimensions, a rotation flag, and a `count`
     (how many copies of that type are needed).
   - **`SolutionSpec`** - vector of `PlacementSpec` (sheet index + piece-type index + position +
@@ -140,7 +143,7 @@ cargo run --release --example glf_sweep
 use std::sync::Arc;
 use cut::{
     ga::GaConfig,
-    glas::{decoder::decode_spec, ga::{GaEvent, run_ga_mt}},
+    glas::{decoder::decode_spec, ga::run_ga_mt},
     parse::parse_problem,
 };
 
@@ -150,17 +153,13 @@ fn main() {
     );
     let cfg = Arc::new(GaConfig { pop_size: 200, n_generations: 1000, ..GaConfig::default() });
 
-    // 8 independent GA islands in parallel; progress_interval=0 (no events), migration_interval=0
+    // 8 independent GA islands in parallel;
+    // progress_interval=0 (no events), migration_interval=0 (no migration between islands)
     let seeds: Vec<u64> = (0..8).collect();
-    let mut handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0, 0);
+    let handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0, 0);
 
     // Block until all islands finish; results are sorted best-first
-    let results = loop {
-        match handle.rx.blocking_recv() {
-            Some(GaEvent::Done(r)) => break r,
-            _ => {}
-        }
-    };
+    let results = handle.blocking_wait();
 
     let (best_seed, best_ind) = &results[0];
     let solution = decode_spec(&spec, &best_ind.genome);

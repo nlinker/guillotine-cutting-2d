@@ -602,13 +602,8 @@ mod tests {
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {
-            let mut h = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.clone(), 0, 10);
-            loop {
-                match h.rx.blocking_recv() {
-                    Some(GaEvent::Done(r)) => break r,
-                    _ => {}
-                }
-            }
+            let h = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds.clone(), 0, 10);
+            h.blocking_wait()
         };
 
         let r1 = collect();

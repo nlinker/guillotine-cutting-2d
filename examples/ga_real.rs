@@ -11,7 +11,7 @@ use cut::{
     parse_compact::parse_problem,
     slas::{
         decoder::decode_spec,
-        ga::{GaEvent, run_ga_mt},
+        ga::run_ga_mt,
     },
 };
 
@@ -68,13 +68,8 @@ fn main() {
     println!();
 
     let t0 = Instant::now();
-    let mut handle = run_ga_mt(Arc::new(spec.clone()), Arc::new(cfg.clone()), seeds.clone(), 0, 0);
-    let results = loop {
-        match handle.rx.blocking_recv() {
-            Some(GaEvent::Done(r)) => break r,
-            _ => {}
-        }
-    };
+    let handle = run_ga_mt(Arc::new(spec.clone()), Arc::new(cfg.clone()), seeds.clone(), 0, 0);
+    let results = handle.blocking_wait();
     println!("Done in {:.1}s\n", t0.elapsed().as_secs_f64());
 
     let decoded: Vec<(u64, Objective, SolutionSpec, usize, String)> = results

@@ -169,6 +169,18 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
     }
+
+    /// Blocks until the GA run finishes, discarding intermediate `Progress` events.
+    /// Returns results sorted best-first (see `GaEvent::Done`).
+    pub fn blocking_wait(mut self) -> Vec<(u64, Individual<G>)> {
+        loop {
+            match self.rx.blocking_recv() {
+                Some(GaEvent::Done(results)) => return results,
+                Some(GaEvent::Progress(_)) => continue,
+                None => return Vec::new(),
+            }
+        }
+    }
 }
 
 impl<G: Clone + Send + 'static> Drop for GaHandle<G> {

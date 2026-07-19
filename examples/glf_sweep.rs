@@ -65,13 +65,8 @@ fn main() {
 
         // GA solution
         let seeds = vec![0u64];
-        let mut handle = slas_ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0, 0);
-        let results = loop {
-            match handle.rx.blocking_recv() {
-                Some(slas_ga::GaEvent::Done(r)) => break r,
-                _ => {}
-            }
-        };
+        let handle = slas_ga::run_ga_mt(Arc::clone(&spec), Arc::clone(&ga_cfg), seeds, 0, 0);
+        let results = handle.blocking_wait();
         let (_, best) = results.iter().next().expect("no GA result");
         let sol_ga = decode_spec(&spec, &best.genome);
         let svg_ga = render_svg(&spec, &sol_ga).expect("render ga failed");
