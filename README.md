@@ -16,13 +16,11 @@ All cuts are guillotine cuts, i.e. straight lines across the full remaining rect
 The problem is NP-hard, so for large inputs exact computation is infeasible;
 the GA finds good approximations instead.
 
-For example, here are the solutions of one instance of the problem for `widths = 20..43`.
-Each frame shows the exact optimal placement of the same piece set
-for a given sheet width, minimizing height.
-You can see that for any width `W` for `W` and `W+1` the optima almost always _are very different_,
-and this combinatorics makes the problem hard:
+For example, here is the GA improving its solution for a small problem instance.
+It takes a significant amount of time to reach a solution using 4 sheets,
+since the number of possible solutions is huge and this combinatorics makes the problem hard:
 
-![optimal_solutions.avif](docs/img/optimal_solutions.avif)
+![ga_improving.avif](docs/img/ga_improving.avif)
 
 ## Distinctive features
 
