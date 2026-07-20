@@ -26,9 +26,9 @@ pub(crate) enum SortDir {
 pub(crate) enum SelectionRule {
     /// Smallest rect area (Best-Area-Fit); orientation-independent, ties resolved by tie-break.
     Area,
-    /// Smallest min(fr.w - pw, fr.h - ph) — tightest short-side fit.
+    /// Smallest min(fr.w - pw, fr.h - ph) - tightest short-side fit.
     ShortSide,
-    /// Smallest max(fr.w - pw, fr.h - ph) — tightest long-side fit.
+    /// Smallest max(fr.w - pw, fr.h - ph) - tightest long-side fit.
     LongSide,
 }
 

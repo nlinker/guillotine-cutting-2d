@@ -42,7 +42,7 @@ since the number of possible solutions is huge and this combinatorics makes the 
   generation over cutting patterns priced by the GLF oracle, with branch-and-bound that
   forces pairs of piece types onto the same sheet or apart until the LP relaxation
   matches an integer solution. Minimizes sheet count only (not layout/drop-consolidation
-  scores). _Warning_: current performance is poor; exploring approaches to improve it.
+  scores). _Warning_: current performance is poor; exploring approaches to improve it (ﾉ*･ω･)ﾉ.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`. See their visualizations
   in [Demos/GA Crossover; Demos/GA Mutation](#demos)

@@ -89,7 +89,7 @@ impl Rlmp {
             let Some(entering) = self.find_entering(&mu) else { break };
             let eta = self.compute_eta(entering);
             let Some(r_leave) = self.ratio_test(&eta) else {
-                // Unbounded LP — should never happen for a valid RLMP.
+                // Unbounded LP - should never happen for a valid RLMP.
                 break;
             };
             self.pivot(entering, &eta, r_leave);
@@ -504,7 +504,7 @@ mod tests {
 
     // Degenerate tie: two disjoint patterns partition the items, so both
     // singletons stay basic at lambda = 1 alongside them being replaced
-    // one-for-one — sum(lambda) must still equal the objective.
+    // one-for-one - sum(lambda) must still equal the objective.
     #[test]
     fn basic_patterns_lambda_sums_to_objective() {
         let mut rlmp = Rlmp::new(4);

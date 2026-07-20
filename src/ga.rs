@@ -163,6 +163,7 @@ pub enum GaEvent<G: Clone + Send + 'static> {
 pub struct GaHandle<G: Clone + Send + 'static> {
     pub rx: UnboundedReceiver<GaEvent<G>>,
     stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
 }
 
 impl<G: Clone + Send + 'static> GaHandle<G> {
@@ -170,17 +171,38 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
         self.stop.store(true, Ordering::Relaxed);
     }
 
+    /// Joins the supervisor thread, if not already joined.
+    pub fn join(&mut self) {
+        if let Some(h) = self.join.take()
+            && let Err(payload) = h.join()
+        {
+            eprintln!("GA supervisor thread panicked: {}", panic_message(&*payload));
+        }
+    }
+
     /// Blocks until the GA run finishes, discarding intermediate `Progress` events.
     /// Returns results sorted best-first (see `GaEvent::Done`).
     pub fn blocking_wait(mut self) -> Vec<(u64, Individual<G>)> {
-        loop {
+        let result = loop {
             match self.rx.blocking_recv() {
-                Some(GaEvent::Done(results)) => return results,
+                Some(GaEvent::Done(results)) => break results,
                 Some(GaEvent::Progress(_)) => continue,
-                None => return Vec::new(),
+                None => break Vec::new(),
             }
-        }
+        };
+        self.join();
+        result
     }
+}
+
+/// Extracts a readable message from a thread panic payload
+/// (`std::thread::Result::Err`), with a fallback for non-string payloads.
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panicked with a non-string payload".to_string())
 }
 
 impl<G: Clone + Send + 'static> Drop for GaHandle<G> {
@@ -228,6 +250,7 @@ fn ga_channel<G: Clone + Send + 'static>(progress_interval: usize) -> (GaHandle<
     let handle = GaHandle {
         rx,
         stop: Arc::clone(&stop),
+        join: None,
     };
     let context = GaContext {
         tx,
@@ -287,8 +310,8 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
     progress_interval: usize,
     migration_interval: usize,
 ) -> GaHandle<D::Genome> {
-    let (handle, ctx) = ga_channel::<D::Genome>(progress_interval);
-    std::thread::spawn(move || {
+    let (mut handle, ctx) = ga_channel::<D::Genome>(progress_interval);
+    let join = std::thread::spawn(move || {
         let n = seeds.len();
         let bests = (0..n)
             .map(|_| Mutex::new(None))
@@ -328,6 +351,7 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
         results.sort_by_key(|(_, ind)| ind.objective);
         ctx.tx.send(GaEvent::Done(results)).ok();
     });
+    handle.join = Some(join);
     handle
 }
 
@@ -476,4 +500,61 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
     }
 
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct PanicGenome;
+
+    /// A decoder that panics on the first `eval` call panics the scoped worker thread,
+    /// which re-panics the supervisor thread via `.expect("GA thread panicked")`.
+    struct PanicDecoder;
+
+    impl GaDecoder for PanicDecoder {
+        type Genome = PanicGenome;
+
+        fn random_genome<R: Rng>(&self, _config: &GaConfig, _rng: &mut R) -> Self::Genome {
+            PanicGenome
+        }
+
+        fn eval(&self, _genome: &Self::Genome) -> Objective {
+            panic!("PanicDecoder::eval always panics");
+        }
+
+        fn crossover<R: Rng>(
+            &self,
+            _p1: &Self::Genome,
+            _p2: &Self::Genome,
+            _rng: &mut R,
+        ) -> (Self::Genome, Self::Genome) {
+            (PanicGenome, PanicGenome)
+        }
+
+        fn mutate<R: Rng>(&self, _genome: &mut Self::Genome, _config: &GaConfig, _rng: &mut R) {}
+    }
+
+    /// This checks that the panic is joined (not leaked as a zombie thread) and that
+    /// `blocking_wait` still returns instead of hanging.
+    #[test]
+    fn run_ga_mt_panic_is_joined_not_lost() {
+        let prev_hook = std::panic::take_hook();
+        // suppress the panic-hook print; the unwind (and our catch via join) still happens
+        std::panic::set_hook(Box::new(|_| {}));
+
+        let decoder = Arc::new(PanicDecoder);
+        let config = Arc::new(GaConfig {
+            pop_size: 4,
+            n_generations: 5,
+            ..GaConfig::default()
+        });
+        let handle = run_ga_mt(decoder, config, vec![1], 0, 0);
+        let results = handle.blocking_wait();
+
+        std::panic::set_hook(prev_hook);
+
+        assert!(results.is_empty());
+    }
 }

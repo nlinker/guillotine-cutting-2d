@@ -285,7 +285,7 @@ impl GlfTable {
     }
 
     /// The `[w_min, w_max]` range over which `eval_full_set` is defined and strictly decreasing.
-    /// Beyond `w_max`, the minimum height is constant — sweeping further yields no new layouts.
+    /// Beyond `w_max`, the minimum height is constant - sweeping further yields no new layouts.
     /// Returns `None` if the full set is infeasible.
     pub fn feasible_width_range(&self) -> Option<(u32, u32)> {
         let full = self.types.iter().map(|t| t.count).collect::<Vec<u32>>();
@@ -374,7 +374,7 @@ fn format_step_fn(f: &StepFn) -> String {
 /// Build the GLF (Guillotine Layout Function) table for a whole problem.
 ///
 /// `problem` must already be kerf/margin-expanded (i.e. produced by
-/// `expand::expand_problem`) — piece dimensions are used as-is, not adjusted here.
+/// `expand::expand_problem`) - piece dimensions are used as-is, not adjusted here.
 /// Query `eval_full_set` with `problem.sheet.width` to check feasibility.
 pub fn build_glf(problem: &Problem) -> GlfTable {
     let indices = (0..problem.pieces.len()).collect::<Vec<_>>();
@@ -383,7 +383,7 @@ pub fn build_glf(problem: &Problem) -> GlfTable {
 
 /// Build a GLF table from a subset of flat (kerf-expanded) pieces.
 ///
-/// `pieces` is `Problem.pieces`; dimensions are already kerf-expanded — do not add kerf here.
+/// `pieces` is `Problem.pieces`; dimensions are already kerf-expanded - do not add kerf here.
 /// `indices` selects which entries of `pieces` to include (e.g. all `piece_idx` on one sheet).
 ///
 /// Use `reconstruct_flat(sheet.width)` on the result to get `Vec<Placement>`
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn tutorial_example() {
-        // "10x8F:0:2x3/4,4x3,8x3,5x2/2" — all fixed, kerf=0
+        // "10x8F:0:2x3/4,4x3,8x3,5x2/2" - all fixed, kerf=0
         let p = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
         let problem = expand_problem(&p);
         let table = build_glf(&problem);

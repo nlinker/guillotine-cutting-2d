@@ -24,7 +24,7 @@
 ///
 /// `z_RLMP` (the current RLMP objective) is a valid lower bound on the full
 /// LP relaxation **only once column generation has converged** (pricing
-/// proved no improving pattern exists) — with a partial column pool it can
+/// proved no improving pattern exists) - with a partial column pool it can
 /// only ever be *larger* than the true LP optimum, so reporting `ceil(z_RLMP)`
 /// as `lb` before convergence would be unsound. The CG loop below therefore
 /// only ever computes `lb` from `z_RLMP` after `PriceOutcome::NoneExists`;
@@ -57,7 +57,7 @@ use crate::{
 /// Safety margin subtracted from `z_RLMP` before rounding up to the integer
 /// lower bound. Absorbs two sources of slack, both tiny and both one-sided
 /// (they can only make `z_RLMP` *larger* than the true LP optimum, never
-/// smaller — so subtracting is always safe, never invalidates the bound):
+/// smaller - so subtracting is always safe, never invalidates the bound):
 /// floating-point noise accumulated over the simplex pivots, and `Pricer`'s
 /// own `RC_EPS` tolerance (it reports `NoneExists` once no column improves by
 /// more than `RC_EPS`, not by exactly zero).
@@ -221,7 +221,7 @@ pub fn drain_bpc(
 fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::sync::mpsc::Sender<BpcInternalEvent>) {
     let problem = expand_problem(spec);
 
-    // Phase 2: LB0 — continuous area lower bound
+    // Phase 2: LB0 - continuous area lower bound
     let total_area: u64 = problem.pieces.iter().map(|p| p.width as u64 * p.height as u64).sum();
     let sheet_area = problem.sheet.width as u64 * problem.sheet.height as u64;
     let lb0 = if sheet_area == 0 {
@@ -230,7 +230,7 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
         usize::try_from(total_area.div_ceil(sheet_area)).unwrap_or(usize::MAX)
     };
 
-    // Phase 2: UB0 — best result from the Jylanki greedy portfolio.
+    // Phase 2: UB0 - best result from the Jylanki greedy portfolio.
     // Use Solution::sheets_used() (counts max sheet_idx) instead of
     // Objective::sheets_used_int() which has a float rounding issue when
     // the last sheet is filled to exactly 100%.
@@ -579,7 +579,7 @@ fn child_node(
 /// A single-item pattern occupying its own sheet at the origin. Used to seed
 /// `column_patterns` for `Rlmp`'s initial singleton columns, which `Rlmp`
 /// itself only tracks as item sets (see `column_patterns`'s doc at its call
-/// site). Every piece is assumed to fit the sheet in some orientation — the
+/// site). Every piece is assumed to fit the sheet in some orientation - the
 /// same assumption the rest of the crate already makes (e.g. `Pricer` silently
 /// drops pieces that don't).
 fn singleton_pattern(piece_idx: usize, problem: &Problem) -> Pattern {
@@ -606,7 +606,7 @@ fn singleton_pattern(piece_idx: usize, problem: &Problem) -> Pattern {
 /// Patterns are taken in decreasing lambda order (the LP's own preference);
 /// a pattern is accepted wholesale (keeping its internally-validated
 /// guillotine layout intact) only if none of its items were already placed
-/// by a higher-lambda pattern — each accepted pattern gets its own new sheet,
+/// by a higher-lambda pattern - each accepted pattern gets its own new sheet,
 /// so no cross-pattern overlap checking is needed. This is deliberately not
 /// the paper's tabu-search rounding, just a cheap best-effort improvement
 /// over `incumbent_sheets`.
@@ -842,7 +842,7 @@ mod tests {
     #[test]
     fn round_gap_falls_back_to_bfdh_for_items_the_pool_never_covers() {
         // `rlmp` only knows about items 0 and 1 (a 2-item RLMP), while
-        // `problem` has a third piece with no corresponding column at all —
+        // `problem` has a third piece with no corresponding column at all -
         // isolates the "no basic pattern covers this item" branch without
         // needing to engineer genuine LP fractional-cover degeneracy.
         let problem = tiny_problem(3);
@@ -905,7 +905,7 @@ mod tests {
     #[test]
     fn lp_bound_tighter_than_area_bound_proves_optimal() {
         // 20 copies of 30x30 in a 100x100 sheet: only a 3x3 grid (9 copies)
-        // fits per sheet, so area_bound = ceil(20*900/10000) = 2 is loose —
+        // fits per sheet, so area_bound = ceil(20*900/10000) = 2 is loose -
         // the true optimum is 3 (ceil(20/9)). Column generation must price a
         // pattern of 9 identical pieces, drive z_RLMP down to 20/9 = 2.22,
         // and round up to LB = 3 = UB0: a genuine LP-bound proof, not just

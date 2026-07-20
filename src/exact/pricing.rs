@@ -15,7 +15,7 @@
 //!    tree, for any insertion order.
 //! 2. **Exact branch-and-bound** over per-type copy counts (copies of a type
 //!    are interchangeable, so an optimal pattern takes each type's top-mu
-//!    copies as a prefix — branching is include-copy / block-type).  Pruning:
+//!    copies as a prefix - branching is include-copy / block-type).  Pruning:
 //!    fractional knapsack bound over the remaining area, plus exact guillotine
 //!    feasibility via a memoized GLF DP over count vectors (`GlfOracle`).
 //!    While the chain function of the current branch still fits the sheet it
@@ -28,8 +28,8 @@
 //!    lower bound. `Aborted` means a work budget ran out before either a
 //!    column or the proof was found.
 //!
-//! The GLF DP is exponential in the number of pieces of a pattern — that is
-//! the honest price of exactness without the paper's G2KP machinery — hence
+//! The GLF DP is exponential in the number of pieces of a pattern - that is
+//! the honest price of exactness without the paper's G2KP machinery - hence
 //! the `max_nodes` / `max_cells` budgets and the `Aborted` outcome.
 //!
 //! Both piece and sheet dimensions must be kerf-expanded (`expand_problem`),

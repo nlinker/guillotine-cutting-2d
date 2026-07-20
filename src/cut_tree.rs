@@ -138,7 +138,7 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
                     ph: p.ph,
                 });
             }
-            // Single piece doesn't fill the rect — still guillotine-splittable.
+            // Single piece doesn't fill the rect - still guillotine-splittable.
             // Fall through to the general case.
         }
         _ => {}

@@ -24,13 +24,13 @@ pub type Inverses = SmallVec<[bool; 16]>;
 /// (via `inverses[placed]`), packs a strip of pieces into the composite box, then
 /// splits the free leaf according to that direction.
 ///
-/// `selectors` and `inverses` each have exactly `count` elements — one per physical
-/// copy — but only batch-start positions are consulted at decode time.
+/// `selectors` and `inverses` each have exactly `count` elements - one per physical
+/// copy, but only batch-start positions are consulted at decode time.
 /// Mid-batch entries are carried silently; this keeps the arrays symmetric and
 /// lets crossover treat every index identically without special-casing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Gene {
-    /// Index into `spec.piece_types` — which piece type this gene handles.
+    /// Index into `spec.piece_types` - which piece type this gene handles.
     pub type_idx: usize,
     /// Prefer rotated orientation for every piece in this group.
     pub rotate: bool,
@@ -591,10 +591,10 @@ mod tests {
 
     #[test]
     fn matrix_batch_hole_is_reused_by_next_gene() {
-        // Sheet 300×400, kerf=0. Type 0: 5×(100×100) — same grid-with-hole as
+        // Sheet 300×400, kerf=0. Type 0: 5×(100×100) - same grid-with-hole as
         // `five_pieces_form_grid_with_corner_hole`, leaving free leaves
         // [bottom=(0,200,300,200), hole=(200,100,100,100)] (in that order).
-        // Type 1: 1×(100×100r) — rotatable, so it stays a separate piece spec
+        // Type 1: 1×(100×100r) - rotatable, so it stays a separate piece spec
         // after normalization despite matching type 0's dimensions.
         // selectors[0]=1 → find_fitting_leaf starts at free_pos=1, which is
         // the hole; the piece fits it exactly (no leftover).
@@ -637,10 +637,10 @@ mod tests {
     #[test]
     fn strip_respects_height_constraint() {
         // Sheet 400×300, kerf=0. Three types:
-        //   type 0 (filler): 400×200/1f — strip count=floor(400/400)=1.
+        //   type 0 (filler): 400×200/1f - strip count=floor(400/400)=1.
         //                                  inverse=false creates bottom=(0,200,400,100).
-        //   type 1 (A):      200×100/1f — fits in the 100-high bottom; count=floor(400/200)=2, rem=1→1.
-        //   type 2 (B):      200×200/1f — ph=200 > all remaining fr_h=100; goes to sheet 1.
+        //   type 1 (A):      200×100/1f - fits in the 100-high bottom; count=floor(400/200)=2, rem=1→1.
+        //   type 2 (B):      200×200/1f - ph=200 > all remaining fr_h=100; goes to sheet 1.
         let spec = parse_problem("400x300F:0:400x200/1f,200x100/1f,200x200/1f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 1), gg(1, 1), gg(2, 1)]];
@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn pool_exact_fit() {
-        // Sheet 100×100, batch 100×100: exact fit — no free leaves after.
+        // Sheet 100×100, batch 100×100: exact fit - no free leaves after.
         let mut pool = FreePool::new(100, 100);
         let (bx, by) = pool.apply_batch(0, 100, 100, false);
         assert_eq!((bx, by), (0, 0));

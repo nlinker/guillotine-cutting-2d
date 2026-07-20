@@ -14,7 +14,7 @@ type FreePair = SmallVec<[FreeRect; 2]>;
 /// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
 /// `point_selector`: selects the starting free rect as `free[point_selector % |free|]`;
 /// scanning from a variable offset gives the GA freedom to steer pieces to different regions.
-/// `inverse`: when true, flips the SLAS split direction — `lw <= lh` picks vertical instead
+/// `inverse`: when true, flips the SLAS split direction - `lw <= lh` picks vertical instead
 /// of horizontal. Lets the GA represent cut trees that SLAS cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gene {
@@ -272,8 +272,8 @@ mod tests {
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
         // improve_tl_corners checks only the root (top-level) split per sheet.
-        // Sheet 0 root is HSplit: tl(top)=P0 9600 > tl(bottom)=0 — no swap.
-        // Sheet 1 root is HSplit: tl(top)=P2 12000 > tl(bottom)=P3r 7000 — no swap.
+        // Sheet 0 root is HSplit: tl(top)=P0 9600 > tl(bottom)=0 - no swap.
+        // Sheet 1 root is HSplit: tl(top)=P2 12000 > tl(bottom)=P3r 7000 - no swap.
         let spec = parse_problem("200x150F:5:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
         let problem = expand_problem(&spec);
         let genome = vec![
@@ -289,10 +289,10 @@ mod tests {
         assert_eq!(p.len(), 5);
         let find = |idx: usize| p.iter().find(|pl| pl.piece_idx == idx).unwrap();
         let tuple = |pl: &Placement| (pl.sheet_idx, pl.x, pl.y, pl.rotated);
-        assert_eq!(tuple(find(0)), (0, 0, 0, false)); // P0  at (0,0) sheet 0
-        assert_eq!(tuple(find(1)), (0, 125, 0, false)); // P1  at (125,0) sheet 0
-        assert_eq!(tuple(find(2)), (1, 0, 0, false)); // P2  at (0,0) sheet 1
-        assert_eq!(tuple(find(3)), (1, 0, 65, true)); // P3r at (0,65) sheet 1
-        assert_eq!(tuple(find(4)), (0, 125, 85, true)); // P4r at (125,85) sheet 0
+        assert_eq!(tuple(find(0)), (0, 0, 0, false));
+        assert_eq!(tuple(find(1)), (0, 125, 0, false));
+        assert_eq!(tuple(find(2)), (1, 0, 0, false));
+        assert_eq!(tuple(find(3)), (1, 0, 65, true));
+        assert_eq!(tuple(find(4)), (0, 125, 85, true));
     }
 }

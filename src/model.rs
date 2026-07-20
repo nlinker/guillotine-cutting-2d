@@ -10,15 +10,15 @@ use crate::cut_tree::build_cut_tree;
 /// is strictly better than any (k+1)-sheet solution, while within the same sheet
 /// count the GA is pushed to consolidate pieces away from the last sheet.
 ///
-///   1. `layout_score`             — higher is better (reversed in `Ord`); rewards regular,
+///   0.  Combined primary fitness: `(sheets_used_int - 1) + fill_fraction_on_last_sheet`
+///   1. `layout_score` - higher is better (reversed in `Ord`); rewards regular,
 ///      "technological" layouts: concentrated cut lines plus mono-width strips
 ///      (see `cut_line_concentration_score` and `strip_structure_score`)
-///   2. `drop_consolidation_score` — higher is better (reversed in `Ord`); rewards a few
+///   2. `drop_consolidation_score` - higher is better (reversed in `Ord`); rewards a few
 ///      large, reusable offcuts over many small scattered scraps (see
 ///      `Solution::drop_consolidation_score`)
 #[derive(Debug, Clone, Copy)]
 pub struct Objective {
-    /// Combined primary fitness: `(sheets_used_int - 1) + fill_fraction_on_last_sheet`.
     pub sheets_used: f64,
     pub layout_score: u64,
     pub drop_consolidation_score: u64,
@@ -35,7 +35,6 @@ impl Objective {
     }
 
     /// Metric sent as `secondary_objective` in progress messages (web chart, Excel R3).
-    /// Change the body here to switch what is displayed — no other files need updating.
     pub fn secondary(&self) -> u64 {
         self.layout_score
     }
@@ -70,8 +69,6 @@ pub struct Sheet {
     pub height: u32,
 }
 
-// == Spec types (user-facing, type-indexed) ====================================
-
 /// A piece type: N copies of a rectangle to be cut from stock sheets.
 /// `name`: caller-supplied label (empty string when parsed from CLI format).
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
@@ -86,8 +83,6 @@ pub struct PieceType {
 }
 
 /// A cutting problem as supplied by the user: piece types with counts.
-/// `margin`: border subtracted from each edge; algorithm sees `(width - 2·margin) × (height - 2·margin)`;
-/// output coordinates are shifted back by `+margin`. Defaults to 0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProblemSpec {
     pub sheet: Sheet,
@@ -328,28 +323,22 @@ impl Solution {
         }
     }
 
-    /// Cut-line concentration score (higher = better) — rewards regular, "technological"
+    /// Cut-line concentration score (higher = better) - rewards regular, "technological"
     /// layouts where internal cuts align into a few long, reusable lines rather than
     /// many short, misaligned ones (one fence setting → many pieces per pass).
-    ///
-    /// For each sheet: take every internal edge of every placed piece (edges on the
-    /// sheet boundary are exempt, same as the kerf rule), group vertical edges by `x`
-    /// and horizontal edges by `y`, merge overlapping/adjacent spans within each group
-    /// into disjoint runs, and sum `length^2` per run. Squaring rewards concentrating
-    /// a fixed amount of cut length into few long lines over spreading it across many
-    /// short ones (Herfindahl-style). See `docs/plans/cut-line-concentration-score.md`.
-    ///
     /// The raw sum can be very large (`O(sheet_dim^2)` per run), so it is divided by
     /// `100^2 = 10_000` and rounded to the nearest integer to keep values manageable.
     ///
     /// `O(n log n)` per sheet (sort + merge).
+    ///
+    /// See `docs/cut-line-concentration-score.md`.
     pub fn cut_line_concentration_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         let sheet_w = problem.sheet.width;
         let sheet_h = problem.sheet.height;
         let mut total = 0u64;
         // (coordinate, span_lo, span_hi) triples, grouped by sorting rather than
-        // hashing — this is the GA's hot path (called once per individual per
+        // hashing - this is the GA's hot path (called once per individual per
         // generation), and a sort over a couple dozen small tuples beats the
         // allocation/hashing overhead of a HashMap<u32, Vec<_>> per sheet.
         let mut v_edges: Vec<(u32, u32, u32)> = Vec::new();
@@ -378,20 +367,15 @@ impl Solution {
         (total + 5_000) / 10_000
     }
 
-    /// Strip-structure score (higher = better) — rewards mono-width strips: stacks of
+    /// Strip-structure score (higher = better) - rewards mono-width strips: stacks of
     /// pieces sharing the same `[x, x+w)` interval laid flush in `y` (and symmetric
-    /// horizontal runs). Such a strip is ripped with one fence setting and then chopped
-    /// to length, even when the pieces inside it differ. A k x m grid of identical
-    /// pieces scores along both axes at once: `k*(m*h)^2 + m*(k*w)^2`.
+    /// horizontal runs). The raw sum can be very large (`O(sheet_dim^2)` per run), so
+    /// it is divided by `100^2 = 10_000` and rounded to the nearest integer (same
+    /// units and scale as `cut_line_concentration_score`).
     ///
-    /// Sum of `run_length^2` over all flush runs in both orientations. Squaring is
-    /// essential: every placement belongs to exactly one run per orientation, so the
-    /// linear sum of run lengths is invariant for a fixed piece set and carries no
-    /// signal; the superadditive square rewards consolidation (Herfindahl-style, same
-    /// units and `/10_000` scale as `cut_line_concentration_score`).
+    /// `O(n log n)` per sheet (sort + merge).
     ///
-    /// Kerf is baked into expanded piece dimensions, so "flush" is exact coordinate
-    /// equality. See `docs/plans/12_strip-structure-score.md`.
+    /// See `docs/strip_structure_score.md`.
     pub fn strip_structure_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         let mut total = 0u64;
@@ -413,50 +397,14 @@ impl Solution {
         (total + 5_000) / 10_000
     }
 
-    /// Drop-consolidation score (higher = better) — rewards a few large, reusable
+    /// Drop-consolidation score (higher = better) - rewards a few large, reusable
     /// offcuts over many small scattered scraps. Computed for the **last sheet only**
-    /// (`sheets_used() - 1`), not summed across the whole solution.
+    /// (`sheets_used() - 1`, re-derived from `placements`, not summed across the
+    /// solution); sum of `area^2` over that sheet's free rectangles.
     ///
-    /// Why the last sheet only: on a single sheet, total free area splits into
-    /// `trapped_waste` (pockets boxed in between placed pieces — pure scrap, see
-    /// `staircase_area`) plus `outer_area` (the region beyond the pieces' bounding
-    /// staircase — the part that's actually reusable as stock). Squaring-and-summing
-    /// `area^2` over *all* free rectangles already prefers a layout with small/no
-    /// trapped pockets and one big outer offcut over the same total waste fragmented —
-    /// no separate weight needed to balance the two (see the doc comment on the
-    /// squaring property below). Earlier sheets don't need this: `sheets_used` (level 0
-    /// of `Objective`) already pressures every sheet to pack as tightly as possible —
-    /// opening another sheet is only worse — so their leftover shape is already pinned
-    /// down to "as little as physically fits" and isn't a useful drop to optimize for.
-    /// Only the final, not-fully-packed sheet has a leftover worth consolidating.
+    /// `O(p^2)` in the number of placements on the last sheet.
     ///
-    /// Computed straight from `placements` (the decoder's own `Solution.leftovers`
-    /// bookkeeping is ignored): the free region of the last sheet is re-derived as a
-    /// canonical disjoint partition of horizontal strips (y-band boundaries are every
-    /// placement's top/bottom edge plus `0`/`sheet.height`; within a band, placements
-    /// that fully span it block their `x`-interval, and the complement gives the free
-    /// `x`-intervals of that band). Each free rectangle's `area^2` is summed.
-    ///
-    /// This partition is independent of which decoder produced the layout (SLAS, GLAS,
-    /// BFDH, ... each split the same final `placements` into different `FreeRect`
-    /// bookkeeping during decode), so the score is comparable as a single currency
-    /// across all algorithms — unlike a decoder-reported `FreeRect` list would be.
-    ///
-    /// Squaring is what rewards consolidation: merging two adjacent free rectangles of
-    /// areas `a` and `b` into one of area `a+b` strictly increases the sum
-    /// (`(a+b)^2 > a^2+b^2` for `a,b>0`), so a single big reusable offcut always beats
-    /// the same waste fragmented into several small ones.
-    ///
-    /// `O(p^2)` in the number of placements on the last sheet: for each of the `O(p)`
-    /// bands, the placements spanning it are found by a linear scan. A faster
-    /// `O(p log p)` incremental sweep (maintaining the active occupied-interval set
-    /// across band boundaries) is possible but adds real implementation complexity;
-    /// revisit only if profiling shows this is a hot spot for the piece counts this GA
-    /// actually sees.
-    ///
-    /// Idea and partition algorithm ported from a sibling `bin-packing` project's
-    /// `two_d::drops::usable_drop_metrics` (sum-of-squares half; the `min_usable_side`
-    /// filter and the separate largest-single-rectangle metric are not adopted here).
+    /// See `docs/drop_consolidation_score.md`.
     pub fn drop_consolidation_score(&self, problem: &Problem) -> u64 {
         let n_sheets = self.sheets_used();
         if n_sheets == 0 {
@@ -521,7 +469,7 @@ impl Solution {
     /// `(distinct_sheets_that_hold_that_size - 1)`.
     /// Zero when every piece size is confined to exactly one sheet.
     ///
-    /// Canonical size normalises for rotation: key = `(min(w,h), max(w,h))`.
+    /// Canonical size normalizes for rotation: key = `(min(w,h), max(w,h))`.
     pub fn sheet_spread_penalty(&self, problem: &Problem) -> u64 {
         if self.placements.is_empty() {
             return 0;
@@ -605,7 +553,7 @@ impl Solution {
     ///
     /// Uses a slab-pair sweep: for every pair of y-band boundaries, find the widest
     /// free `x`-interval among placements that intersect that slab. `O(p^3)` per sheet
-    /// (p = placements on that sheet) — too expensive to run on every individual every
+    /// (p = placements on that sheet) - too expensive to run on every individual every
     /// generation, so (like `staircase_area`) this is not part of `Objective`; it is
     /// meant as a one-off report on the final/best solution.
     ///
@@ -677,7 +625,7 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     (pl.x, pl.y, w, h)
 }
 
-/// `edges` are `(coordinate, span_lo, span_hi)` triples — e.g. all internal vertical
+/// `edges` are `(coordinate, span_lo, span_hi)` triples - e.g. all internal vertical
 /// edges with their `x` coordinate and the `[y, y+h)` span they cover. Sorts by
 /// `(coordinate, span_lo, span_hi)`. Then within each group of equal `coordinate` merges
 /// overlapping/adjacent spans into disjoint runs (each run is one cut the saw can make
@@ -1136,7 +1084,7 @@ mod tests {
     }
 
     // Same two sheets, roles swapped: the last sheet now has the L-shape leftover, so
-    // its score (4_176) is the one that counts — confirms the function picks the sheet
+    // its score (4_176) is the one that counts - confirms the function picks the sheet
     // by `sheets_used() - 1`, not by "least full".
     #[test]
     fn drop_score_picks_last_sheet_not_emptiest() {

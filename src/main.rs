@@ -36,7 +36,7 @@ pub(crate) enum Algorithm {
     Bfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
-    /// BPC exact solver — branch-price-and-cut column generation (iterative, stoppable)
+    /// BPC exact solver - branch-price-and-cut column generation (iterative, stoppable)
     Bpc,
 }
 
@@ -227,6 +227,19 @@ enum AnyEvent {
 /// side of the channel), which in turn drops the inner GA handle, stopping the GA.
 struct AnyHandle {
     rx: mpsc::UnboundedReceiver<AnyEvent>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl AnyHandle {
+    /// Joins the bridge thread, if not already joined. Logs via `eprintln!`
+    /// if it panicked. Idempotent.
+    fn join(&mut self) {
+        if let Some(h) = self.join.take()
+            && let Err(payload) = h.join()
+        {
+            eprintln!("GA bridge thread panicked: {}", ga::panic_message(&*payload));
+        }
+    }
 }
 
 /// Converts a `GaHandle<G>` into an `AnyHandle`. A bridge thread forwards events,
@@ -237,7 +250,7 @@ where
     F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
 {
     let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
-    std::thread::spawn(move || {
+    let join = std::thread::spawn(move || {
         while let Some(evt) = handle.rx.blocking_recv() {
             let any = match evt {
                 ga::GaEvent::Progress(p) => {
@@ -269,9 +282,10 @@ where
                 break;
             }
         }
+        handle.join();
         // `handle` dropped here -> handle.stop() -> GA threads halt
     });
-    AnyHandle { rx }
+    AnyHandle { rx, join: Some(join) }
 }
 
 fn make_any_handle(
@@ -375,7 +389,7 @@ fn run_calc_with_sink(
         _ => {
             #[cfg(windows)]
             {
-                eprintln!("Waiting for client on {PIPE_NAME} …");
+                eprintln!("Waiting for client on {PIPE_NAME} ...");
                 let mut sink = cut::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
                 run_with_sink_any(
                     spec,
@@ -389,7 +403,7 @@ fn run_calc_with_sink(
             }
             #[cfg(unix)]
             {
-                eprintln!("Waiting for reader on {FIFO_PATH} …");
+                eprintln!("Waiting for reader on {FIFO_PATH} ...");
                 let mut sink = cut::transport::unix::FifoSink::new(FIFO_PATH)?;
                 run_with_sink_any(
                     spec,
@@ -517,6 +531,7 @@ fn run_with_any_handle(
             }
         }
     }
+    handle.join();
     Ok(())
 }
 
@@ -607,6 +622,7 @@ fn run_calc_render(
             }
         }
     }
+    handle.join();
     Ok(())
 }
 
