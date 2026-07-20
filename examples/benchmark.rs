@@ -89,7 +89,7 @@ fn run_suite(s: &Suite) -> Vec<InstanceResult> {
         .map(|i| {
             let gen_seed = GEN_BASE_SEED + i as u64;
             let out = generate(&s.gen_cfg, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
-            let ref_obj = out.optimal_solution.objective(&out.problem);
+            let ref_obj = out.optimal_solution.eval(&out.problem);
             let best = run_ga(
                 &out.problem,
                 &s.ga_cfg,

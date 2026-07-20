@@ -494,12 +494,7 @@ impl Solution {
         (total - distinct_sizes) as u64
     }
 
-    /// Alias for `eval`. Kept for tests and benchmarks.
-    pub fn objective(&self, problem: &Problem) -> Objective {
-        self.eval(problem)
-    }
-
-    /// Maximum staircase-polygon area across all sheets (lower = better).
+/// Maximum staircase-polygon area across all sheets (lower = better).
     ///
     /// For each sheet: build the Pareto-optimal set of bottom-right corners `(rx, ry)`
     /// of all placed pieces; integrate the resulting step function top-to-bottom.

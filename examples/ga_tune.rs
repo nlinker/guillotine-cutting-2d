@@ -82,6 +82,7 @@ fn run_variant(v: &Variant, problem: &cut::model::Problem) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cfg(
     pop_size: usize,
     n_generations: usize,
@@ -105,6 +106,7 @@ fn cfg(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cfgi(
     pop_size: usize,
     n_generations: usize,
