@@ -38,8 +38,7 @@ boundaries) that isn't justified for the piece counts this GA actually sees.
 
 Idea and partition algorithm ported from a sibling `bin-packing` project's
 `two_d::drops::usable_drop_metrics` (sum-of-squares half only; its `min_usable_side`
-filter and its separate largest-single-rectangle metric are not adopted here — see
-`largest_usable_drop_area` in `docs/objective.md`).
+filter and its separate largest-single-rectangle metric are not adopted here).
 
 ## Example
 

@@ -2,21 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cut_tree::build_cut_tree;
 
-/// Fitness (lower is better overall).
-///
-/// `sheets_used` is a float encoding two levels of priority in one value:
-///   `sheets_used = (sheets_used_int - 1) + piece_area_on_last_sheet / sheet_area`
-/// which lies in `[sheets_used_int - 1, sheets_used_int)`, so any k-sheet solution
-/// is strictly better than any (k+1)-sheet solution, while within the same sheet
-/// count the GA is pushed to consolidate pieces away from the last sheet.
-///
-///   0.  Combined primary fitness: `(sheets_used_int - 1) + fill_fraction_on_last_sheet`
-///   1. `layout_score` - higher is better (reversed in `Ord`); rewards regular,
-///      "technological" layouts: concentrated cut lines plus mono-width strips
-///      (see `cut_line_concentration_score` and `strip_structure_score`)
-///   2. `drop_consolidation_score` - higher is better (reversed in `Ord`); rewards a few
-///      large, reusable offcuts over many small scattered scraps (see
-///      `Solution::drop_consolidation_score`)
+/// Three-level lexicographic fitness (`Ord` impl is the key); see `docs/objective.md`.
 #[derive(Debug, Clone, Copy)]
 pub struct Objective {
     pub sheets_used: f64,
@@ -147,14 +133,8 @@ impl SolutionSpec {
             .unwrap_or(0)
     }
 
-    /// Total guillotine cut length per sheet (mm).
-    ///
-    /// Pieces + leftovers tile the working area exactly (up to kerf rounding).
-    /// Every internal boundary is shared by exactly two adjacent rectangles, so
-    /// `total_cut_length = Σ(internal edge lengths) / 2`.
-    /// "Internal" means the edge does not lie on the working-area boundary
-    /// `[margin, sheet.width-margin] × [margin, sheet.height-margin]`.
-    /// The working-area perimeter is added once per sheet when `margin > 0`.
+    /// Total guillotine cut length per sheet (mm): each shared internal edge of a
+    /// piece/leftover counted once, plus the working-area perimeter when `margin > 0`.
     pub fn cut_lengths(&self, spec: &ProblemSpec) -> Vec<u64> {
         let n = self.sheets_used();
         if n == 0 {
@@ -211,11 +191,9 @@ impl SolutionSpec {
     }
 }
 
-// == Flat types (internal, flat-indexed) =======================================
-
 /// A single physical piece instance in the flat expanded problem.
-/// `can_rotate`: when false, must be placed in original (width × height) orientation.
 /// `name`: carried from the originating `PieceType` for display purposes.
+/// `can_rotate`: when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Piece {
     pub name: String,
@@ -226,7 +204,6 @@ pub struct Piece {
 
 /// Flat cutting problem: one `Piece` entry per physical copy (no counts).
 /// Produced by `expand::expand_problem`; consumed by the decoder and GA internals.
-/// Dimensions are pre-expanded by `ProblemSpec::kerf` so decoder and GLF treat all cuts as kerf=0.
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
     pub sheet: Sheet,
@@ -262,13 +239,8 @@ pub struct Solution {
     pub leftovers: Vec<FreeRect>,
 }
 
-/// Weight of `strip_structure_score` relative to `cut_line_concentration_score` in
-/// `layout_score`, expressed as the integer ratio `STRIP_WEIGHT / CUT_LINE_WEIGHT`
-/// (both are squared-length sums on the same `/10_000` scale, so `1/1` is the natural
-/// starting point). `u64` can't hold a fractional weight directly, so a non-integer
-/// ratio like `1.5` is expressed by scaling both sides up: `3/2` instead of `1.5/1`.
-/// Scaling `layout_score` by a constant factor doesn't change `Ord` outcomes, so this
-/// is exact, not an approximation. Calibrate on `generator` instances if needed.
+/// `layout_score` weights, as the integer ratio `STRIP_WEIGHT / CUT_LINE_WEIGHT`
+/// (exact, since scaling by a constant doesn't change `Ord`). Calibrated on `generator` instances.
 const CUT_LINE_WEIGHT: u64 = 2;
 const STRIP_WEIGHT: u64 = 3;
 
@@ -282,10 +254,8 @@ impl Solution {
             .unwrap_or(0)
     }
 
-    /// Buckets `placements` by `sheet_idx` in one `O(p)` pass. Per-sheet scorers
-    /// (`cut_line_concentration_score`, `strip_structure_score`, `staircase_area`,
-    /// `largest_usable_drop_area`) used to re-filter the whole `placements` list once
-    /// per sheet (`O(p * sheets_used)`); this turns that into `O(p + sheets_used)`.
+    /// Buckets `placements` by `sheet_idx` in one `O(p)` pass (vs. `O(p * sheets_used)`
+    /// for per-sheet scorers re-filtering the whole list each time).
     fn placements_by_sheet(&self, n_sheets: usize) -> Vec<Vec<&Placement>> {
         let mut buckets: Vec<Vec<&Placement>> = vec![Vec::new(); n_sheets];
         for pl in &self.placements {
@@ -494,13 +464,8 @@ impl Solution {
         (total - distinct_sizes) as u64
     }
 
-/// Maximum staircase-polygon area across all sheets (lower = better).
-    ///
-    /// For each sheet: build the Pareto-optimal set of bottom-right corners `(rx, ry)`
-    /// of all placed pieces; integrate the resulting step function top-to-bottom.
-    /// Returns the maximum of these per-sheet areas.
-    ///
-    /// Not part of the current `Objective`; see `docs/objective.md` for motivation.
+    /// Maximum staircase-polygon area across all sheets (lower = better). Not part
+    /// of the current `Objective`; see `docs/objective.md`.
     #[allow(dead_code)]
     pub fn staircase_area(&self, problem: &Problem) -> u64 {
         let n = self.sheets_used();
@@ -541,73 +506,6 @@ impl Solution {
         }
         best
     }
-
-    /// Area of the single largest free rectangle across all sheets (higher = better),
-    /// re-derived from `placements` the same way as `drop_consolidation_score`
-    /// (decoder-agnostic, ignores `Solution.leftovers`).
-    ///
-    /// Uses a slab-pair sweep: for every pair of y-band boundaries, find the widest
-    /// free `x`-interval among placements that intersect that slab. `O(p^3)` per sheet
-    /// (p = placements on that sheet) - too expensive to run on every individual every
-    /// generation, so (like `staircase_area`) this is not part of `Objective`; it is
-    /// meant as a one-off report on the final/best solution.
-    ///
-    /// Ported from a sibling `bin-packing` project's
-    /// `two_d::drops::largest_usable_free_rectangle_area` (without its
-    /// `min_usable_side` filter).
-    #[allow(dead_code)]
-    pub fn largest_usable_drop_area(&self, problem: &Problem) -> u64 {
-        let n_sheets = self.sheets_used();
-        let sheet_w = problem.sheet.width;
-        let sheet_h = problem.sheet.height;
-        let mut best = 0u64;
-        let mut rects: Vec<(u32, u32, u32, u32)> = Vec::new();
-        let mut ys: Vec<u32> = Vec::new();
-        for sheet_placements in self.placements_by_sheet(n_sheets) {
-            rects.clear();
-            for pl in sheet_placements {
-                rects.push(placement_rect(pl, problem));
-            }
-
-            ys.clear();
-            ys.push(0);
-            ys.push(sheet_h);
-            for &(_, y, _, h) in &rects {
-                ys.push(y.min(sheet_h));
-                ys.push((y + h).min(sheet_h));
-            }
-            ys.sort_unstable();
-            ys.dedup();
-
-            for i in 0..ys.len() {
-                for j in (i + 1)..ys.len() {
-                    let (y_lo, y_hi) = (ys[i], ys[j]);
-                    let slab_h = (y_hi - y_lo) as u64;
-
-                    let mut occupied: Vec<(u32, u32)> = rects
-                        .iter()
-                        .filter(|&&(_, y, _, h)| y < y_hi && y + h > y_lo)
-                        .map(|&(x, _, w, _)| (x, (x + w).min(sheet_w)))
-                        .collect();
-                    occupied.sort_unstable();
-
-                    let mut cursor = 0u32;
-                    for &(start, end) in &occupied {
-                        if start > cursor {
-                            let candidate = (start - cursor) as u64 * slab_h;
-                            best = best.max(candidate);
-                        }
-                        cursor = cursor.max(end);
-                    }
-                    if sheet_w > cursor {
-                        let candidate = (sheet_w - cursor) as u64 * slab_h;
-                        best = best.max(candidate);
-                    }
-                }
-            }
-        }
-        best
-    }
 }
 
 fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
@@ -620,14 +518,8 @@ fn placement_rect(pl: &Placement, problem: &Problem) -> (u32, u32, u32, u32) {
     (pl.x, pl.y, w, h)
 }
 
-/// `edges` are `(coordinate, span_lo, span_hi)` triples - e.g. all internal vertical
-/// edges with their `x` coordinate and the `[y, y+h)` span they cover. Sorts by
-/// `(coordinate, span_lo, span_hi)`. Then within each group of equal `coordinate` merges
-/// overlapping/adjacent spans into disjoint runs (each run is one cut the saw can make
-/// in a single pass) and sums `length^2` over all runs in all groups.
-///
-/// Generic over the grouping key: `cut_line_concentration_score` groups by a single
-/// cut coordinate (u32), `strip_structure_score` by a cross-axis interval ((u32, u32)).
+/// Groups `(key, span_lo, span_hi)` edges by `key`, merges overlapping/adjacent spans into runs,
+/// sums `run_length^2`.
 fn sum_squared_runs_by_coordinate<K: Copy + Ord>(edges: &mut [(K, u32, u32)]) -> u64 {
     edges.sort_unstable();
     let mut total = 0u64;
@@ -701,17 +593,27 @@ pub fn validate_solution(problem: &Problem, sol: &Solution) -> Vec<String> {
 mod tests {
     use super::*;
 
-    // 2×2 grid of 50×50 pieces tiling a 100×100 sheet exactly (no leftovers, no margin).
-    // Cuts: y=50 full-width (100) + x=50 in each strip (50+50) = 200.
-    #[test]
-    fn cut_lengths_no_margin() {
-        let spec = ProblemSpec {
+    // 2x2 grid of 50x50 pieces, placed at (ox+i*step, oy+j*step) for i,j in 0..2.
+    fn grid_2x2(ox: u32, oy: u32, step: u32) -> Vec<PlacementSpec> {
+        [(ox, oy), (ox + step, oy), (ox, oy + step), (ox + step, oy + step)]
+            .map(|(x, y)| PlacementSpec {
+                sheet_idx: 0,
+                ptype_idx: 0,
+                x,
+                y,
+                rotated: false,
+            })
+            .into()
+    }
+
+    fn spec_50x50x4(sheet_w: u32, sheet_h: u32, kerf: u32, margin: u32) -> ProblemSpec {
+        ProblemSpec {
             sheet: Sheet {
-                width: 100,
-                height: 100,
+                width: sheet_w,
+                height: sheet_h,
             },
-            kerf: 0,
-            margin: 0,
+            kerf,
+            margin,
             piece_types: vec![PieceType {
                 name: String::new(),
                 width: 50,
@@ -719,154 +621,38 @@ mod tests {
                 count: 4,
                 can_rotate: false,
             }],
-        };
+        }
+    }
+
+    #[test]
+    fn cut_lengths_calculation() {
+        // No margin, no kerf: 100x100 sheet, pieces flush at (0,0)/(50,0)/(0,50)/(50,50).
+        let spec = spec_50x50x4(100, 100, 0, 0);
         let sol = SolutionSpec {
-            placements: vec![
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 50,
-                    y: 0,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 0,
-                    y: 50,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 50,
-                    y: 50,
-                    rotated: false,
-                },
-            ],
+            placements: grid_2x2(0, 0, 50),
             leftovers: vec![],
         };
         assert_eq!(sol.cut_lengths(&spec), vec![200]);
-    }
 
-    // Same grid on a 120×120 sheet with margin=10.
-    // Working area 100×100; pieces at margin-adjusted coords.
-    // Inner cuts: 200; margin perimeter: 2*(100+100) = 400. Total: 600.
-    #[test]
-    fn cut_lengths_with_margin() {
-        let spec = ProblemSpec {
-            sheet: Sheet {
-                width: 120,
-                height: 120,
-            },
-            kerf: 0,
-            margin: 10,
-            piece_types: vec![PieceType {
-                name: String::new(),
-                width: 50,
-                height: 50,
-                count: 4,
-                can_rotate: false,
-            }],
-        };
+        // Same grid on a 120x120 sheet with margin=10. Working area 100x100; pieces
+        // at margin-adjusted coords. Inner cuts: 200; margin perimeter:
+        // 2*(100+100) = 400. Total: 600.
+        let spec = spec_50x50x4(120, 120, 0, 10);
         let sol = SolutionSpec {
-            placements: vec![
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 10,
-                    y: 10,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 60,
-                    y: 10,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 10,
-                    y: 60,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 60,
-                    y: 60,
-                    rotated: false,
-                },
-            ],
+            placements: grid_2x2(10, 10, 50),
             leftovers: vec![],
         };
         assert_eq!(sol.cut_lengths(&spec), vec![600]);
-    }
 
-    // Four 50×50 pieces in a 2×2 grid on a 120×120 sheet with kerf=10, no margin.
-    // Expanded: each piece is 60×60 on a 130×130 sheet.
-    // SLAS trace (inverse=false, point_selector=0):
-    //   piece 0 → (0,0,130,130): lw=lh=70 → right=(60,0,70,60), bottom=(0,60,130,70)
-    //   piece 1 → (60,0,70,60):  lw=10,lh=0, lw>lh → right=(120,0,10,60), no bottom
-    //   piece 2 → (0,60,130,70): lw=70,lh=10, lw>lh → right=(60,60,70,70), bottom=(0,120,60,10)
-    //   piece 3 → (60,60,70,70): lw=lh=10 → right=(120,60,10,60), bottom=(60,120,70,10)
-    #[test]
-    fn cut_lengths_with_kerf() {
-        let spec = ProblemSpec {
-            sheet: Sheet {
-                width: 120,
-                height: 120,
-            },
-            kerf: 10,
-            margin: 0,
-            piece_types: vec![PieceType {
-                name: String::new(),
-                width: 50,
-                height: 50,
-                count: 4,
-                can_rotate: false,
-            }],
-        };
+        // Same grid on a 120x120 sheet with kerf=10, no margin. Expanded: each piece
+        // is 60x60 on a 130x130 sheet. SLAS trace (inverse=false, point_selector=0):
+        //   piece 0 -> (0,0,130,130): lw=lh=70 -> right=(60,0,70,60), bottom=(0,60,130,70)
+        //   piece 1 -> (60,0,70,60):  lw=10,lh=0, lw>lh -> right=(120,0,10,60), no bottom
+        //   piece 2 -> (0,60,130,70): lw=70,lh=10, lw>lh -> right=(60,60,70,70), bottom=(0,120,60,10)
+        //   piece 3 -> (60,60,70,70): lw=lh=10 -> right=(120,60,10,60), bottom=(60,120,70,10)
+        let spec = spec_50x50x4(120, 120, 10, 0);
         let sol = SolutionSpec {
-            placements: vec![
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 60,
-                    y: 0,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 0,
-                    y: 60,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 60,
-                    y: 60,
-                    rotated: false,
-                },
-            ],
+            placements: grid_2x2(0, 0, 60),
             leftovers: vec![
                 FreeRect {
                     sheet_idx: 0,
@@ -979,7 +765,7 @@ mod tests {
         assert_eq!(stacked.strip_structure_score(&problem), 59);
     }
 
-    // --- drop_consolidation_score / largest_usable_drop_area ---
+    // --- drop_consolidation_score ---
 
     #[test]
     fn full_sheet_placement_yields_zero_drop_score() {
@@ -989,15 +775,13 @@ mod tests {
             leftovers: vec![],
         };
         assert_eq!(sol.drop_consolidation_score(&problem), 0);
-        assert_eq!(sol.largest_usable_drop_area(&problem), 0);
     }
 
     // 10x10 sheet, 4x4 piece in the top-left corner. Free region is an L-shape.
     // Horizontal-strip partition (bands at y=0,4,10):
     //   band y=0..4: x free in [4..10] -> 6x4 = 24
     //   band y=4..10: x free in [0..10] -> 10x6 = 60
-    // sum_sq = 24^2 + 60^2 = 576 + 3600 = 4176. Largest single free rect = 60
-    // (either the 6x10 right strip or the 10x6 bottom strip).
+    // sum_sq = 24^2 + 60^2 = 576 + 3600 = 4176.
     #[test]
     fn corner_placement_l_shape() {
         let problem = flat_problem(10, 10, &[(4, 4)]);
@@ -1006,7 +790,6 @@ mod tests {
             leftovers: vec![],
         };
         assert_eq!(sol.drop_consolidation_score(&problem), 4_176);
-        assert_eq!(sol.largest_usable_drop_area(&problem), 60);
     }
 
     // 10x10 sheet, two 3x3 pieces at opposite corners (top-left, bottom-right).
@@ -1015,8 +798,6 @@ mod tests {
     //   band y=3..7: x free in [0..10] -> 10x4 = 40
     //   band y=7..10: x free in [0..7]  -> 7x3 = 21
     // sum_sq = 21^2 + 40^2 + 21^2 = 441 + 1600 + 441 = 2482.
-    // Largest single free rect: the 7x7 region spanning y=0..7, x=3..10 (or its
-    // mirror) = 49, bigger than any single horizontal-strip-partition band.
     #[test]
     fn two_opposite_corner_placements() {
         let problem = flat_problem(10, 10, &[(3, 3), (3, 3)]);
@@ -1025,7 +806,6 @@ mod tests {
             leftovers: vec![],
         };
         assert_eq!(sol.drop_consolidation_score(&problem), 2_482);
-        assert_eq!(sol.largest_usable_drop_area(&problem), 49);
     }
 
     // Consolidation property: merging two equal-area free strips into one (same total

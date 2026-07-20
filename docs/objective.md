@@ -71,12 +71,3 @@ stray from the top-left corner (full sheet = staircase area equals sheet area).
 | <img src="img/staircase_large.png" width="380"> | <img src="img/staircase_small.png" width="380"> |
 
 Per sheet: `Σ x_i · (y_i − y_{i-1})` over the sorted frontier; returns the max across sheets.
-
----
-
-## largest_usable_drop_area (implemented, unused)
-
-`drop_consolidation_score`'s sibling — same free-region reconstruction from
-`placements`, but reports the single largest free rectangle instead of sum of squares.
-`#[allow(dead_code)]`: needs an `O(p³)`-per-sheet slab-pair sweep, fine as a one-off
-report but too slow, since it has to be calculated per-individual for each GA generation.
