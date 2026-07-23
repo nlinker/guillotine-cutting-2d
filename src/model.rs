@@ -72,6 +72,7 @@ pub struct PieceType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProblemSpec {
     pub sheet: Sheet,
+    #[serde(default)]
     pub kerf: u32,
     #[serde(default)]
     pub margin: u32,
