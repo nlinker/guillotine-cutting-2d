@@ -12,7 +12,7 @@ use cut::{
     expand::{expand_problem, shrink_solution},
     ga::GaConfig,
     model::{ProblemSpec, Sheet, Solution},
-    parse_compact::parse_problem,
+    parser::compact::parse_problem,
     render::render_svg,
     slas::{decoder::decode_spec, ga as slas_ga},
 };

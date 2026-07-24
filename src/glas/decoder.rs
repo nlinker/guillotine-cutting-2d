@@ -450,7 +450,7 @@ impl FreePool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse_compact::parse_problem};
+    use crate::{expand::expand_problem, parser::compact::parse_problem};
 
     /// Build a default gene for `type_idx` with `count` selectors/inverses all zeroed/false.
     fn gg(type_idx: usize, count: usize) -> Gene {

@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Instant};
 use cut::{
     ga::GaConfig,
     model::{Objective, PieceType, ProblemSpec, SolutionSpec},
-    parse_compact::parse_problem,
+    parser::compact::parse_problem,
     slas::{decoder::decode_spec, ga::run_ga_mt},
 };
 

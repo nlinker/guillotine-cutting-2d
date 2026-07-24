@@ -248,7 +248,7 @@ mod tests {
     use rand_xoshiro::Xoshiro256StarStar;
 
     use super::*;
-    use crate::{expand::expand_problem, model::validate_solution, parse_compact::parse_problem};
+    use crate::{expand::expand_problem, model::validate_solution, parser::compact::parse_problem};
 
     fn g(piece_idx: usize) -> Gene {
         Gene {

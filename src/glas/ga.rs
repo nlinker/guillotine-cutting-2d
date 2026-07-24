@@ -333,7 +333,7 @@ mod tests {
     use rand_xoshiro::Xoshiro256StarStar;
 
     use super::*;
-    use crate::{expand::expand_problem, ga::GaConfig, parse_compact::parse_problem};
+    use crate::{expand::expand_problem, ga::GaConfig, parser::compact::parse_problem};
 
     fn gg(type_idx: usize, count: usize) -> Gene {
         Gene {

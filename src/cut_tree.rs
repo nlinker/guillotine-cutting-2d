@@ -240,7 +240,7 @@ fn split(rect: Rect, pieces: &[PlacedPiece]) -> Option<CutNode> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{expand::expand_problem, parse_compact::parse_problem, slas::decoder::decode};
+    use crate::{expand::expand_problem, parser::compact::parse_problem, slas::decoder::decode};
 
     #[test]
     fn single_piece_fills_sheet() {

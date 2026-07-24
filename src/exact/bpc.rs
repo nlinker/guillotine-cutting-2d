@@ -673,7 +673,7 @@ mod tests {
     use super::*;
     use crate::{
         model::{Piece, Sheet},
-        parse_compact::parse_problem,
+        parser::compact::parse_problem,
     };
 
     fn tiny_problem(n_pieces: usize) -> Problem {

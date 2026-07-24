@@ -24,7 +24,7 @@ pub enum ParseError {
 ///
 /// # Example
 /// ```
-/// # use cut::parse_compact::parse_problem;
+/// # use cut::parser::compact::parse_problem;
 /// let p = parse_problem("3000x4000R:7,0:835x620/4,1020x620/4f,1750x900").unwrap();
 /// assert_eq!(p.sheet.width, 3000);
 /// assert_eq!(p.kerf, 7);
