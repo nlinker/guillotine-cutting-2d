@@ -1,4 +1,4 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+﻿use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use cut::{
     expand::expand_problem,
     glas::decoder::{Gene as GlasGene, Genome as GlasGenome, decode as glas_decode},
@@ -51,7 +51,7 @@ fn bench_decode(c: &mut Criterion) {
     let real_glas = glas_genome(&real_spec);
 
     let synth_spec =
-        parse_compact::parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
+        parse_compact::parse_problem("2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
     let synth_problem = expand_problem(&synth_spec);
     let synth_slas = slas_genome(&synth_spec);
     let synth_glas = glas_genome(&synth_spec);
@@ -88,7 +88,7 @@ fn bench_staircase_area(c: &mut Criterion) {
     let real_sol = slas_decode(&real_problem, &slas_genome(&real_spec));
 
     let synth_spec =
-        parse_compact::parse_problem("2600x1800R:3:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
+        parse_compact::parse_problem("2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
     let synth_problem = expand_problem(&synth_spec);
     let synth_sol = slas_decode(&synth_problem, &slas_genome(&synth_spec));
 

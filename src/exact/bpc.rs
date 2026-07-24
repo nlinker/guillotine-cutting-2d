@@ -1,4 +1,4 @@
-/// Exact 2BPP-G solver via column generation (branch-price-and-cut skeleton).
+﻿/// Exact 2BPP-G solver via column generation (branch-price-and-cut skeleton).
 ///
 /// This module solves the *primary* objective only: minimize `sheets_used`.
 /// The secondary metrics (`layout_score`, `drop_consolidation_score`) used by
@@ -896,7 +896,7 @@ mod tests {
     #[test]
     fn trivially_optimal_single_sheet() {
         // One piece that exactly fills the sheet: area bound == jylanki UB == 1
-        let spec = parse_problem("10x10F:0:10x10").unwrap();
+        let spec = parse_problem("10x10F::10x10").unwrap();
         let (sheets, proven) = run_sync(spec);
         assert_eq!(sheets, 1, "should fit in 1 sheet");
         assert_eq!(proven, Some(true), "should be proven optimal");
@@ -910,7 +910,7 @@ mod tests {
         // pattern of 9 identical pieces, drive z_RLMP down to 20/9 = 2.22,
         // and round up to LB = 3 = UB0: a genuine LP-bound proof, not just
         // the area heuristic from Phase 2.
-        let spec = parse_problem("100x100F:0:30x30/20").unwrap();
+        let spec = parse_problem("100x100F::30x30/20").unwrap();
         let (sheets, proven) = run_sync(spec);
         assert_eq!(sheets, 3, "3x3 grids cap every sheet at 9 copies");
         assert_eq!(proven, Some(true), "LP bound must tighten to match UB0");
@@ -918,7 +918,7 @@ mod tests {
 
     #[test]
     fn stop_flag_respected() {
-        let spec = Arc::new(parse_problem("100x100F:0:30x30/20").unwrap());
+        let spec = Arc::new(parse_problem("100x100F::30x30/20").unwrap());
         let cfg = Arc::new(BpcConfig {
             progress_interval: 1,
             ..BpcConfig::default()

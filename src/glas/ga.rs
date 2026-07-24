@@ -1,4 +1,4 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use rand::Rng;
 
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn random_genome_valid_permutation() {
-        let spec = parse_problem("10x10R:0:3x2/3,4x3/2,5x1/4").unwrap();
+        let spec = parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap();
         let problem = expand_problem(&spec);
         let n_types = spec.piece_types.len();
         let decoder = GlasDecoder {
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn random_genome_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2/3,4x3/2").unwrap();
+        let spec = parse_problem("10x10R::3x2/3,4x3/2").unwrap();
         let problem = expand_problem(&spec);
         let decoder = GlasDecoder {
             spec: Arc::new(spec),
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn run_ga_smoke() {
-        let spec = parse_problem("10x10R:0:3x2/2,4x3/2").unwrap();
+        let spec = parse_problem("10x10R::3x2/2,4x3/2").unwrap();
         let problem = expand_problem(&spec);
         let mut rng = Xoshiro256StarStar::seed_from_u64(42);
         let _best = run_ga(&spec, &problem, &small_config(), &mut rng);
@@ -662,7 +662,7 @@ mod tests {
 
     #[test]
     fn run_ga_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2/2,4x3/2,2x2/3").unwrap();
+        let spec = parse_problem("10x10R::3x2/2,4x3/2,2x2/3").unwrap();
         let problem = expand_problem(&spec);
         let b1 = run_ga(
             &spec,
@@ -682,7 +682,7 @@ mod tests {
 
     #[test]
     fn run_ga_mt_is_deterministic() {
-        let spec = Arc::new(parse_problem("10x10R:0:3x2/3,4x3/2,5x1/4").unwrap());
+        let spec = Arc::new(parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap());
         let cfg = Arc::new(GaConfig {
             pop_size: 20,
             n_generations: 30,

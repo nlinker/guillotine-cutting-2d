@@ -1,4 +1,4 @@
-# Guillotine Cutting 2D
+﻿# Guillotine Cutting 2D
 
 Rust library and CLI tool for 2D guillotine cutting stock problems.
 
@@ -97,14 +97,14 @@ since the number of possible solutions is huge and this combinatorics makes the 
 
 - Solve and render in one step with `--render` (SVG written to stdout, progress to stderr):
 ```
-cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 --render > out.svg
+cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 --render > out.svg
 firefox out.svg
 ```
 
 - If you need the intermediate JSON (e.g. to inspect or re-render), use two commands:
 ```
-cargo run --release -- calc --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --gens 5000 > out.json
-cargo run --release -- render --compact "2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
+cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --gens 5000 > out.json
+cargo run --release -- render --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
 firefox out.svg
 ```
 
@@ -144,7 +144,7 @@ use cut::{
 
 fn main() {
     let spec = Arc::new(
-        parse_problem("3000x4000R:7:835x620/4,1020x620/4f,1750x900").unwrap()
+        parse_problem("3000x4000R:7,0:835x620/4,1020x620/4f,1750x900").unwrap()
     );
     let cfg = Arc::new(GaConfig { pop_size: 200, n_generations: 1000, ..GaConfig::default() });
 
@@ -165,12 +165,15 @@ fn main() {
 
 ## Compact input format for the parser
 
-`parse_problem` accepts a compact string: `"<sheet>:<kerf>:<pieces>"`.
+`parse_problem` accepts a compact string: `"<sheet>:<kerf>,<margin>:<pieces>"`.
 
 - `<sheet>` - `WxHR` or `WxHF` in mm; the suffix sets the **default rotation** for pieces:
   - `R` - pieces are rotatable by default
   - `F` - pieces are fixed (no rotation) by default
-- `<kerf>` - blade kerf width in mm (non-negative integer)
+- `<kerf>,<margin>` - blade kerf width and sheet margin in mm (non-negative integers).
+  Leave the whole section empty (`"...R::pieces..."`) to default both to 0; otherwise
+  both values are required (`"7,"` or `",10"` are invalid - write `0` explicitly if a
+  value is not needed).
 - `<pieces>` - comma-separated piece tokens; per-piece suffix overrides the sheet default:
 
 | Piece token | Meaning                                        |
@@ -186,8 +189,10 @@ To control the orientation of a fixed piece, put the shorter side first or last 
 `620x1020` places 620 mm along X and 1020 mm along Y.
 
 Examples:
-- `"3000x4000R:7:835x620/4,1020x620/4f,1750x900"` - R default; only the `1020x620` batch is fixed
-- `"2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r"` - F default; only `150x450` is rotatable
+- `"3000x4000R:7,0:835x620/4,1020x620/4f,1750x900"` - R default; only the `1020x620` batch is fixed
+- `"2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r"` - F default; only `150x450` is rotatable
+- `"3000x4000R:7,10:835x620/4"` - kerf 7 mm, margin 10 mm
+- `"3000x4000R::835x620/4"` - empty section - kerf 0, margin 0
 
 
 ## Development commands

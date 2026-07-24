@@ -1,4 +1,4 @@
-use std::{
+﻿use std::{
     error::Error,
     sync::Arc,
     time::{Duration, Instant},
@@ -133,7 +133,7 @@ enum Command {
     },
     /// Build the GLF (Guillotine Layout Function) table and print it
     Glf {
-        /// Compact problem string, e.g. "10x8F:0:2x3/4,4x3,8x3,5x2/2"
+        /// Compact problem string, e.g. "10x8F::2x3/4,4x3,8x3,5x2/2"
         problem: String,
     },
 }

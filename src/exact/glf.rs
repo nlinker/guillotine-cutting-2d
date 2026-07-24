@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 
 use crate::model::{Piece, Placement, Problem};
 
@@ -577,8 +577,8 @@ mod tests {
 
     #[test]
     fn tutorial_example() {
-        // "10x8F:0:2x3/4,4x3,8x3,5x2/2" - all fixed, kerf=0
-        let p = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
+        // "10x8F::2x3/4,4x3,8x3,5x2/2" - all fixed, kerf=0
+        let p = parse_problem("10x8F::2x3/4,4x3,8x3,5x2/2").unwrap();
         let problem = expand_problem(&p);
         let table = build_glf(&problem);
         // Full set at width=10 must equal 8
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn reconstruct_flat_returns_valid_placement() {
-        let spec = parse_problem("10x8F:0:2x3/4,4x3,8x3,5x2/2").unwrap();
+        let spec = parse_problem("10x8F::2x3/4,4x3,8x3,5x2/2").unwrap();
         let problem = expand_problem(&spec);
         let indices = (0..problem.pieces.len()).collect::<Vec<_>>();
         let table = build_glf_from_flat(&problem.pieces, &indices);

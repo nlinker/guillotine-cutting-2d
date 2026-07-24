@@ -1,4 +1,4 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use rand::Rng;
 
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn random_genome_valid_permutation() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
         let flat = expand_problem(&spec);
         let n = flat.pieces.len();
         let decoder = SlasDecoder {
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn random_genome_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f").unwrap();
+        let spec = parse_problem("10x10R::3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
         let decoder = SlasDecoder {
             problem: Arc::new(flat),
@@ -575,7 +575,7 @@ mod tests {
 
     #[test]
     fn run_ga_smoke() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
         let problem = expand_problem(&spec);
         let mut rng = Xoshiro256StarStar::seed_from_u64(42);
         let _best = run_ga(&problem, &default_config(), &mut rng);
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn run_ga_is_deterministic() {
-        let spec = parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap();
+        let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
         let problem = expand_problem(&spec);
         let b1 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         let b2 = run_ga(&problem, &default_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn run_ga_mt_is_deterministic() {
-        let spec = Arc::new(parse_problem("10x10R:0:3x2,4x3,2x2f,5x1").unwrap());
+        let spec = Arc::new(parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap());
         let cfg = Arc::new(GaConfig {
             pop_size: 20,
             n_generations: 30,
@@ -620,10 +620,10 @@ mod tests {
     #[test]
     fn ga_cut_promotion_solutions_are_valid() {
         let specs = [
-            "15x35F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
-            "17x31F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
-            "22x24F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
-            "28x19F:0:12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "15x35F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "17x31F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "22x24F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
+            "28x19F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
         ];
         let cfg = GaConfig {
             pop_size: 50,

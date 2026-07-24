@@ -1,4 +1,4 @@
-/// Fixed-problem GA benchmark: runs N_PARALLEL GA instances simultaneously (one per seed),
+﻿/// Fixed-problem GA benchmark: runs N_PARALLEL GA instances simultaneously (one per seed),
 /// picks the best result, and prints detailed placement info.
 ///
 /// Run with:  cargo run --example ga_real --release
@@ -12,7 +12,7 @@ use cut::{
     slas::{decoder::decode_spec, ga::run_ga_mt},
 };
 
-const PROBLEM: &str = "200x160F:1:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34/3,75x42/2,76x22/4,83x32/4r,83x82,93x31,106x31,124x26/5,130x22/6,157x31/3,164x21/2,177x31";
+const PROBLEM: &str = "200x160F:1,0:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34/3,75x42/2,76x22/4,83x32/4r,83x82,93x31,106x31,124x26/5,130x22/6,157x31/3,164x21/2,177x31";
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {

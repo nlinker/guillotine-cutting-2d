@@ -1,4 +1,4 @@
-use crate::model::{Placement, Problem};
+﻿use crate::model::{Placement, Problem};
 
 /// A node in the guillotine cut tree for one sheet.
 #[derive(Debug, Clone)]
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn single_piece_fills_sheet() {
-        let spec = parse_problem("10x8F:0:10x8").unwrap();
+        let spec = parse_problem("10x8F::10x8").unwrap();
         let problem = expand_problem(&spec);
         let genome = vec![crate::slas::decoder::Gene {
             piece_idx: 0,
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn two_pieces_side_by_side() {
         // Sheet 10×5, two pieces 5×5.
-        let spec = parse_problem("10x5F:0:5x5/2").unwrap();
+        let spec = parse_problem("10x5F::5x5/2").unwrap();
         let problem = expand_problem(&spec);
         let genome = vec![
             crate::slas::decoder::Gene {

@@ -1,4 +1,4 @@
-/// GA hyperparameter tuning for the real furniture cutting problem.
+﻿/// GA hyperparameter tuning for the real furniture cutting problem.
 ///
 /// Runs each GaConfig variant over N_SEEDS seeds and reports:
 /// - how many times the ideal solution was found (1×400×400 on last sheet)
@@ -12,7 +12,7 @@ use cut::{expand::expand_problem, ga::GaConfig, model::Objective, parse_compact:
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 
-const PROBLEM: &str = "2600x1800F:3: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
+const PROBLEM: &str = "2600x1800F:3,0: 400x400/6, 495x495/6, 270x320/10, 150x450/17r";
 const N_SEEDS: usize = 100;
 
 /// Ideal sentinel: any 2-sheet solution beats this (sheets_used = 2.0 is above all

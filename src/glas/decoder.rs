@@ -1,4 +1,4 @@
-use smallvec::{SmallVec, smallvec};
+﻿use smallvec::{SmallVec, smallvec};
 
 use crate::{
     expand,
@@ -468,7 +468,7 @@ mod tests {
         // strip_fill: fr_w=200, pw=80, remaining=2 → DP reachable={0,80,160}. best_w=160.
         //   cw=160, ch=100. inverse=false: right=(160,0,40,100).
         //   piece 0 at (0,0), piece 1 at (80,0).
-        let spec = parse_problem("200x100F:0:80x100/2").expect("parse");
+        let spec = parse_problem("200x100F::80x100/2").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 2)]];
         let sol = decode(&problem, &spec, &genome);
@@ -489,7 +489,7 @@ mod tests {
         // Batch 2: selector=0 → free[0]=(60,0,40,80): pw=60>40 ✗.
         //   free[1]=(0,80,100,20): ph=40>20 ✗. Neither fits → opens sheet 1.
         //   piece 2 at (0,0).
-        let spec = parse_problem("100x100F:0:60x40/3").expect("parse");
+        let spec = parse_problem("100x100F::60x40/3").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 3)]];
         let sol = decode(&problem, &spec, &genome);
@@ -516,7 +516,7 @@ mod tests {
         // type_0 placed=0: selectors[0]=1 → free[1]=(100,0,100,100).
         //   strip: fr_w=100, pw=90, 1 piece (90<100, 180>100). piece 0 at (100,0).
         // type_0 placed=1: selectors[1]=0 → nothing fits sheet 0 → opens sheet 1.
-        let spec = parse_problem("200x100F:0:90x100/2,100x100/1").expect("parse");
+        let spec = parse_problem("200x100F::90x100/2,100x100/1").expect("parse");
         let problem = expand_problem(&spec);
         let mut genome = vec![vec![gg(1, 1), gg(0, 2)]];
         genome[0][1].selectors[0] = 1; // steer first batch of type_0 to right leftover
@@ -536,7 +536,7 @@ mod tests {
         // cols=2, rows=2, grid_n=4. Both orientations give cw=200, ch=200, hole=0
         // (rows_full==cols_full==2, extra==0) → one batch, a 2x2 grid filling the sheet.
         //   p0=(0,0), p1=(100,0), p2=(0,100), p3=(100,100).
-        let spec = parse_problem("200x200F:0:100x100/4").expect("parse");
+        let spec = parse_problem("200x200F::100x100/4").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 4)]];
         let sol = decode(&problem, &spec, &genome);
@@ -559,7 +559,7 @@ mod tests {
         // inverse=false: right=none (lw=0), bottom=(0,200,300,200).
         // Grid (row-major, 3 cols): p0=(0,0), p1=(100,0), p2=(200,0), p3=(0,100), p4=(100,100).
         // Corner hole = (200,100,100,100), pushed as an extra free leaf.
-        let spec = parse_problem("300x400F:0:100x100/5").expect("parse");
+        let spec = parse_problem("300x400F::100x100/5").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 5)]];
         let sol = decode(&problem, &spec, &genome);
@@ -598,7 +598,7 @@ mod tests {
         // after normalization despite matching type 0's dimensions.
         // selectors[0]=1 → find_fitting_leaf starts at free_pos=1, which is
         // the hole; the piece fits it exactly (no leftover).
-        let spec = parse_problem("300x400F:0:100x100/5,100x100/1r").expect("parse");
+        let spec = parse_problem("300x400F::100x100/5,100x100/1r").expect("parse");
         let problem = expand_problem(&spec);
         let mut genome = vec![vec![gg(0, 5), gg(1, 1)]];
         genome[0][1].selectors[0] = 1;
@@ -621,7 +621,7 @@ mod tests {
         // Batch 2 (B): fr=(150,0,200,100), pw=100, remaining=2 → count=2, cw=200, ch=80.
         //   inverse=false: bottom=(150,80,200,20). B at (150,0), B at (250,0).
         // All pieces on sheet 0.
-        let spec = parse_problem("350x100F:0:150x100/1f,100x80/2f").expect("parse");
+        let spec = parse_problem("350x100F::150x100/1f,100x80/2f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 1), gg(1, 2)]];
         let sol = decode(&problem, &spec, &genome);
@@ -641,7 +641,7 @@ mod tests {
         //                                  inverse=false creates bottom=(0,200,400,100).
         //   type 1 (A):      200×100/1f - fits in the 100-high bottom; count=floor(400/200)=2, rem=1→1.
         //   type 2 (B):      200×200/1f - ph=200 > all remaining fr_h=100; goes to sheet 1.
-        let spec = parse_problem("400x300F:0:400x200/1f,200x100/1f,200x200/1f").expect("parse");
+        let spec = parse_problem("400x300F::400x200/1f,200x100/1f,200x200/1f").expect("parse");
         let problem = expand_problem(&spec);
         let genome = vec![vec![gg(0, 1), gg(1, 1), gg(2, 1)]];
         let sol = decode(&problem, &spec, &genome);

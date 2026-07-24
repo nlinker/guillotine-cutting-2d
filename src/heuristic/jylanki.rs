@@ -1,4 +1,4 @@
-use super::common::{
+﻿use super::common::{
     SELECTION_RULES, SORT_DIRS, SORT_KEYS, SPLIT_RULES, SelectionRule, SortDir, SortKey, SplitRule, selection_score,
     sort_cmp,
 };
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn jylanki_four_quarters_fill_one_sheet() {
-        let p = problem("100x100F:0:50x50/4");
+        let p = problem("100x100F::50x50/4");
         let sol = jylanki_solve(&p);
         assert_eq!(sol.placements.len(), 4);
         assert_eq!(sol.sheets_used(), 1);
@@ -134,7 +134,7 @@ mod tests {
     fn jylanki_piece_requiring_rotation_is_rotated() {
         // Rotatable pieces are normalized to (min, max) = 10x20 portrait, which
         // only fits the 20x10 landscape sheet when rotated.
-        let p = problem("20x10F:0:20x10r");
+        let p = problem("20x10F::20x10r");
         let sol = jylanki_solve(&p);
         assert_eq!(sol.sheets_used(), 1);
         assert_eq!(sol.placements.len(), 1);
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn jylanki_same_input_produces_identical_solution() {
-        let p = problem("2600x1800F:3:400x400/6,495x495/6,270x320/10,150x450/17r");
+        let p = problem("2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r");
         let a = jylanki_solve(&p);
         let b = jylanki_solve(&p);
         assert_eq!(a.placements, b.placements);

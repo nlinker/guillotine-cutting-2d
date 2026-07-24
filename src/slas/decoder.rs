@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
@@ -274,7 +274,7 @@ mod tests {
         // improve_tl_corners checks only the root (top-level) split per sheet.
         // Sheet 0 root is HSplit: tl(top)=P0 9600 > tl(bottom)=0 - no swap.
         // Sheet 1 root is HSplit: tl(top)=P2 12000 > tl(bottom)=P3r 7000 - no swap.
-        let spec = parse_problem("200x150F:5:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
+        let spec = parse_problem("200x150F:5,0:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
         let problem = expand_problem(&spec);
         let genome = vec![
             g(0, false, 0),

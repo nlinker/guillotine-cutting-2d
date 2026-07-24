@@ -1,4 +1,4 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 /// Sweep all feasible widths for a fixed piece set, compute optimal placement via GLF
 /// cut-tree reconstruction, and render each solution to tmp/{width}_opt.svg.
 /// Also runs the GA for each width and renders the best found solution to
@@ -17,7 +17,7 @@ use cut::{
     slas::{decoder::decode_spec, ga as slas_ga},
 };
 
-const SPEC_STR: &str = "1x1F:0: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
+const SPEC_STR: &str = "1x1F:: 12x3/2, 3x12/2, 8x4/4r, 7x5/4r, 6x4/4r";
 
 fn main() {
     let base_spec = parse_problem(SPEC_STR).expect("parse error");
