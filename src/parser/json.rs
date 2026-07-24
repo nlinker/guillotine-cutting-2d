@@ -1,4 +1,6 @@
-use crate::model::ProblemSpec;
+use std::error::Error;
+
+use crate::model::{ProblemSpec, SolutionSpec};
 
 /// Parse a JSON problem spec into a `ProblemSpec`.
 ///
@@ -13,6 +15,16 @@ use crate::model::ProblemSpec;
 /// ```
 pub fn parse_problem(s: &str) -> Result<ProblemSpec, serde_json::Error> {
     serde_json::from_str(s)
+}
+
+pub fn parse_solution_json(s: &str) -> Result<SolutionSpec, Box<dyn Error>> {
+    let v: serde_json::Value = serde_json::from_str(s)?;
+    let sol_val = if v.get("solution").is_some() {
+        &v["solution"]
+    } else {
+        &v
+    };
+    Ok(serde_json::from_value(sol_val.clone())?)
 }
 
 #[cfg(test)]

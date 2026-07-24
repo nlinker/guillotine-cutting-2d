@@ -11,7 +11,7 @@ use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::model::Objective;
+use crate::model::{Objective, ProblemSpec};
 
 /// GA hyperparameters.
 #[derive(Debug, Clone)]
@@ -113,6 +113,41 @@ impl Default for GaConfig {
             inverse_p: 0.05,
             long_dim_threshold: 0,
             large_area_threshold: 0,
+        }
+    }
+}
+
+impl GaConfig {
+    pub fn new(
+        spec: &ProblemSpec,
+        n_generations: usize,
+        pop_size: usize,
+        n_elite: usize,
+        tournament_k: usize,
+        large_area_threshold: u32,
+        long_dim_threshold: u32,
+    ) -> Self {
+        let sh = spec.sheet;
+        let default_long = (sh.width.max(sh.height) as f64 * 0.3) as u32;
+        let default_large = (sh.width as f64 * sh.height as f64 * 0.05).sqrt() as u32;
+        let long_dim_threshold = if long_dim_threshold == 0 {
+            default_long
+        } else {
+            long_dim_threshold
+        };
+        let large_area_threshold = if large_area_threshold == 0 {
+            default_large
+        } else {
+            large_area_threshold
+        };
+        Self {
+            pop_size,
+            n_generations,
+            n_elite,
+            tournament_k,
+            long_dim_threshold,
+            large_area_threshold,
+            ..Self::default()
         }
     }
 }

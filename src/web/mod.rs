@@ -37,7 +37,7 @@ struct SolveParams {
     #[serde(default = "default_progress")]
     progress: usize,
     #[serde(default)]
-    algorithm: crate::Algorithm,
+    algorithm: crate::cli::Algorithm,
 }
 
 fn default_seed() -> u64 {
@@ -118,7 +118,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
         Ok(spec) => {
             let sheet_w = spec.sheet.width;
             let sheet_h = spec.sheet.height;
-            let cfg = Arc::new(crate::ga_config(params.gens, params.pop, 5, 5, &spec, 0, 0));
+            let cfg = Arc::new(crate::ga::GaConfig::new(&spec, params.gens, params.pop, 5, 5, 0, 0));
             let problem = Arc::new(spec);
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
