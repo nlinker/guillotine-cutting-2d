@@ -37,15 +37,16 @@ since the number of possible solutions is huge and this combinatorics makes the 
 - **Margin** — border excluded from all four sheet edges before solving.
   Internally also baked into sheet dimensions in `expand_problem`
 - Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over
-  all guillotine-cut subsets. Supports piece rotation. See GLF visualizer in [Demos/GLF Table Visualizer](#demos)
+  all guillotine-cut subsets. Supports piece rotation. See GLF visualizer in [Demos/GLF Table Visualizer](#glf-table-visualizer)
 - Exact **multiple-sheet** optimization via **BPC** (Branch-Price-and-Cut) — column
   generation over cutting patterns priced by the GLF oracle, with branch-and-bound that
   forces pairs of piece types onto the same sheet or apart until the LP relaxation
   matches an integer solution. Minimizes sheet count only (not layout/drop-consolidation
-  scores). _Warning_: current performance is poor; exploring approaches to improve it (ﾉ*･ω･)ﾉ.
+  scores). _Warning_: current performance is poor; exploring approaches to improve it </br>
+  (ﾉ*･ω･)ﾉ.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`. See their visualizations
-  in [Demos/GA Crossover; Demos/GA Mutation](#demos)
+  in [Demos/GA Crossover](#ga-crossover) and [Demos/GA Mutation](#ga-mutation)
 - **Island-model GA** — `run_ga_mt` spawns one independent island (population) per thread.
   Islands evolve in parallel, synchronizing via a shared barrier every `migration_interval`
   generations. The final result is the best individual found across all islands.
@@ -66,14 +67,14 @@ since the number of possible solutions is huge and this combinatorics makes the 
     (144 deterministic passes), keeps the best by `Objective`.
   - **BPC** — exact multi-sheet solver, see above.
 - **Genome**:
-  - SLAS: `Vec<Gene>` — just the ordered sequence of `Gene`s.
+  - SLAS: `Vec<Gene>` — just the ordered sequence of `Gene`s. See [Demos/SLAS decoder](#slas-decoder)
   - GLAS: `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
     inner = GA-evolved permutation of type indices. OX/CX crossover and mutation operate
-    independently within each class.
+    independently within each class. See [Demos/GLAS decoder](#glas-decoder)
 - Problem instance **Generator** — creates random problem instances with a known optimal solution.
   Applies guillotine-cut passes to `sheets_count` blank sheets, producing a set of pieces
   that tile those sheets exactly. Useful for benchmarking the GA against a ground truth.
-  See the corresponding generator demo in [Demos/Guillotine Generator](#demos).
+  See the corresponding generator demo in [Demos/Guillotine Generator](#guillotine-generator).
 - **Cross-platform** self-contained console executable — the solver that receives the JSON
   specifying the problem instance and produces JSON with the solution.
   - **`ProblemSpec`** — stock sheet dimensions, blade kerf, margin, and a list of `PieceType` values,
@@ -207,14 +208,14 @@ Interactive visualizations (open in browser, no server needed):
 
 (**NOTE**: they are AI-generated from the Rust code and might not be accurate enough)
 
-| Demo                                                                                                    | What it shows                                         |
-|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
-| [SLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/slas_decoder.html)                 | SLAS genome → sheet placements step by step           |
-| [GLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/glas_decoder.html)                 | GLAS genome → sheet placements step by step           |
-| [GLF Table Visualizer](https://nlinker.github.io/guillotine-cutting-2d/demos/glf_table.html)            | GLF DP table build + reconstruction step by step      |
-| [GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                | OX and CX operators animated                          |
-| [GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)              | swap / flip / point-selector mutation animated        |
-| [Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
+| Demo                                                                                                                                  | What it shows                                         |
+|---------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|
+| <a id="slas-decoder"/>[SLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/slas_decoder.html)                         | SLAS genome → sheet placements step by step           |
+| <a id="glas-decoder"/>[GLAS Decoder](https://nlinker.github.io/guillotine-cutting-2d/demos/glas_decoder.html)                         | GLAS genome → sheet placements step by step           |
+| <a id="glf-table-visualizer"/>[GLF Table Visualizer](https://nlinker.github.io/guillotine-cutting-2d/demos/glf_table.html)            | GLF DP table build + reconstruction step by step      |
+| <a id="ga-crossover"/>[GA Crossover](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_ox_cx_gsap.html)                        | OX and CX operators animated                          |
+| <a id="ga-mutation"/>[GA Mutation](https://nlinker.github.io/guillotine-cutting-2d/demos/ga_mutation_gsap.html)                       | swap / flip / point-selector mutation animated        |
+| <a id="guillotine-generator"/>[Guillotine Generator](https://nlinker.github.io/guillotine-cutting-2d/demos/guillotine_generator.html) | random problem generation with known optimal solution |
 
 ## References
 
