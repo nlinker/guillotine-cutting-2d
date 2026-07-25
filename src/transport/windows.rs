@@ -52,8 +52,6 @@ fn to_wstring(s: &str) -> Vec<u16> {
         .collect()
 }
 
-// == Sink ==================================================================
-
 pub struct WindowsPipeSink {
     handle: Handle,
 }

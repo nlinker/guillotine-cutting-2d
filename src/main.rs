@@ -13,10 +13,9 @@ use cut::{
     glas::ga as glas_ga,
     model::{Objective, ProblemSpec, SolutionSpec},
     parser,
-    parser::json,
     render::render_svg,
     slas::ga as slas_ga,
-    transport::{ProgressMessage, ProgressSink},
+    transport::{CapturingSink, ProgressMessage, ProgressSink},
 };
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -32,63 +31,8 @@ const PIPE_NAME: &str = r"\\.\pipe\cut_progress";
 #[cfg(unix)]
 const FIFO_PATH: &str = "/tmp/cut_progress";
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let cli = Cli::parse();
-    match cli.command {
-        Command::Calc {
-            compact,
-            json,
-            seed,
-            threads,
-            gens,
-            pop,
-            elite,
-            k,
-            progress,
-            sink,
-            sink_interval,
-            render,
-            algorithm,
-            long_dim_threshold,
-            large_area_threshold,
-        } => {
-            let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let cfg = GaConfig::new(&spec, gens, pop, elite, k, large_area_threshold, long_dim_threshold);
-            let n_threads = resolve_threads(threads);
-            if render {
-                run_calc_render(&spec, &cfg, seed, n_threads, progress, algorithm)?;
-            } else {
-                run_calc_with_sink(&spec, &cfg, seed, n_threads, progress, &sink, sink_interval, algorithm)?;
-            }
-        }
-        Command::Serve { port } => web::run_serve(port)?,
-        Command::Render {
-            compact,
-            json,
-            solution,
-        } => {
-            let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let sol_str = std::fs::read_to_string(&solution)?;
-            let sol = json::parse_solution_json(&sol_str)?;
-            print!("{}", render_svg(&spec, &sol)?);
-        }
-        Command::Glf { problem } => {
-            let spec = parser::compact::parse_problem(&problem)?;
-            let expanded = expand_problem(&spec);
-            let table = build_glf(&expanded);
-            let query_w = expanded.sheet.width;
-            println!("{}", table.render(query_w));
-            if let Some(h) = table.eval_full_set(query_w) {
-                println!("\nMinimum height for width={}: {}", spec.sheet.width, h - spec.kerf);
-            } else {
-                println!("\nPieces do not fit in width={}", spec.sheet.width);
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
+/// This is to save performance
 struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
 
 impl LazyDecode {
@@ -125,8 +69,6 @@ struct AnyHandle {
 }
 
 impl AnyHandle {
-    /// Joins the bridge thread, if not already joined. Logs via `eprintln!`
-    /// if it panicked. Idempotent.
     fn join(&mut self) {
         if let Some(h) = self.join.take()
             && let Err(payload) = h.join()
@@ -134,6 +76,48 @@ impl AnyHandle {
             eprintln!("GA bridge thread panicked: {}", ga::panic_message(&*payload));
         }
     }
+}
+
+#[rustfmt::skip]
+fn main() -> Result<(), Box<dyn Error>> {
+    let cli = Cli::parse();
+    match cli.command {
+        Command::Calc {
+            compact, json, seed, threads, gens, pop, elite, k, progress, sink,
+            sink_interval,render, algorithm, long_dim_threshold, large_area_threshold
+        } => {
+            let spec = load_problem(compact.as_deref(), json.as_deref())?;
+            let cfg = GaConfig::new(&spec, gens, pop, elite, k, large_area_threshold, long_dim_threshold);
+            let n_threads = resolve_threads(threads);
+            if render {
+                run_calc_render(algorithm, &spec, &cfg, seed, n_threads, progress)?;
+            } else {
+                run_calc_with_sink(algorithm, &spec, &cfg, seed, n_threads, progress, &sink, sink_interval)?;
+            }
+        }
+        Command::Serve { port } => {
+            web::run_serve(port)?
+        }
+        Command::Render { compact, json, solution } => {
+            let spec = load_problem(compact.as_deref(), json.as_deref())?;
+            let sol_str = std::fs::read_to_string(&solution)?;
+            let sol = parser::json::parse_solution_json(&sol_str)?;
+            print!("{}", render_svg(&spec, &sol)?);
+        }
+        Command::Glf { problem } => {
+            let spec = parser::compact::parse_problem(&problem)?;
+            let expanded = expand_problem(&spec);
+            let table = build_glf(&expanded);
+            let query_w = expanded.sheet.width;
+            println!("{}", table.render(query_w));
+            if let Some(h) = table.eval_full_set(query_w) {
+                println!("\nMinimum height for width={}: {}", spec.sheet.width, h - spec.kerf);
+            } else {
+                println!("\nPieces do not fit in width={}", spec.sheet.width);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Converts a `GaHandle<G>` into an `AnyHandle`. A bridge thread forwards events,
@@ -183,11 +167,11 @@ where
 }
 
 fn make_any_handle(
+    algorithm: Algorithm,
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: Vec<u64>,
     progress_interval: usize,
-    algorithm: Algorithm,
 ) -> AnyHandle {
     match algorithm {
         Algorithm::Slas => {
@@ -230,6 +214,7 @@ fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<ProblemSpec
 
 #[allow(clippy::too_many_arguments)]
 fn run_calc_with_sink(
+    algorithm: Algorithm,
     spec: &ProblemSpec,
     cfg: &GaConfig,
     base_seed: u64,
@@ -237,7 +222,6 @@ fn run_calc_with_sink(
     progress_interval: usize,
     sink_mode: &str,
     sink_interval_ms: u64,
-    algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
@@ -261,11 +245,11 @@ fn run_calc_with_sink(
         "stdout" => {
             let mut sink = cut::transport::stdout::StdoutSink;
             run_with_sink_any(
+                algorithm,
                 spec,
                 cfg,
                 &seeds,
                 progress_interval,
-                algorithm,
                 &mut sink,
                 sink_interval_ms,
             )
@@ -276,11 +260,11 @@ fn run_calc_with_sink(
                 eprintln!("Waiting for client on {PIPE_NAME} ...");
                 let mut sink = cut::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
                 run_with_sink_any(
+                    algorithm,
                     spec,
                     cfg,
                     &seeds,
                     progress_interval,
-                    algorithm,
                     &mut sink,
                     sink_interval_ms,
                 )
@@ -290,11 +274,11 @@ fn run_calc_with_sink(
                 eprintln!("Waiting for reader on {FIFO_PATH} ...");
                 let mut sink = cut::transport::unix::FifoSink::new(FIFO_PATH)?;
                 run_with_sink_any(
+                    algorithm,
                     spec,
                     cfg,
                     &seeds,
                     progress_interval,
-                    algorithm,
                     &mut sink,
                     sink_interval_ms,
                 )
@@ -304,11 +288,11 @@ fn run_calc_with_sink(
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cut::transport::stdout::StdoutSink;
                 run_with_sink_any(
+                    algorithm,
                     spec,
                     cfg,
                     &seeds,
                     progress_interval,
-                    algorithm,
                     &mut sink,
                     sink_interval_ms,
                 )
@@ -420,11 +404,11 @@ fn run_with_any_handle(
 }
 
 pub(crate) fn run_with_sink_any(
+    algorithm: Algorithm,
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
     seeds: &[u64],
     progress_interval: usize,
-    algorithm: Algorithm,
     sink: &mut dyn ProgressSink,
     sink_interval_ms: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -457,56 +441,33 @@ pub(crate) fn run_with_sink_any(
         return cut::exact::drain_bpc(handle, &spec, sink, sink_interval_ms).map_err(Into::into);
     }
     let any = make_any_handle(
+        algorithm,
         Arc::clone(&spec),
         Arc::clone(&cfg),
         seeds.to_vec(),
         progress_interval,
-        algorithm,
     );
     run_with_any_handle(any, spec, sink, sink_interval_ms)
 }
 
 fn run_calc_render(
+    algorithm: Algorithm,
     spec: &ProblemSpec,
     cfg: &GaConfig,
     base_seed: u64,
     n_threads: usize,
     progress_interval: usize,
-    algorithm: Algorithm,
 ) -> Result<(), Box<dyn Error>> {
-    if matches!(algorithm, Algorithm::Bfdh | Algorithm::Jylanki | Algorithm::Bpc) {
-        let problem = expand_problem(spec);
-        let flat_sol = match algorithm {
-            Algorithm::Bfdh => cut::heuristic::bfdh_solve(&problem),
-            // BPC render uses jylanki UB as the initial feasible solution
-            Algorithm::Jylanki | Algorithm::Bpc => cut::heuristic::jylanki_solve(&problem),
-            // TODO what this should return really?
-            Algorithm::Glas | Algorithm::Slas => cut::heuristic::bfdh_solve(&problem),
-        };
-        let sol_spec = shrink_solution(&flat_sol, spec);
-        print!("{}", render_svg(spec, &sol_spec)?);
-        return Ok(());
-    }
     let mut rng = Xoshiro256StarStar::seed_from_u64(base_seed);
     let seeds = (0..n_threads).map(|_| rng.next_u64()).collect::<Vec<_>>();
-    let spec = Arc::new(spec.clone());
-    let cfg = Arc::new(cfg.clone());
-    let t0 = Instant::now();
-    let mut handle = make_any_handle(Arc::clone(&spec), Arc::clone(&cfg), seeds, progress_interval, algorithm);
-    loop {
-        match handle.rx.blocking_recv() {
-            None => break,
-            Some(AnyEvent::Progress { .. }) => {}
-            Some(AnyEvent::Done { mut results }) => {
-                eprintln!("Done in {:.1}s", t0.elapsed().as_secs_f64());
-                let (_, _, lazy, _) = results.remove(0);
-                let sol = lazy.decode(&spec);
-                print!("{}", render_svg(&spec, &sol)?);
-                break;
-            }
-        }
-    }
-    handle.join();
+    let spec_arc = Arc::new(spec.clone());
+    let cfg_arc = Arc::new(cfg.clone());
+    let mut sink = CapturingSink::default();
+    run_with_sink_any(algorithm, spec_arc, cfg_arc, &seeds, progress_interval, &mut sink, 0)?;
+    let sol = sink
+        .solution
+        .expect("run_with_sink_any always sends Done before returning");
+    print!("{}", render_svg(spec, &sol)?);
     Ok(())
 }
 

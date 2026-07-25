@@ -130,7 +130,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             };
             let algorithm = params.algorithm;
             std::thread::spawn(move || {
-                crate::run_with_sink_any(problem, cfg, &seeds, params.progress, algorithm, &mut sink, 0).ok();
+                crate::run_with_sink_any(algorithm, problem, cfg, &seeds, params.progress, &mut sink, 0).ok();
             });
         }
     }

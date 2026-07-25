@@ -55,3 +55,18 @@ pub trait ProgressSink {
     /// Returns `Err` when the client disconnected - caller should stop the GA.
     fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error>;
 }
+
+/// Sink that discards `Progress` events and keeps only the final solution.
+#[derive(Default)]
+pub struct CapturingSink {
+    pub solution: Option<SolutionSpec>,
+}
+
+impl ProgressSink for CapturingSink {
+    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
+        if let ProgressMessage::Done { solution, .. } = msg {
+            self.solution = Some(solution.clone());
+        }
+        Ok(())
+    }
+}
