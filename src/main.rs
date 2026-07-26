@@ -19,7 +19,6 @@ use cut::{
 };
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
-use tokio::sync::mpsc;
 
 use crate::cli::{Algorithm, Cli, Command};
 
@@ -61,20 +60,71 @@ enum AnyEvent {
     },
 }
 
-/// Decoder-agnostic handle. Dropping it signals the bridge thread (via the rx
-/// side of the channel), which in turn drops the inner GA handle, stopping the GA.
+/// Type-erases `ga::GaHandle<G>` behind dynamic dispatch, so callers that don't
+/// care about the genome type can hold a single concrete `AnyHandle`.
+trait Eraser: Send {
+    fn recv(&mut self) -> Option<AnyEvent>;
+    fn join(&mut self);
+}
+
+struct TypedGaHandle<G: Clone + Send + 'static, F> {
+    handle: ga::GaHandle<G>,
+    decode: F,
+}
+
+impl<G, F> Eraser for TypedGaHandle<G, F>
+where
+    G: Clone + Send + serde::Serialize + 'static,
+    F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
+{
+    fn recv(&mut self) -> Option<AnyEvent> {
+        match self.handle.rx.blocking_recv() {
+            None => None,
+            Some(ga::GaEvent::Progress(p)) => {
+                let (genome, f) = (p.genome, self.decode.clone());
+                Some(AnyEvent::Progress {
+                    seed: p.seed,
+                    generation: p.generation,
+                    objective: p.objective,
+                    lazy: LazyDecode(Box::new(move |spec| f(&genome, spec))),
+                })
+            }
+            Some(ga::GaEvent::Done(results)) => Some(AnyEvent::Done {
+                results: results
+                    .into_iter()
+                    .map(|(seed, ind)| {
+                        let (genome, f) = (ind.genome, self.decode.clone());
+                        let genome_json = serde_json::to_value(&genome).ok();
+                        (
+                            seed,
+                            ind.objective,
+                            LazyDecode(Box::new(move |spec| f(&genome, spec))),
+                            genome_json,
+                        )
+                    })
+                    .collect(),
+            }),
+        }
+    }
+
+    fn join(&mut self) {
+        self.handle.join();
+    }
+}
+
+/// Decoder-agnostic handle. Dropping it drops the inner `GaHandle`, which
+/// signals it to stop (see `GaHandle`'s `Drop` impl).
 struct AnyHandle {
-    rx: mpsc::UnboundedReceiver<AnyEvent>,
-    join: Option<std::thread::JoinHandle<()>>,
+    inner: Box<dyn Eraser>,
 }
 
 impl AnyHandle {
+    fn recv(&mut self) -> Option<AnyEvent> {
+        self.inner.recv()
+    }
+
     fn join(&mut self) {
-        if let Some(h) = self.join.take()
-            && let Err(payload) = h.join()
-        {
-            eprintln!("GA bridge thread panicked: {}", ga::panic_message(&*payload));
-        }
+        self.inner.join();
     }
 }
 
@@ -120,50 +170,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Converts a `GaHandle<G>` into an `AnyHandle`. A bridge thread forwards events,
-/// wrapping each genome in a lazy closure produced by `decode`.
-fn ga_handle_to_any<G, F>(mut handle: ga::GaHandle<G>, decode: F) -> AnyHandle
+/// Converts a `GaHandle<G>` into an `AnyHandle`, wrapping each genome in a
+/// lazy closure produced by `decode`.
+fn ga_handle_to_any<G, F>(handle: ga::GaHandle<G>, decode: F) -> AnyHandle
 where
     G: Clone + Send + serde::Serialize + 'static,
     F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
 {
-    let (tx, rx) = mpsc::unbounded_channel::<AnyEvent>();
-    let join = std::thread::spawn(move || {
-        while let Some(evt) = handle.rx.blocking_recv() {
-            let any = match evt {
-                ga::GaEvent::Progress(p) => {
-                    let (genome, f) = (p.genome, decode.clone());
-                    AnyEvent::Progress {
-                        seed: p.seed,
-                        generation: p.generation,
-                        objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| f(&genome, spec))),
-                    }
-                }
-                ga::GaEvent::Done(results) => AnyEvent::Done {
-                    results: results
-                        .into_iter()
-                        .map(|(seed, ind)| {
-                            let (genome, f) = (ind.genome, decode.clone());
-                            let genome_json = serde_json::to_value(&genome).ok();
-                            (
-                                seed,
-                                ind.objective,
-                                LazyDecode(Box::new(move |spec| f(&genome, spec))),
-                                genome_json,
-                            )
-                        })
-                        .collect(),
-                },
-            };
-            if tx.send(any).is_err() {
-                break;
-            }
-        }
-        handle.join();
-        // `handle` dropped here -> handle.stop() -> GA threads halt
-    });
-    AnyHandle { rx, join: Some(join) }
+    AnyHandle {
+        inner: Box::new(TypedGaHandle { handle, decode }),
+    }
 }
 
 fn make_any_handle(
@@ -316,7 +332,7 @@ fn run_with_any_handle(
     let t0 = Instant::now();
 
     loop {
-        match handle.rx.blocking_recv() {
+        match handle.recv() {
             None => break,
             Some(AnyEvent::Progress {
                 seed,
