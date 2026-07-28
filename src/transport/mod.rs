@@ -21,13 +21,6 @@ pub enum ProgressMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         pieces: Option<Vec<PieceType>>,
     },
-    /// BPC-specific progress: emitted every `progress_interval` CG iterations
-    /// and immediately on each UB improvement.
-    BpcProgress {
-        iteration: usize,
-        lb: usize,
-        ub: usize,
-    },
     Done {
         seed: u64,
         sheets_used: usize,
@@ -36,9 +29,6 @@ pub enum ProgressMessage {
         pieces: Vec<PieceType>,
         #[serde(skip_serializing_if = "Option::is_none")]
         genome: Option<serde_json::Value>,
-        /// BPC only: true = proven optimal, false = gap or stopped.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        proven_optimal: Option<bool>,
     },
     Error {
         message: String,

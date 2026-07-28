@@ -15,7 +15,6 @@ impl ProgressSink for SseSink {
     fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
         let (event_name, data) = match msg {
             ProgressMessage::Progress { .. } => ("progress", msg.to_line()),
-            ProgressMessage::BpcProgress { .. } => ("bpc_progress", msg.to_line()),
             ProgressMessage::Done { .. } => {
                 let mut val = serde_json::to_value(msg).expect("ProgressMessage serialization is infallible");
                 val["elapsed_secs"] = self.start.elapsed().as_secs_f64().into();

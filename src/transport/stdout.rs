@@ -11,10 +11,6 @@ impl ProgressSink for StdoutSink {
                 eprint!("\rgen={generation:<6} sheets={sheets_used}  obj2={secondary_objective:<12}");
                 std::io::stderr().flush()
             }
-            ProgressMessage::BpcProgress { iteration, lb, ub } => {
-                eprint!("\riteration={iteration:<6} lb={lb}  ub={ub}");
-                std::io::stderr().flush()
-            }
             _ => {
                 eprintln!();
                 print!("{}", msg.to_line());

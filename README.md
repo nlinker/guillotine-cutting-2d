@@ -38,12 +38,6 @@ since the number of possible solutions is huge and this combinatorics makes the 
   Internally also baked into sheet dimensions in `expand_problem`
 - Exact single-sheet optimization via **GLF** (Guillotine Layout Function) — a DP on step functions over
   all guillotine-cut subsets. Supports piece rotation. See GLF visualizer in [Demos/GLF Table Visualizer](#glf-table-visualizer)
-- Exact **multiple-sheet** optimization via **BPC** (Branch-Price-and-Cut) — column
-  generation over cutting patterns priced by the GLF oracle, with branch-and-bound that
-  forces pairs of piece types onto the same sheet or apart until the LP relaxation
-  matches an integer solution. Minimizes sheet count only (not layout/drop-consolidation
-  scores). _Warning_: current performance is poor; exploring approaches to improve it </br>
-  (ﾉ*･ω･)ﾉ.
 - **GA** — evolutionary (genetic) algorithm that searches for a good genome. Operators: OX/CX
   crossover, swap/flip/point/inverse mutation. Configured via `GaConfig`. See their visualizations
   in [Demos/GA Crossover](#ga-crossover) and [Demos/GA Mutation](#ga-mutation)
@@ -54,7 +48,7 @@ since the number of possible solutions is huge and this combinatorics makes the 
   barrier (every `migration_interval` generations), the best individual across all islands
   overwrites the worst individual on every island, so a strong genome found on one island
   can seed and improve the others.
-- Five **Algorithms** (`--algorithm slas|glas|bfdh|jylanki|bpc`, also selectable in the web UI):
+- Four **Algorithms** (`--algorithm slas|glas|bfdh|jylanki`, also selectable in the web UI):
   - GA with **SLAS** decoder — one gene per physical piece; SLAS (Shorter Leftover Axis) split heuristic
     (see [docs/slas.md](docs/slas.md)).
   - GA with **GLAS** decoder (default) — Grouped SLAS, one gene per piece *type*;
@@ -65,7 +59,6 @@ since the number of possible solutions is huge and this combinatorics makes the 
   - **Jylanki** — portfolio greedy packer (per Jylanki's [A Thousand Ways to Pack the Bin.pdf](docs/pdf/A%20Thousand%20Ways%20to%20Pack%20the%20Bin.pdf)):
     runs every combination of sort key x direction x selection rule x split rule
     (144 deterministic passes), keeps the best by `Objective`.
-  - **BPC** — exact multi-sheet solver, see above.
 - **Genome**:
   - SLAS: `Vec<Gene>` — just the ordered sequence of `Gene`s. See [Demos/SLAS decoder](#slas-decoder)
   - GLAS: `Vec<Vec<Gene>>` — outer index = class (0 Large, 1 Medium, 2 Small);
@@ -203,7 +196,7 @@ cargo test
 cargo test <test_name>                              # single test
 cargo clippy -- -D warnings
 cargo +nightly fmt
-cargo run --example benchmark --release            # GA + BPC quality benchmark
+cargo run --example benchmark --release            # GA quality benchmark
 cargo run --release -- serve --port 8080           # web UI, use http://localhost:8080 to view
 ```
 

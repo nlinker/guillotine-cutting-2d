@@ -211,7 +211,6 @@ fn make_any_handle(
         }
         Algorithm::Bfdh => unreachable!("Bfdh is handled before make_any_handle"),
         Algorithm::Jylanki => unreachable!("Jylanki is handled before make_any_handle"),
-        Algorithm::Bpc => unreachable!("Bpc is handled before make_any_handle"),
     }
 }
 
@@ -397,7 +396,6 @@ fn run_with_any_handle(
                     solution: sol,
                     pieces: spec.piece_types.clone(),
                     genome: genome_json,
-                    proven_optimal: None,
                 })
                 .ok();
                 break;
@@ -433,14 +431,8 @@ pub(crate) fn run_with_sink_any(
             solution: sol_spec,
             pieces: spec.piece_types.clone(),
             genome: None,
-            proven_optimal: None,
         })?;
         return Ok(());
-    }
-    if matches!(algorithm, Algorithm::Bpc) {
-        let bpc_cfg = Arc::new(cut::exact::BpcConfig { progress_interval, ..cut::exact::BpcConfig::default() });
-        let handle = cut::exact::run_bpc_bg(Arc::clone(&spec), bpc_cfg);
-        return cut::exact::drain_bpc(handle, &spec, sink, sink_interval_ms).map_err(Into::into);
     }
     let any = make_any_handle(
         algorithm,

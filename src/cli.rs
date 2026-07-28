@@ -13,8 +13,6 @@ pub(crate) enum Algorithm {
     Bfdh,
     /// Jylanki portfolio: 144 greedy guillotine passes, best result wins (no GA, instant result)
     Jylanki,
-    /// BPC exact solver - branch-price-and-cut column generation (iterative, stoppable)
-    Bpc,
 }
 
 impl std::fmt::Display for Algorithm {
@@ -24,7 +22,6 @@ impl std::fmt::Display for Algorithm {
             Algorithm::Glas => write!(f, "glas"),
             Algorithm::Bfdh => write!(f, "bfdh"),
             Algorithm::Jylanki => write!(f, "jylanki"),
-            Algorithm::Bpc => write!(f, "bpc"),
         }
     }
 }

@@ -1,7 +1,2 @@
-//! Exact 2BPP-G solving. See [`bpc`] for the branch-price-and-cut solver.
-mod bpc;
+//! Exact per-sheet analysis: GLF (Guillotine Layout Function) DP table.
 pub mod glf;
-mod pricing;
-mod rlmp;
-
-pub use bpc::{BpcConfig, BpcHandle, BpcStatus, drain_bpc, run_bpc_bg};
