@@ -1,4 +1,4 @@
-﻿use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use cut::{
     expand::expand_problem,
     glas::decoder::{Gene as GlasGene, Genome as GlasGenome, decode as glas_decode},
@@ -10,12 +10,7 @@ use cut::{
 fn slas_genome(spec: &ProblemSpec) -> SlasGenome {
     let problem = expand_problem(spec);
     (0..problem.pieces.len())
-        .map(|i| SlasGene {
-            piece_idx: i,
-            rotate: false,
-            point_selector: 0,
-            inverse: false,
-        })
+        .map(|i| SlasGene { piece_idx: i, rotate: false, point_selector: 0, inverse: false })
         .collect()
 }
 

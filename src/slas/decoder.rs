@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
@@ -86,10 +86,7 @@ pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
             );
         }
     }
-    Solution {
-        placements,
-        leftovers: free.into_vec(),
-    }
+    Solution { placements, leftovers: free.into_vec() }
 }
 
 pub(crate) fn open_new_sheet(
@@ -185,22 +182,10 @@ pub(crate) fn split_directional(fr: &FreeRect, pw: u32, ph: u32, horizontal: boo
         // │   fr.width × lh     │
         // └─────────────────────┘
         if lw > 0 {
-            out.push(FreeRect {
-                sheet_idx: fr.sheet_idx,
-                x: fr.x + pw,
-                y: fr.y,
-                w: lw,
-                h: ph,
-            });
+            out.push(FreeRect { sheet_idx: fr.sheet_idx, x: fr.x + pw, y: fr.y, w: lw, h: ph });
         }
         if lh > 0 {
-            out.push(FreeRect {
-                sheet_idx: fr.sheet_idx,
-                x: fr.x,
-                y: fr.y + ph,
-                w: fr.w,
-                h: lh,
-            });
+            out.push(FreeRect { sheet_idx: fr.sheet_idx, x: fr.x, y: fr.y + ph, w: fr.w, h: lh });
         }
     } else {
         // right child: full height; bottom child: narrow (piece width)
@@ -212,35 +197,17 @@ pub(crate) fn split_directional(fr: &FreeRect, pw: u32, ph: u32, horizontal: boo
         // │ pw × lh  │          │
         // └──────────┴──────────┘
         if lw > 0 {
-            out.push(FreeRect {
-                sheet_idx: fr.sheet_idx,
-                x: fr.x + pw,
-                y: fr.y,
-                w: lw,
-                h: fr.h,
-            });
+            out.push(FreeRect { sheet_idx: fr.sheet_idx, x: fr.x + pw, y: fr.y, w: lw, h: fr.h });
         }
         if lh > 0 {
-            out.push(FreeRect {
-                sheet_idx: fr.sheet_idx,
-                x: fr.x,
-                y: fr.y + ph,
-                w: pw,
-                h: lh,
-            });
+            out.push(FreeRect { sheet_idx: fr.sheet_idx, x: fr.x, y: fr.y + ph, w: pw, h: lh });
         }
     }
     out
 }
 
 pub(crate) fn sheet_rect(problem: &Problem, sheet_idx: usize) -> FreeRect {
-    FreeRect {
-        sheet_idx,
-        x: 0,
-        y: 0,
-        w: problem.sheet.width,
-        h: problem.sheet.height,
-    }
+    FreeRect { sheet_idx, x: 0, y: 0, w: problem.sheet.width, h: problem.sheet.height }
 }
 
 #[cfg(test)]
@@ -249,12 +216,7 @@ mod tests {
     use crate::{expand::expand_problem, parser::compact::parse_problem};
 
     fn g(piece_id: usize, rotate: bool, point_selector: u32) -> Gene {
-        Gene {
-            piece_idx: piece_id,
-            rotate,
-            point_selector,
-            inverse: false,
-        }
+        Gene { piece_idx: piece_id, rotate, point_selector, inverse: false }
     }
 
     #[test]

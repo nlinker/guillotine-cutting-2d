@@ -1,4 +1,4 @@
-﻿/// Fixed-problem GA benchmark: runs N_PARALLEL GA instances simultaneously (one per seed),
+/// Fixed-problem GA benchmark: runs N_PARALLEL GA instances simultaneously (one per seed),
 /// picks the best result, and prints detailed placement info.
 ///
 /// Run with:  cargo run --example ga_real --release
@@ -16,12 +16,7 @@ const PROBLEM: &str = "200x160F:1,0:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
-    GaConfig {
-        n_generations: 2000,
-        n_elite: 5,
-        tournament_k: 5,
-        ..GaConfig::default()
-    }
+    GaConfig { n_generations: 2000, n_elite: 5, tournament_k: 5, ..GaConfig::default() }
 }
 
 fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, String) {

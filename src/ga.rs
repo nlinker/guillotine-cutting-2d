@@ -282,17 +282,8 @@ struct SyncMigration<'a, G: Clone + Send + 'static> {
 fn ga_channel<G: Clone + Send + 'static>(progress_interval: usize) -> (GaHandle<G>, GaContext<G>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let stop = Arc::new(AtomicBool::new(false));
-    let handle = GaHandle {
-        rx,
-        stop: Arc::clone(&stop),
-        join: None,
-    };
-    let context = GaContext {
-        tx,
-        stop,
-        progress_interval,
-        seed: 0,
-    };
+    let handle = GaHandle { rx, stop: Arc::clone(&stop), join: None };
+    let context = GaContext { tx, stop, progress_interval, seed: 0 };
     (handle, context)
 }
 
@@ -440,18 +431,12 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
 
             decoder.mutate(&mut g1, config, rng);
             let obj1 = decoder.eval(&g1);
-            next_pop.push(Individual {
-                genome: g1,
-                objective: obj1,
-            });
+            next_pop.push(Individual { genome: g1, objective: obj1 });
 
             if next_pop.len() < config.pop_size {
                 decoder.mutate(&mut g2, config, rng);
                 let obj2 = decoder.eval(&g2);
-                next_pop.push(Individual {
-                    genome: g2,
-                    objective: obj2,
-                });
+                next_pop.push(Individual { genome: g2, objective: obj2 });
             }
         }
 
@@ -580,11 +565,7 @@ mod tests {
         std::panic::set_hook(Box::new(|_| {}));
 
         let decoder = Arc::new(PanicDecoder);
-        let config = Arc::new(GaConfig {
-            pop_size: 4,
-            n_generations: 5,
-            ..GaConfig::default()
-        });
+        let config = Arc::new(GaConfig { pop_size: 4, n_generations: 5, ..GaConfig::default() });
         let handle = run_ga_mt(decoder, config, vec![1], 0, 0);
         let results = handle.blocking_wait();
 

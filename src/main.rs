@@ -31,12 +31,13 @@ const PIPE_NAME: &str = r"\\.\pipe\cut_progress";
 const FIFO_PATH: &str = "/tmp/cut_progress";
 
 /// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
-/// This is to save performance
+/// Most progress events are throttled or superseded before ever being sent, so
+/// deferring the decode avoids wasting it on generations nobody sees.
 struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
 
 impl LazyDecode {
     fn decode(self, spec: &ProblemSpec) -> SolutionSpec {
-        (self.0)(spec)
+        self.0(spec)
     }
 }
 
@@ -146,7 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Command::Serve { port } => {
-            web::run_serve(port)?
+            web::run_serve(port)?;
         }
         Command::Render { compact, json, solution } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
@@ -177,9 +178,7 @@ where
     G: Clone + Send + serde::Serialize + 'static,
     F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
 {
-    AnyHandle {
-        inner: Box::new(TypedGaHandle { handle, decode }),
-    }
+    AnyHandle { inner: Box::new(TypedGaHandle { handle, decode }) }
 }
 
 fn make_any_handle(
@@ -334,12 +333,7 @@ fn run_with_any_handle(
     loop {
         match handle.recv() {
             None => break,
-            Some(AnyEvent::Progress {
-                seed,
-                generation,
-                objective,
-                lazy,
-            }) => {
+            Some(AnyEvent::Progress { seed, generation, objective, lazy }) => {
                 if !throttled {
                     // Raw progress: no decode, no solution payload
                     drop(lazy);
@@ -357,12 +351,7 @@ fn run_with_any_handle(
                 } else {
                     let better = best_pending.as_ref().is_none_or(|b| objective < b.objective);
                     if better {
-                        best_pending = Some(PendingProgress {
-                            seed,
-                            generation,
-                            objective,
-                            lazy,
-                        });
+                        best_pending = Some(PendingProgress { seed, generation, objective, lazy });
                     }
                     // else: lazy (and the genome captured inside) is dropped here
                     let should_flush = last_sent.is_none_or(|t| t.elapsed() >= throttle);
@@ -449,10 +438,7 @@ pub(crate) fn run_with_sink_any(
         return Ok(());
     }
     if matches!(algorithm, Algorithm::Bpc) {
-        let bpc_cfg = Arc::new(cut::exact::BpcConfig {
-            progress_interval,
-            ..cut::exact::BpcConfig::default()
-        });
+        let bpc_cfg = Arc::new(cut::exact::BpcConfig { progress_interval, ..cut::exact::BpcConfig::default() });
         let handle = cut::exact::run_bpc_bg(Arc::clone(&spec), bpc_cfg);
         return cut::exact::drain_bpc(handle, &spec, sink, sink_interval_ms).map_err(Into::into);
     }

@@ -59,14 +59,7 @@ impl Rlmp {
             b_inv[i * n_items + i] = 1.0;
         }
         let b_bar = vec![1.0f64; n_items];
-        Rlmp {
-            n: n_items,
-            col_items,
-            basis,
-            b_inv,
-            b_bar,
-            pivot_count: 0,
-        }
+        Rlmp { n: n_items, col_items, basis, b_inv, b_bar, pivot_count: 0 }
     }
 
     /// Add a new pattern column covering `items`. Returns its column index.

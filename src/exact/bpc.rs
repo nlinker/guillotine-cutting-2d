@@ -1,4 +1,4 @@
-﻿/// Exact 2BPP-G solver via column generation (branch-price-and-cut skeleton).
+/// Exact 2BPP-G solver via column generation (branch-price-and-cut skeleton).
 ///
 /// This module solves the *primary* objective only: minimize `sheets_used`.
 /// The secondary metrics (`layout_score`, `drop_consolidation_score`) used by
@@ -80,10 +80,7 @@ pub struct BpcConfig {
 
 impl Default for BpcConfig {
     fn default() -> Self {
-        BpcConfig {
-            progress_interval: 10,
-            max_tree_nodes: 10_000,
-        }
+        BpcConfig { progress_interval: 10, max_tree_nodes: 10_000 }
     }
 }
 
@@ -240,30 +237,20 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
 
     // Early exit: area bound already matches heuristic UB
     if lb0 == ub0 {
-        let _ = tx.send(BpcInternalEvent::Done {
-            status: BpcStatus::Optimal { sheets: ub0 },
-            solution: best_sol,
-        });
+        let _ = tx.send(BpcInternalEvent::Done { status: BpcStatus::Optimal { sheets: ub0 }, solution: best_sol });
         return;
     }
 
     // Emit initial bounds (iteration 0)
     if tx
-        .send(BpcInternalEvent::Progress {
-            iteration: 0,
-            lb: lb0,
-            ub: ub0,
-        })
+        .send(BpcInternalEvent::Progress { iteration: 0, lb: lb0, ub: ub0 })
         .is_err()
     {
         return;
     }
 
     if stop.load(Ordering::Relaxed) {
-        let _ = tx.send(BpcInternalEvent::Done {
-            status: BpcStatus::Stopped { lb: lb0, ub: ub0 },
-            solution: best_sol,
-        });
+        let _ = tx.send(BpcInternalEvent::Done { status: BpcStatus::Stopped { lb: lb0, ub: ub0 }, solution: best_sol });
         return;
     }
 
@@ -329,10 +316,8 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
         if tree_nodes_processed > cfg.max_tree_nodes {
             open.push(node);
             let lb = frontier_lb(&open, lb0);
-            let _ = tx.send(BpcInternalEvent::Done {
-                status: BpcStatus::Gap { lb, ub: global_ub },
-                solution: best_solution,
-            });
+            let _ = tx
+                .send(BpcInternalEvent::Done { status: BpcStatus::Gap { lb, ub: global_ub }, solution: best_solution });
             return;
         }
 
@@ -371,13 +356,7 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
                         round_gap(&node.rlmp, &node.column_patterns, &problem, global_ub)
                     {
                         global_ub = rounded_sheets;
-                        best_solution = shrink_solution(
-                            &Solution {
-                                placements,
-                                leftovers: vec![],
-                            },
-                            spec,
-                        );
+                        best_solution = shrink_solution(&Solution { placements, leftovers: vec![] }, spec);
                     }
                 }
                 if node_lb < global_ub {
@@ -428,10 +407,7 @@ fn bpc_thread(spec: &ProblemSpec, cfg: &BpcConfig, stop: &AtomicBool, tx: &std::
     } else {
         BpcStatus::Optimal { sheets: global_ub }
     };
-    let _ = tx.send(BpcInternalEvent::Done {
-        status,
-        solution: best_solution,
-    });
+    let _ = tx.send(BpcInternalEvent::Done { status, solution: best_solution });
 }
 
 /// Lower bound over every node still pending in `open`, or `fallback` if
@@ -495,11 +471,7 @@ fn run_cg_at_node(
                 if iteration.is_multiple_of(progress_interval) {
                     // Not yet a proven bound (this node's CG hasn't
                     // converged) -- report the last proven frontier value.
-                    let progress = BpcInternalEvent::Progress {
-                        iteration: *iteration,
-                        lb: global_lb,
-                        ub: global_ub,
-                    };
+                    let progress = BpcInternalEvent::Progress { iteration: *iteration, lb: global_lb, ub: global_ub };
                     if tx.send(progress).is_err() {
                         return CgOutcome::Disconnected;
                     }
@@ -568,12 +540,7 @@ fn child_node(
             column_patterns.push(pattern.clone());
         }
     }
-    BpcNode {
-        constraints,
-        rlmp,
-        column_patterns,
-        pending_lb,
-    }
+    BpcNode { constraints, rlmp, column_patterns, pending_lb }
 }
 
 /// A single-item pattern occupying its own sheet at the origin. Used to seed
@@ -588,16 +555,7 @@ fn singleton_pattern(piece_idx: usize, problem: &Problem) -> Pattern {
         && p.can_rotate
         && p.height <= problem.sheet.width
         && p.width <= problem.sheet.height;
-    Pattern {
-        items: vec![piece_idx],
-        placements: vec![Placement {
-            sheet_idx: 0,
-            piece_idx,
-            x: 0,
-            y: 0,
-            rotated,
-        }],
-    }
+    Pattern { items: vec![piece_idx], placements: vec![Placement { sheet_idx: 0, piece_idx, x: 0, y: 0, rotated }] }
 }
 
 /// Phase 6: greedy set-cover rounding of the converged RLMP's basic patterns,
@@ -634,19 +592,19 @@ fn round_gap(
         for &i in &pattern.items {
             covered[i] = true;
         }
-        placements.extend(pattern.placements.iter().map(|pl| Placement {
-            sheet_idx: sheets_used,
-            ..*pl
-        }));
+        placements.extend(
+            pattern
+                .placements
+                .iter()
+                .map(|pl| Placement { sheet_idx: sheets_used, ..*pl }),
+        );
         sheets_used += 1;
     }
 
     let remaining: Vec<usize> = (0..n).filter(|&i| !covered[i]).collect();
     if !remaining.is_empty() {
-        let remaining_problem = Problem {
-            sheet: problem.sheet,
-            pieces: remaining.iter().map(|&i| problem.pieces[i].clone()).collect(),
-        };
+        let remaining_problem =
+            Problem { sheet: problem.sheet, pieces: remaining.iter().map(|&i| problem.pieces[i].clone()).collect() };
         let remaining_sol = bfdh_solve(&remaining_problem);
         placements.extend(remaining_sol.placements.iter().map(|pl| Placement {
             sheet_idx: pl.sheet_idx + sheets_used,
@@ -680,30 +638,17 @@ mod tests {
         Problem {
             sheet: Sheet { width: 10, height: 10 },
             pieces: (0..n_pieces)
-                .map(|_| Piece {
-                    name: String::new(),
-                    width: 5,
-                    height: 5,
-                    can_rotate: false,
-                })
+                .map(|_| Piece { name: String::new(), width: 5, height: 5, can_rotate: false })
                 .collect(),
         }
     }
 
     fn piece(w: u32, h: u32) -> Piece {
-        Piece {
-            name: String::new(),
-            width: w,
-            height: h,
-            can_rotate: false,
-        }
+        Piece { name: String::new(), width: w, height: h, can_rotate: false }
     }
 
     fn dummy_pattern(items: Vec<usize>) -> Pattern {
-        Pattern {
-            items,
-            placements: vec![],
-        }
+        Pattern { items, placements: vec![] }
     }
 
     // The textbook example motivating Ryan-Foster branching in the first
@@ -738,12 +683,7 @@ mod tests {
             dummy_pattern(vec![0, 2]),
             dummy_pattern(vec![1, 2]),
         ];
-        let node = BpcNode {
-            constraints: BranchConstraints::default(),
-            rlmp,
-            column_patterns,
-            pending_lb: 0,
-        };
+        let node = BpcNode { constraints: BranchConstraints::default(), rlmp, column_patterns, pending_lb: 0 };
         let (t, t2) = pick_fractional_type_pair(&node, &pricer).expect("must find a fractional type pair");
         let pair = (t.min(t2), t.max(t2));
         assert!([(0, 1), (0, 2), (1, 2)].contains(&pair), "unexpected pair {pair:?}");
@@ -810,20 +750,8 @@ mod tests {
             Pattern {
                 items: vec![0, 1],
                 placements: vec![
-                    Placement {
-                        sheet_idx: 0,
-                        piece_idx: 0,
-                        x: 0,
-                        y: 0,
-                        rotated: false,
-                    },
-                    Placement {
-                        sheet_idx: 0,
-                        piece_idx: 1,
-                        x: 5,
-                        y: 0,
-                        rotated: false,
-                    },
+                    Placement { sheet_idx: 0, piece_idx: 0, x: 0, y: 0, rotated: false },
+                    Placement { sheet_idx: 0, piece_idx: 1, x: 5, y: 0, rotated: false },
                 ],
             },
         ];
@@ -872,12 +800,7 @@ mod tests {
         }
         impl ProgressSink for Capture {
             fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
-                if let ProgressMessage::Done {
-                    sheets_used,
-                    proven_optimal,
-                    ..
-                } = msg
-                {
+                if let ProgressMessage::Done { sheets_used, proven_optimal, .. } = msg {
                     self.sheets = *sheets_used;
                     self.proven = *proven_optimal;
                 }
@@ -885,10 +808,7 @@ mod tests {
             }
         }
 
-        let mut cap = Capture {
-            sheets: 0,
-            proven: None,
-        };
+        let mut cap = Capture { sheets: 0, proven: None };
         drain_bpc(handle, &spec, &mut cap, 0).expect("drain_bpc failed");
         (cap.sheets, cap.proven)
     }
@@ -919,10 +839,7 @@ mod tests {
     #[test]
     fn stop_flag_respected() {
         let spec = Arc::new(parse_problem("100x100F::30x30/20").unwrap());
-        let cfg = Arc::new(BpcConfig {
-            progress_interval: 1,
-            ..BpcConfig::default()
-        });
+        let cfg = Arc::new(BpcConfig { progress_interval: 1, ..BpcConfig::default() });
         let handle = run_bpc_bg(Arc::clone(&spec), cfg);
         handle.stop.store(true, Ordering::Relaxed);
 

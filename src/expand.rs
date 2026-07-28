@@ -27,14 +27,8 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
                 can_rotate: ps.can_rotate,
             })
         })
-        .collect();
-    Problem {
-        sheet: Sheet {
-            width: spec.sheet.width - 2 * m + k,
-            height: spec.sheet.height - 2 * m + k,
-        },
-        pieces,
-    }
+        .collect::<Vec<Piece>>();
+    Problem { sheet: Sheet { width: spec.sheet.width - 2 * m + k, height: spec.sheet.height - 2 * m + k }, pieces }
 }
 
 /// Convert a `SolutionSpec` (type-indexed) into a flat `Solution`.
@@ -59,19 +53,10 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
             let ti = pl.ptype_idx;
             let flat_idx = type_to_flat_start[ti] + type_used[ti];
             type_used[ti] += 1;
-            Placement {
-                sheet_idx: pl.sheet_idx,
-                piece_idx: flat_idx,
-                x: pl.x,
-                y: pl.y,
-                rotated: pl.rotated,
-            }
+            Placement { sheet_idx: pl.sheet_idx, piece_idx: flat_idx, x: pl.x, y: pl.y, rotated: pl.rotated }
         })
         .collect::<Vec<Placement>>();
-    Solution {
-        placements,
-        leftovers: sol.leftovers.clone(),
-    }
+    Solution { placements, leftovers: sol.leftovers.clone() }
 }
 
 /// Collapse a flat `Problem` into a `ProblemSpec` by grouping consecutive identical pieces.
@@ -99,12 +84,7 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
             });
         }
     }
-    ProblemSpec {
-        sheet: problem.sheet,
-        kerf: 0,
-        margin: 0,
-        piece_types: pieces,
-    }
+    ProblemSpec { sheet: problem.sheet, kerf: 0, margin: 0, piece_types: pieces }
 }
 
 /// Convert a flat `Solution` into a `SolutionSpec` using the originating `ProblemSpec`.
@@ -135,11 +115,7 @@ pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
     let leftovers = sol
         .leftovers
         .iter()
-        .map(|fr| FreeRect {
-            x: fr.x + m,
-            y: fr.y + m,
-            ..*fr
-        })
+        .map(|fr| FreeRect { x: fr.x + m, y: fr.y + m, ..*fr })
         .collect();
     SolutionSpec { placements, leftovers }
 }

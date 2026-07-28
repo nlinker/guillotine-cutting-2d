@@ -1,4 +1,4 @@
-﻿use smallvec::{SmallVec, smallvec};
+use smallvec::{SmallVec, smallvec};
 
 use crate::{
     expand,
@@ -198,13 +198,7 @@ pub(crate) fn decode_with_pool(problem: &Problem, spec: &ProblemSpec, genome: &G
                     } else {
                         (batch_x + line * pw, batch_y + pos * ph)
                     };
-                    placements.push(Placement {
-                        sheet_idx,
-                        piece_idx: next[gene.type_idx],
-                        x,
-                        y,
-                        rotated,
-                    });
+                    placements.push(Placement { sheet_idx, piece_idx: next[gene.type_idx], x, y, rotated });
                     next[gene.type_idx] += 1;
                 }
 
@@ -252,16 +246,7 @@ pub(crate) struct FreePool {
 impl FreePool {
     /// Create a pool with one free leaf `(0, 0, w, h)` on sheet 0.
     fn new(w: u32, h: u32) -> Self {
-        FreePool {
-            free: smallvec![FreeRect {
-                sheet_idx: 0,
-                x: 0,
-                y: 0,
-                w,
-                h,
-            }],
-            sheets_open: 1,
-        }
+        FreePool { free: smallvec![FreeRect { sheet_idx: 0, x: 0, y: 0, w, h }], sheets_open: 1 }
     }
 
     /// Create a pool pre-seeded with `used_heights.len()` GLF sheets.
@@ -283,28 +268,13 @@ impl FreePool {
             let free_h = sh - used_h;
             let free_w = sw - used_w;
             if free_h > 0 {
-                free.push(FreeRect {
-                    sheet_idx,
-                    x: 0,
-                    y: used_h,
-                    w: sw,
-                    h: free_h,
-                });
+                free.push(FreeRect { sheet_idx, x: 0, y: used_h, w: sw, h: free_h });
             }
             if free_w > 0 && used_h > 0 {
-                free.push(FreeRect {
-                    sheet_idx,
-                    x: used_w,
-                    y: 0,
-                    w: free_w,
-                    h: used_h,
-                });
+                free.push(FreeRect { sheet_idx, x: used_w, y: 0, w: free_w, h: used_h });
             }
         }
-        FreePool {
-            free,
-            sheets_open: used_heights.len(),
-        }
+        FreePool { free, sheets_open: used_heights.len() }
     }
 
     /// Number of sheets currently open.
@@ -317,13 +287,7 @@ impl FreePool {
     /// Returns the new sheet index.
     fn open_new_sheet(&mut self, w: u32, h: u32) -> usize {
         let sheet_idx = self.sheets_open;
-        self.free.push(FreeRect {
-            sheet_idx,
-            x: 0,
-            y: 0,
-            w,
-            h,
-        });
+        self.free.push(FreeRect { sheet_idx, x: 0, y: 0, w, h });
         self.sheets_open += 1;
         sheet_idx
     }

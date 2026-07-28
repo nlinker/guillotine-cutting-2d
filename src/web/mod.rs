@@ -122,12 +122,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             let problem = Arc::new(spec);
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
-            let mut sink = SseSink {
-                tx,
-                start: Instant::now(),
-                sheet_w,
-                sheet_h,
-            };
+            let mut sink = SseSink { tx, start: Instant::now(), sheet_w, sheet_h };
             let algorithm = params.algorithm;
             std::thread::spawn(move || {
                 crate::run_with_sink_any(algorithm, problem, cfg, &seeds, params.progress, &mut sink, 0).ok();
@@ -148,10 +143,7 @@ fn build_problem(params: &SolveParams) -> Result<ProblemSpec, String> {
         return Err("no pieces specified".into());
     }
     let mut spec = ProblemSpec {
-        sheet: Sheet {
-            width: params.sheet_w,
-            height: params.sheet_h,
-        },
+        sheet: Sheet { width: params.sheet_w, height: params.sheet_h },
         kerf: params.kerf,
         margin: 0,
         piece_types: pieces,

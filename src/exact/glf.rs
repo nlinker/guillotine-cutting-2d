@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 
 use crate::model::{Piece, Placement, Problem};
 
@@ -219,13 +219,7 @@ impl GlfTable {
             let rotated = self.types[ti].can_rotate
                 && self.types[ti].width != self.types[ti].height
                 && height == self.types[ti].width;
-            placements.push(Placement {
-                sheet_idx: 0,
-                piece_idx,
-                x,
-                y,
-                rotated,
-            });
+            placements.push(Placement { sheet_idx: 0, piece_idx, x, y, rotated });
             return true;
         }
 
@@ -402,12 +396,7 @@ pub fn build_glf_from_flat(pieces: &[Piece], indices: &[usize]) -> GlfTable {
         } else {
             let ti = types.len();
             type_map.insert(key, ti);
-            types.push(GlfType {
-                width: p.width,
-                height: p.height,
-                count: 1,
-                can_rotate: p.can_rotate,
-            });
+            types.push(GlfType { width: p.width, height: p.height, count: 1, can_rotate: p.can_rotate });
             type_to_flat.push(vec![idx]);
         }
     }
@@ -481,12 +470,7 @@ pub fn build_glf_from_flat(pieces: &[Piece], indices: &[usize]) -> GlfTable {
         }
     }
 
-    GlfTable {
-        types,
-        strides,
-        cells,
-        type_to_flat,
-    }
+    GlfTable { types, strides, cells, type_to_flat }
 }
 
 fn decode_index_with(types: &[GlfType], mut idx: usize) -> Vec<u32> {

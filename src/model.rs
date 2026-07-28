@@ -268,11 +268,7 @@ impl Solution {
     pub fn eval(&self, problem: &Problem) -> Objective {
         let n = self.sheets_used();
         if n == 0 {
-            return Objective {
-                sheets_used: 0.0,
-                drop_consolidation_score: 0,
-                layout_score: 0,
-            };
+            return Objective { sheets_used: 0.0, drop_consolidation_score: 0, layout_score: 0 };
         }
         let last_idx = n - 1;
         let piece_area_last: u64 = self
@@ -597,31 +593,16 @@ mod tests {
     // 2x2 grid of 50x50 pieces, placed at (ox+i*step, oy+j*step) for i,j in 0..2.
     fn grid_2x2(ox: u32, oy: u32, step: u32) -> Vec<PlacementSpec> {
         [(ox, oy), (ox + step, oy), (ox, oy + step), (ox + step, oy + step)]
-            .map(|(x, y)| PlacementSpec {
-                sheet_idx: 0,
-                ptype_idx: 0,
-                x,
-                y,
-                rotated: false,
-            })
+            .map(|(x, y)| PlacementSpec { sheet_idx: 0, ptype_idx: 0, x, y, rotated: false })
             .into()
     }
 
     fn spec_50x50x4(sheet_w: u32, sheet_h: u32, kerf: u32, margin: u32) -> ProblemSpec {
         ProblemSpec {
-            sheet: Sheet {
-                width: sheet_w,
-                height: sheet_h,
-            },
+            sheet: Sheet { width: sheet_w, height: sheet_h },
             kerf,
             margin,
-            piece_types: vec![PieceType {
-                name: String::new(),
-                width: 50,
-                height: 50,
-                count: 4,
-                can_rotate: false,
-            }],
+            piece_types: vec![PieceType { name: String::new(), width: 50, height: 50, count: 4, can_rotate: false }],
         }
     }
 
@@ -629,20 +610,14 @@ mod tests {
     fn cut_lengths_calculation() {
         // No margin, no kerf: 100x100 sheet, pieces flush at (0,0)/(50,0)/(0,50)/(50,50).
         let spec = spec_50x50x4(100, 100, 0, 0);
-        let sol = SolutionSpec {
-            placements: grid_2x2(0, 0, 50),
-            leftovers: vec![],
-        };
+        let sol = SolutionSpec { placements: grid_2x2(0, 0, 50), leftovers: vec![] };
         assert_eq!(sol.cut_lengths(&spec), vec![200]);
 
         // Same grid on a 120x120 sheet with margin=10. Working area 100x100; pieces
         // at margin-adjusted coords. Inner cuts: 200; margin perimeter:
         // 2*(100+100) = 400. Total: 600.
         let spec = spec_50x50x4(120, 120, 0, 10);
-        let sol = SolutionSpec {
-            placements: grid_2x2(10, 10, 50),
-            leftovers: vec![],
-        };
+        let sol = SolutionSpec { placements: grid_2x2(10, 10, 50), leftovers: vec![] };
         assert_eq!(sol.cut_lengths(&spec), vec![600]);
 
         // Same grid on a 120x120 sheet with kerf=10, no margin. Expanded: each piece
@@ -655,34 +630,10 @@ mod tests {
         let sol = SolutionSpec {
             placements: grid_2x2(0, 0, 60),
             leftovers: vec![
-                FreeRect {
-                    sheet_idx: 0,
-                    x: 120,
-                    y: 0,
-                    w: 10,
-                    h: 60,
-                },
-                FreeRect {
-                    sheet_idx: 0,
-                    x: 0,
-                    y: 120,
-                    w: 60,
-                    h: 10,
-                },
-                FreeRect {
-                    sheet_idx: 0,
-                    x: 120,
-                    y: 60,
-                    w: 10,
-                    h: 60,
-                },
-                FreeRect {
-                    sheet_idx: 0,
-                    x: 60,
-                    y: 120,
-                    w: 70,
-                    h: 10,
-                },
+                FreeRect { sheet_idx: 0, x: 120, y: 0, w: 10, h: 60 },
+                FreeRect { sheet_idx: 0, x: 0, y: 120, w: 60, h: 10 },
+                FreeRect { sheet_idx: 0, x: 120, y: 60, w: 10, h: 60 },
+                FreeRect { sheet_idx: 0, x: 60, y: 120, w: 70, h: 10 },
             ],
         };
         assert_eq!(sol.cut_lengths(&spec), vec![445]);
@@ -690,30 +641,16 @@ mod tests {
 
     fn flat_problem(sheet_w: u32, sheet_h: u32, dims: &[(u32, u32)]) -> Problem {
         Problem {
-            sheet: Sheet {
-                width: sheet_w,
-                height: sheet_h,
-            },
+            sheet: Sheet { width: sheet_w, height: sheet_h },
             pieces: dims
                 .iter()
-                .map(|&(w, h)| Piece {
-                    name: String::new(),
-                    width: w,
-                    height: h,
-                    can_rotate: false,
-                })
+                .map(|&(w, h)| Piece { name: String::new(), width: w, height: h, can_rotate: false })
                 .collect(),
         }
     }
 
     fn place(piece_idx: usize, x: u32, y: u32) -> Placement {
-        Placement {
-            sheet_idx: 0,
-            piece_idx,
-            x,
-            y,
-            rotated: false,
-        }
+        Placement { sheet_idx: 0, piece_idx, x, y, rotated: false }
     }
 
     // 2x2 grid of 400x400 pieces: 2 vertical runs of 800 + 2 horizontal runs of 800
@@ -741,14 +678,10 @@ mod tests {
     #[test]
     fn strip_score_mono_width_mixed_heights() {
         let problem = flat_problem(1000, 1000, &[(400, 300), (400, 500), (400, 200)]);
-        let flush = Solution {
-            placements: vec![place(0, 0, 0), place(1, 0, 300), place(2, 0, 800)],
-            leftovers: vec![],
-        };
-        let scattered = Solution {
-            placements: vec![place(0, 0, 0), place(1, 500, 400), place(2, 50, 750)],
-            leftovers: vec![],
-        };
+        let flush =
+            Solution { placements: vec![place(0, 0, 0), place(1, 0, 300), place(2, 0, 800)], leftovers: vec![] };
+        let scattered =
+            Solution { placements: vec![place(0, 0, 0), place(1, 500, 400), place(2, 50, 750)], leftovers: vec![] };
         assert_eq!(flush.strip_structure_score(&problem), 148);
         assert_eq!(scattered.strip_structure_score(&problem), 86);
     }
@@ -759,10 +692,7 @@ mod tests {
     #[test]
     fn strip_runs_require_equal_width() {
         let problem = flat_problem(1000, 1000, &[(400, 300), (300, 500)]);
-        let stacked = Solution {
-            placements: vec![place(0, 0, 0), place(1, 0, 300)],
-            leftovers: vec![],
-        };
+        let stacked = Solution { placements: vec![place(0, 0, 0), place(1, 0, 300)], leftovers: vec![] };
         assert_eq!(stacked.strip_structure_score(&problem), 59);
     }
 
@@ -771,10 +701,7 @@ mod tests {
     #[test]
     fn full_sheet_placement_yields_zero_drop_score() {
         let problem = flat_problem(10, 10, &[(10, 10)]);
-        let sol = Solution {
-            placements: vec![place(0, 0, 0)],
-            leftovers: vec![],
-        };
+        let sol = Solution { placements: vec![place(0, 0, 0)], leftovers: vec![] };
         assert_eq!(sol.drop_consolidation_score(&problem), 0);
     }
 
@@ -786,10 +713,7 @@ mod tests {
     #[test]
     fn corner_placement_l_shape() {
         let problem = flat_problem(10, 10, &[(4, 4)]);
-        let sol = Solution {
-            placements: vec![place(0, 0, 0)],
-            leftovers: vec![],
-        };
+        let sol = Solution { placements: vec![place(0, 0, 0)], leftovers: vec![] };
         assert_eq!(sol.drop_consolidation_score(&problem), 4_176);
     }
 
@@ -802,10 +726,7 @@ mod tests {
     #[test]
     fn two_opposite_corner_placements() {
         let problem = flat_problem(10, 10, &[(3, 3), (3, 3)]);
-        let sol = Solution {
-            placements: vec![place(0, 0, 0), place(1, 7, 7)],
-            leftovers: vec![],
-        };
+        let sol = Solution { placements: vec![place(0, 0, 0), place(1, 7, 7)], leftovers: vec![] };
         assert_eq!(sol.drop_consolidation_score(&problem), 2_482);
     }
 
@@ -816,14 +737,8 @@ mod tests {
     #[test]
     fn drop_score_strictly_increases_when_drops_merge() {
         let problem = flat_problem(6, 2, &[(2, 2)]);
-        let fragmented = Solution {
-            placements: vec![place(0, 2, 0)],
-            leftovers: vec![],
-        };
-        let merged = Solution {
-            placements: vec![place(0, 0, 0)],
-            leftovers: vec![],
-        };
+        let fragmented = Solution { placements: vec![place(0, 2, 0)], leftovers: vec![] };
+        let merged = Solution { placements: vec![place(0, 0, 0)], leftovers: vec![] };
         let fragmented_score = fragmented.drop_consolidation_score(&problem);
         let merged_score = merged.drop_consolidation_score(&problem);
         assert_eq!(fragmented_score, 32);
@@ -839,20 +754,8 @@ mod tests {
         let problem = flat_problem(10, 10, &[(4, 4), (10, 10)]);
         let sol = Solution {
             placements: vec![
-                Placement {
-                    sheet_idx: 0,
-                    piece_idx: 0,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
-                Placement {
-                    sheet_idx: 1,
-                    piece_idx: 1,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
+                Placement { sheet_idx: 0, piece_idx: 0, x: 0, y: 0, rotated: false },
+                Placement { sheet_idx: 1, piece_idx: 1, x: 0, y: 0, rotated: false },
             ],
             leftovers: vec![],
         };
@@ -867,20 +770,8 @@ mod tests {
         let problem = flat_problem(10, 10, &[(10, 10), (4, 4)]);
         let sol = Solution {
             placements: vec![
-                Placement {
-                    sheet_idx: 0,
-                    piece_idx: 0,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
-                Placement {
-                    sheet_idx: 1,
-                    piece_idx: 1,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
+                Placement { sheet_idx: 0, piece_idx: 0, x: 0, y: 0, rotated: false },
+                Placement { sheet_idx: 1, piece_idx: 1, x: 0, y: 0, rotated: false },
             ],
             leftovers: vec![],
         };

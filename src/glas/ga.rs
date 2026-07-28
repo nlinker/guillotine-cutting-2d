@@ -1,4 +1,4 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
 use rand::Rng;
 
@@ -54,10 +54,7 @@ impl GaDecoder for GlasDecoder {
 
 /// Single-threaded GLAS GA. Takes `ProblemSpec` and the expanded `Problem`.
 pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
-    let decoder = GlasDecoder {
-        spec: Arc::new(spec.clone()),
-        problem: Arc::new(problem.clone()),
-    };
+    let decoder = GlasDecoder { spec: Arc::new(spec.clone()), problem: Arc::new(problem.clone()) };
     ga::run_ga(&decoder, config, rng)
 }
 
@@ -376,10 +373,7 @@ mod tests {
     }
 
     fn ind(type_idx: usize, obj: crate::model::Objective) -> Individual {
-        Individual {
-            genome: one_class(vec![gg(type_idx, 1)]),
-            objective: obj,
-        }
+        Individual { genome: one_class(vec![gg(type_idx, 1)]), objective: obj }
     }
 
     // --- mutate ---
@@ -510,11 +504,7 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
@@ -529,11 +519,7 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
@@ -622,10 +608,7 @@ mod tests {
         let spec = parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap();
         let problem = expand_problem(&spec);
         let n_types = spec.piece_types.len();
-        let decoder = GlasDecoder {
-            spec: Arc::new(spec),
-            problem: Arc::new(problem),
-        };
+        let decoder = GlasDecoder { spec: Arc::new(spec), problem: Arc::new(problem) };
         let cfg = small_config();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
         for _ in 0..20 {
@@ -640,10 +623,7 @@ mod tests {
     fn random_genome_is_deterministic() {
         let spec = parse_problem("10x10R::3x2/3,4x3/2").unwrap();
         let problem = expand_problem(&spec);
-        let decoder = GlasDecoder {
-            spec: Arc::new(spec),
-            problem: Arc::new(problem),
-        };
+        let decoder = GlasDecoder { spec: Arc::new(spec), problem: Arc::new(problem) };
         let cfg = small_config();
         let g1 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
         let g2 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
@@ -683,11 +663,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap());
-        let cfg = Arc::new(GaConfig {
-            pop_size: 20,
-            n_generations: 30,
-            ..GaConfig::default()
-        });
+        let cfg = Arc::new(GaConfig { pop_size: 20, n_generations: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {

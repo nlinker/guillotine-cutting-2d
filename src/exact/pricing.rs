@@ -79,11 +79,7 @@ pub(crate) struct PricingLimits {
 
 impl Default for PricingLimits {
     fn default() -> Self {
-        PricingLimits {
-            max_nodes: 2_000_000,
-            max_cells: 1_000_000,
-            max_splits: 20_000_000,
-        }
+        PricingLimits { max_nodes: 2_000_000, max_cells: 1_000_000, max_splits: 20_000_000 }
     }
 }
 
@@ -195,14 +191,7 @@ pub(crate) struct GlfOracle {
 
 impl GlfOracle {
     pub(crate) fn new(sheet_w: u32, sheet_h: u32, max_cells: usize, max_splits: usize) -> Self {
-        GlfOracle {
-            sheet_w,
-            sheet_h,
-            cache: HashMap::new(),
-            max_cells,
-            splits: 0,
-            max_splits,
-        }
+        GlfOracle { sheet_w, sheet_h, cache: HashMap::new(), max_cells, splits: 0, max_splits }
     }
 
     /// Reset the per-call split-enumeration counter. Called once at the
@@ -293,13 +282,7 @@ impl Pricer {
                 }
             }
         }
-        Pricer {
-            pieces: pieces.to_vec(),
-            ptypes,
-            sheet_w,
-            sheet_h,
-            limits,
-        }
+        Pricer { pieces: pieces.to_vec(), ptypes, sheet_w, sheet_h, limits }
     }
 
     /// Which internal type index a flat piece belongs to, or `None` if it
@@ -503,13 +486,7 @@ impl Pricer {
         for tp in tps {
             let flat = queues[tp.type_idx].pop_front()?;
             items.push(flat);
-            placements.push(Placement {
-                sheet_idx: 0,
-                piece_idx: flat,
-                x: tp.x,
-                y: tp.y,
-                rotated: tp.rotated,
-            });
+            placements.push(Placement { sheet_idx: 0, piece_idx: flat, x: tp.x, y: tp.y, rotated: tp.rotated });
         }
         if queues.iter().any(|q| !q.is_empty()) {
             debug_assert!(false, "placement/include count mismatch");
@@ -524,13 +501,8 @@ impl Pricer {
 
     /// Defensive guillotine check on a finished pattern (plan Phase 4 bullet).
     fn validate(&self, placements: &[Placement]) -> bool {
-        let problem = Problem {
-            sheet: Sheet {
-                width: self.sheet_w,
-                height: self.sheet_h,
-            },
-            pieces: self.pieces.clone(),
-        };
+        let problem =
+            Problem { sheet: Sheet { width: self.sheet_w, height: self.sheet_h }, pieces: self.pieces.clone() };
         build_cut_tree(&problem, placements).is_ok()
     }
 }
@@ -754,12 +726,7 @@ impl GlfOracle {
             } else {
                 return false;
             };
-            out.push(TypePlacement {
-                type_idx: ti,
-                x,
-                y,
-                rotated,
-            });
+            out.push(TypePlacement { type_idx: ti, x, y, rotated });
             return true;
         }
         // Ordered splits here (both (a,b) and (b,a)), unlike the DP in `eval`.
@@ -828,12 +795,7 @@ fn chain_reconstruct(
         if let (Some(h1), Some(h2)) = (eval_f(fp, w), eval_f(&t.base, w))
             && h1 + h2 == h
         {
-            out.push(TypePlacement {
-                type_idx,
-                x: 0,
-                y: h1,
-                rotated: rotated_for_height(t, h2, w)?,
-            });
+            out.push(TypePlacement { type_idx, x: 0, y: h1, rotated: rotated_for_height(t, h2, w)? });
             h = h1;
             continue;
         }
@@ -842,12 +804,7 @@ fn chain_reconstruct(
         if w1 + w2 > w {
             return None;
         }
-        out.push(TypePlacement {
-            type_idx,
-            x: w1,
-            y: 0,
-            rotated: rotated_for_width(t, w2, h)?,
-        });
+        out.push(TypePlacement { type_idx, x: w1, y: 0, rotated: rotated_for_width(t, w2, h)? });
         h = eval_f(fp, w1).unwrap_or(h);
         w = w1;
     }
@@ -860,12 +817,7 @@ fn chain_reconstruct(
     } else {
         return None;
     };
-    out.push(TypePlacement {
-        type_idx: first_type,
-        x: 0,
-        y: 0,
-        rotated,
-    });
+    out.push(TypePlacement { type_idx: first_type, x: 0, y: 0, rotated });
     Some(out)
 }
 
@@ -992,12 +944,7 @@ mod tests {
     use super::*;
 
     fn piece(w: u32, h: u32, rot: bool) -> Piece {
-        Piece {
-            name: String::new(),
-            width: w,
-            height: h,
-            can_rotate: rot,
-        }
+        Piece { name: String::new(), width: w, height: h, can_rotate: rot }
     }
 
     fn pricer(pieces: &[Piece], w: u32, h: u32) -> (Pricer, GlfOracle) {
@@ -1028,10 +975,7 @@ mod tests {
             assert!(pl.x + pw <= w && pl.y + ph <= h, "placement out of sheet bounds");
         }
         // Independent guillotine check.
-        let problem = Problem {
-            sheet: Sheet { width: w, height: h },
-            pieces: pieces.to_vec(),
-        };
+        let problem = Problem { sheet: Sheet { width: w, height: h }, pieces: pieces.to_vec() };
         build_cut_tree(&problem, &pat.placements).expect("pattern must be guillotine-valid");
     }
 
@@ -1213,11 +1157,7 @@ mod tests {
             piece(6, 3, false),
             piece(4, 3, false),
         ];
-        let limits = PricingLimits {
-            max_nodes: 2,
-            max_cells: 200_000,
-            max_splits: 2_000_000,
-        };
+        let limits = PricingLimits { max_nodes: 2, max_cells: 200_000, max_splits: 2_000_000 };
         let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
         assert!(matches!(
@@ -1235,11 +1175,7 @@ mod tests {
             piece(6, 3, false),
             piece(4, 3, false),
         ];
-        let limits = PricingLimits {
-            max_nodes: 200_000,
-            max_cells: 3,
-            max_splits: 2_000_000,
-        };
+        let limits = PricingLimits { max_nodes: 200_000, max_cells: 3, max_splits: 2_000_000 };
         let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
         assert!(matches!(
@@ -1260,11 +1196,7 @@ mod tests {
             piece(6, 3, false),
             piece(4, 3, false),
         ];
-        let limits = PricingLimits {
-            max_nodes: 200_000,
-            max_cells: 200_000,
-            max_splits: 1,
-        };
+        let limits = PricingLimits { max_nodes: 200_000, max_cells: 200_000, max_splits: 1 };
         let mut oracle = GlfOracle::new(10, 7, limits.max_cells, limits.max_splits);
         let mut pr = Pricer::new(&pieces, 10, 7, limits);
         assert!(matches!(

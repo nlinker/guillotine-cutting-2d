@@ -1,4 +1,4 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 /// Sweep all feasible widths for a fixed piece set, compute optimal placement via GLF
 /// cut-tree reconstruction, and render each solution to tmp/{width}_opt.svg.
 /// Also runs the GA for each width and renders the best found solution to
@@ -30,11 +30,7 @@ fn main() {
     let out_dir = Path::new("tmp/glf");
     fs::create_dir_all(out_dir).expect("failed to create tmp/glf directory");
 
-    let ga_cfg = Arc::new(GaConfig {
-        n_elite: 5,
-        tournament_k: 5,
-        ..GaConfig::default()
-    });
+    let ga_cfg = Arc::new(GaConfig { n_elite: 5, tournament_k: 5, ..GaConfig::default() });
 
     let mut written = 0u32;
     let mut entries: Vec<(u32, u32)> = Vec::new(); // (width, height)
@@ -47,17 +43,8 @@ fn main() {
             continue;
         };
 
-        let spec = Arc::new(ProblemSpec {
-            sheet: Sheet { width, height },
-            ..base_spec.clone()
-        });
-        let sol = shrink_solution(
-            &Solution {
-                placements,
-                leftovers: vec![],
-            },
-            &spec,
-        );
+        let spec = Arc::new(ProblemSpec { sheet: Sheet { width, height }, ..base_spec.clone() });
+        let sol = shrink_solution(&Solution { placements, leftovers: vec![] }, &spec);
 
         // GLF exact solution
         let svg = render_svg(&spec, &sol).expect("render failed");

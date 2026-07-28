@@ -1,4 +1,4 @@
-﻿use super::common::{
+use super::common::{
     SELECTION_RULES, SORT_DIRS, SORT_KEYS, SPLIT_RULES, SelectionRule, SortDir, SortKey, SplitRule, selection_score,
     sort_cmp,
 };
@@ -64,13 +64,7 @@ fn jylanki_pass(problem: &Problem, key: SortKey, dir: SortDir, sel: SelectionRul
         };
 
         let fr = free.remove(fi);
-        placements.push(Placement {
-            sheet_idx: fr.sheet_idx,
-            piece_idx: orig_idx,
-            x: fr.x,
-            y: fr.y,
-            rotated,
-        });
+        placements.push(Placement { sheet_idx: fr.sheet_idx, piece_idx: orig_idx, x: fr.x, y: fr.y, rotated });
 
         let lw = fr.w - pw;
         let lh = fr.h - ph;
@@ -83,10 +77,7 @@ fn jylanki_pass(problem: &Problem, key: SortKey, dir: SortDir, sel: SelectionRul
         free.extend(split_directional(&fr, pw, ph, horizontal));
     }
 
-    Solution {
-        placements,
-        leftovers: free,
-    }
+    Solution { placements, leftovers: free }
 }
 
 /// Portfolio guillotine packer after Jylanki's "A Thousand Ways to Pack the Bin".

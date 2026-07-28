@@ -1,4 +1,4 @@
-﻿/// GA hyperparameter tuning for the real furniture cutting problem.
+/// GA hyperparameter tuning for the real furniture cutting problem.
 ///
 /// Runs each GaConfig variant over N_SEEDS seeds and reports:
 /// - how many times the ideal solution was found (1×400×400 on last sheet)
@@ -17,17 +17,9 @@ const N_SEEDS: usize = 100;
 
 /// Ideal sentinel: any 2-sheet solution beats this (sheets_used = 2.0 is above all
 /// 2-sheet solutions whose float encoding lies in [1.0, 2.0)).
-const IDEAL_OBJ: Objective = Objective {
-    sheets_used: 2.0,
-    drop_consolidation_score: 0,
-    layout_score: 0,
-};
+const IDEAL_OBJ: Objective = Objective { sheets_used: 2.0, drop_consolidation_score: 0, layout_score: 0 };
 /// 1-piece threshold: same sentinel — any 2-sheet solution qualifies.
-const ONE_PIECE_OBJ: Objective = Objective {
-    sheets_used: 2.0,
-    drop_consolidation_score: 0,
-    layout_score: 0,
-};
+const ONE_PIECE_OBJ: Objective = Objective { sheets_used: 2.0, drop_consolidation_score: 0, layout_score: 0 };
 
 struct Variant {
     name: &'static str,
@@ -36,11 +28,7 @@ struct Variant {
 
 fn run_variant(v: &Variant, problem: &cut::model::Problem) {
     let t0 = Instant::now();
-    let mut best_obj: Objective = Objective {
-        sheets_used: f64::MAX,
-        drop_consolidation_score: 0,
-        layout_score: 0,
-    };
+    let mut best_obj: Objective = Objective { sheets_used: f64::MAX, drop_consolidation_score: 0, layout_score: 0 };
     let mut sum_sheets: usize = 0;
     let mut sum_consolidation: u64 = 0;
     let mut ideal_count = 0usize;
@@ -152,90 +140,33 @@ fn main() {
 
     let variants = vec![
         // == inverse flag effect ===============================
-        Variant {
-            name: "inverse_p=0.00  pop=200 gen=1000",
-            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.00),
-        },
-        Variant {
-            name: "inverse_p=0.02  pop=200 gen=1000",
-            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.02),
-        },
-        Variant {
-            name: "inverse_p=0.05  pop=200 gen=1000",
-            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.05),
-        },
-        Variant {
-            name: "inverse_p=0.10  pop=200 gen=1000",
-            cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.10),
-        },
+        Variant { name: "inverse_p=0.00  pop=200 gen=1000", cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.00) },
+        Variant { name: "inverse_p=0.02  pop=200 gen=1000", cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.02) },
+        Variant { name: "inverse_p=0.05  pop=200 gen=1000", cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.05) },
+        Variant { name: "inverse_p=0.10  pop=200 gen=1000", cfg: cfgi(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10, 0.10) },
         // == baseline ==========================================
-        Variant {
-            name: "baseline  pop=100 gen=500",
-            cfg: cfg(100, 500, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "baseline  pop=100 gen=500", cfg: cfg(100, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         // == vary population size ==============================
-        Variant {
-            name: "pop=200 gen=500",
-            cfg: cfg(200, 500, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=300 gen=500",
-            cfg: cfg(300, 500, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=200 gen=500", cfg: cfg(200, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
+        Variant { name: "pop=300 gen=500", cfg: cfg(300, 500, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         // == vary generations ==================================
-        Variant {
-            name: "pop=100 gen=1000",
-            cfg: cfg(100, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=100 gen=2000",
-            cfg: cfg(100, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=100 gen=1000", cfg: cfg(100, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
+        Variant { name: "pop=100 gen=2000", cfg: cfg(100, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         // == both =============================================
-        Variant {
-            name: "pop=200 gen=1000",
-            cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=200 gen=2000",
-            cfg: cfg(200, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=200 gen=1000", cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
+        Variant { name: "pop=200 gen=2000", cfg: cfg(200, 2000, 2, 3, 0.80, 0.15, 0.05, 0.10) },
         // == vary elitism ======================================
-        Variant {
-            name: "pop=200 gen=1000 elite=5",
-            cfg: cfg(200, 1000, 5, 3, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=200 gen=1000 elite=5", cfg: cfg(200, 1000, 5, 3, 0.80, 0.15, 0.05, 0.10) },
         // == vary tournament pressure ==========================
-        Variant {
-            name: "pop=200 gen=1000 k=2",
-            cfg: cfg(200, 1000, 2, 2, 0.80, 0.15, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=200 gen=1000 k=5",
-            cfg: cfg(200, 1000, 2, 5, 0.80, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=200 gen=1000 k=2", cfg: cfg(200, 1000, 2, 2, 0.80, 0.15, 0.05, 0.10) },
+        Variant { name: "pop=200 gen=1000 k=5", cfg: cfg(200, 1000, 2, 5, 0.80, 0.15, 0.05, 0.10) },
         // == vary mutation rates ===============================
-        Variant {
-            name: "pop=200 gen=1000 swap_p=0.25",
-            cfg: cfg(200, 1000, 2, 3, 0.80, 0.25, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=200 gen=1000 swap_p=0.05",
-            cfg: cfg(200, 1000, 2, 3, 0.80, 0.05, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=200 gen=1000 p_point=0.20",
-            cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.20),
-        },
+        Variant { name: "pop=200 gen=1000 swap_p=0.25", cfg: cfg(200, 1000, 2, 3, 0.80, 0.25, 0.05, 0.10) },
+        Variant { name: "pop=200 gen=1000 swap_p=0.05", cfg: cfg(200, 1000, 2, 3, 0.80, 0.05, 0.05, 0.10) },
+        Variant { name: "pop=200 gen=1000 p_point=0.20", cfg: cfg(200, 1000, 2, 3, 0.80, 0.15, 0.05, 0.20) },
         // == vary crossover probability ========================
-        Variant {
-            name: "pop=200 gen=1000 p_cx=0.60",
-            cfg: cfg(200, 1000, 2, 3, 0.60, 0.15, 0.05, 0.10),
-        },
-        Variant {
-            name: "pop=200 gen=1000 p_cx=0.95",
-            cfg: cfg(200, 1000, 2, 3, 0.95, 0.15, 0.05, 0.10),
-        },
+        Variant { name: "pop=200 gen=1000 p_cx=0.60", cfg: cfg(200, 1000, 2, 3, 0.60, 0.15, 0.05, 0.10) },
+        Variant { name: "pop=200 gen=1000 p_cx=0.95", cfg: cfg(200, 1000, 2, 3, 0.95, 0.15, 0.05, 0.10) },
     ];
 
     for v in &variants {

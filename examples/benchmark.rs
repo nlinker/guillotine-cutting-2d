@@ -63,12 +63,7 @@ fn run_bpc_sync(problem: &cut::model::Problem) -> (usize, bool) {
     }
     impl ProgressSink for Capture {
         fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
-            if let ProgressMessage::Done {
-                sheets_used,
-                proven_optimal,
-                ..
-            } = msg
-            {
+            if let ProgressMessage::Done { sheets_used, proven_optimal, .. } = msg {
                 self.sheets = *sheets_used;
                 self.proven = proven_optimal.unwrap_or(false);
             }
@@ -76,10 +71,7 @@ fn run_bpc_sync(problem: &cut::model::Problem) -> (usize, bool) {
         }
     }
 
-    let mut cap = Capture {
-        sheets: 0,
-        proven: false,
-    };
+    let mut cap = Capture { sheets: 0, proven: false };
     drain_bpc(handle, &spec, &mut cap, 0).expect("drain_bpc failed");
     (cap.sheets, cap.proven)
 }
@@ -100,13 +92,7 @@ fn run_suite(s: &Suite) -> Vec<InstanceResult> {
             } else {
                 (0, false)
             };
-            InstanceResult {
-                gen_seed,
-                ref_obj,
-                ga_obj: best.objective,
-                bpc_sheets,
-                bpc_proven,
-            }
+            InstanceResult { gen_seed, ref_obj, ga_obj: best.objective, bpc_sheets, bpc_proven }
         })
         .collect()
 }
@@ -226,11 +212,7 @@ fn main() {
             weights: vec![1.0, 1.0],
             stage_count: 2,
         },
-        ga_cfg: GaConfig {
-            pop_size: 50,
-            n_generations: 200,
-            ..GaConfig::default()
-        },
+        ga_cfg: GaConfig { pop_size: 50, n_generations: 200, ..GaConfig::default() },
     }];
 
     for s in &suites {

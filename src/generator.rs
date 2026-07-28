@@ -94,13 +94,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
 
     for sheet_idx in 0..cfg.sheets_count {
         let mut queue = VecDeque::with_capacity(cfg.weights.len().pow(stage_count as u32));
-        queue.push_back(FreeRect {
-            sheet_idx,
-            x: 0,
-            y: 0,
-            w: sheet.width,
-            h: sheet.height,
-        });
+        queue.push_back(FreeRect { sheet_idx, x: 0, y: 0, w: sheet.width, h: sheet.height });
         // the direction of cuts on this stage
         let mut vertical = false;
 
@@ -113,21 +107,9 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
                 let mut offset = 0;
                 for length in lengths {
                     let r = if vertical {
-                        FreeRect {
-                            sheet_idx,
-                            x: fr.x + offset,
-                            y: fr.y,
-                            w: length,
-                            h: fr.h,
-                        }
+                        FreeRect { sheet_idx, x: fr.x + offset, y: fr.y, w: length, h: fr.h }
                     } else {
-                        FreeRect {
-                            sheet_idx,
-                            x: fr.x,
-                            y: fr.y + offset,
-                            w: fr.w,
-                            h: length,
-                        }
+                        FreeRect { sheet_idx, x: fr.x, y: fr.y + offset, w: fr.w, h: length }
                     };
                     rects.push(r);
                     offset += length + kerf;
@@ -144,13 +126,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     let mut placements: Vec<Placement> = Vec::new();
     let mut problem_pieces: Vec<Piece> = Vec::new();
     for (piece_idx, rect) in all_rects.iter().enumerate() {
-        placements.push(Placement {
-            sheet_idx: rect.sheet_idx,
-            piece_idx,
-            x: rect.x,
-            y: rect.y,
-            rotated: false,
-        });
+        placements.push(Placement { sheet_idx: rect.sheet_idx, piece_idx, x: rect.x, y: rect.y, rotated: false });
         problem_pieces.push(Piece {
             name: String::new(),
             width: rect.w + kerf,
@@ -160,16 +136,10 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
     }
     Output {
         problem: Problem {
-            sheet: Sheet {
-                width: cfg.sheet.width + kerf,
-                height: cfg.sheet.height + kerf,
-            },
+            sheet: Sheet { width: cfg.sheet.width + kerf, height: cfg.sheet.height + kerf },
             pieces: problem_pieces,
         },
-        optimal_solution: Solution {
-            placements,
-            leftovers: Vec::new(),
-        },
+        optimal_solution: Solution { placements, leftovers: Vec::new() },
     }
 }
 
@@ -258,14 +228,7 @@ mod tests {
     }
 
     fn cfg(kerf: u32, weights: Vec<f32>) -> GeneratorConfig {
-        GeneratorConfig {
-            sheet: sheet_10x8(),
-            sheets_count: 2,
-            min_size: 2,
-            kerf,
-            weights,
-            stage_count: 2,
-        }
+        GeneratorConfig { sheet: sheet_10x8(), sheets_count: 2, min_size: 2, kerf, weights, stage_count: 2 }
     }
 
     fn rng(seed: u64) -> Xoshiro256StarStar {
@@ -358,14 +321,7 @@ mod tests {
         for kerf in [0, 1, 2] {
             let mut rng = Xoshiro256StarStar::seed_from_u64(7);
             let out = generate(
-                &GeneratorConfig {
-                    sheet,
-                    sheets_count: 2,
-                    min_size: 1,
-                    kerf,
-                    weights: w_single(),
-                    stage_count: 2,
-                },
+                &GeneratorConfig { sheet, sheets_count: 2, min_size: 1, kerf, weights: w_single(), stage_count: 2 },
                 &mut rng,
             );
             for pl in &out.optimal_solution.placements {

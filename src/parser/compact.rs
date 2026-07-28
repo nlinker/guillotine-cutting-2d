@@ -64,12 +64,7 @@ pub fn parse_problem(s: &str) -> Result<ProblemSpec, ParseError> {
         pieces.push(piece);
     }
 
-    let mut spec = ProblemSpec {
-        sheet,
-        kerf,
-        margin,
-        piece_types: pieces,
-    };
+    let mut spec = ProblemSpec { sheet, kerf, margin, piece_types: pieces };
     spec.normalize();
     Ok(spec)
 }
@@ -126,13 +121,7 @@ mod tests {
     fn full_example() {
         let tuple = |p: &PieceType| (p.width, p.height, p.count, p.can_rotate);
         let p = parse_problem("3000x4000R:7,0:835x620/4,1020x620/4f,1020x620/4,1490x620/2,1750x900").unwrap();
-        assert_eq!(
-            p.sheet,
-            Sheet {
-                width: 3000,
-                height: 4000
-            }
-        );
+        assert_eq!(p.sheet, Sheet { width: 3000, height: 4000 });
         assert_eq!(p.kerf, 7);
         assert_eq!(p.margin, 0);
         assert_eq!(p.piece_types.len(), 5);

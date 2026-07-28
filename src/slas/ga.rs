@@ -1,4 +1,4 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
 use rand::Rng;
 
@@ -48,9 +48,7 @@ impl GaDecoder for SlasDecoder {
 
 /// Single-threaded SLAS GA. Takes a flat `Problem` (already expanded from spec).
 pub fn run_ga<R: Rng>(problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
-    let decoder = SlasDecoder {
-        problem: Arc::new(problem.clone()),
-    };
+    let decoder = SlasDecoder { problem: Arc::new(problem.clone()) };
     ga::run_ga(&decoder, config, rng)
 }
 
@@ -62,9 +60,7 @@ pub fn run_ga_mt(
     progress_interval: usize,
     migration_interval: usize,
 ) -> GaHandle<Genome> {
-    let decoder = Arc::new(SlasDecoder {
-        problem: Arc::new(expand_problem(&spec)),
-    });
+    let decoder = Arc::new(SlasDecoder { problem: Arc::new(expand_problem(&spec)) });
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
@@ -251,12 +247,7 @@ mod tests {
     use crate::{expand::expand_problem, model::validate_solution, parser::compact::parse_problem};
 
     fn g(piece_idx: usize) -> Gene {
-        Gene {
-            piece_idx,
-            rotate: false,
-            point_selector: 0,
-            inverse: false,
-        }
+        Gene { piece_idx, rotate: false, point_selector: 0, inverse: false }
     }
 
     fn ids(genome: &Genome) -> Vec<usize> {
@@ -270,10 +261,7 @@ mod tests {
     }
 
     fn ind(piece_idx: usize, objective: crate::model::Objective) -> Individual {
-        Individual {
-            genome: vec![g(piece_idx)],
-            objective,
-        }
+        Individual { genome: vec![g(piece_idx)], objective }
     }
 
     fn default_config() -> GaConfig {
@@ -385,11 +373,7 @@ mod tests {
 
     #[test]
     fn tournament_full_k_returns_best() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
         let winner = tournament_select(&pop, 3, &mut rng);
@@ -404,11 +388,7 @@ mod tests {
 
     #[test]
     fn tournament_is_deterministic() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(5)), ind(1, o(3)), ind(2, o(8)), ind(3, o(1))];
         let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
         let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
@@ -417,11 +397,7 @@ mod tests {
 
     #[test]
     fn elite_returns_best() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
         let elite = select_elite(&pop, 1);
         assert_eq!(elite.len(), 1);
@@ -436,11 +412,7 @@ mod tests {
 
     #[test]
     fn elite_top_k_sorted() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(50)), ind(1, o(10)), ind(2, o(30)), ind(3, o(20))];
         let elite = select_elite(&pop, 2);
         assert_eq!(
@@ -454,11 +426,7 @@ mod tests {
 
     #[test]
     fn elite_n_exceeds_pop() {
-        let o = |dc| crate::model::Objective {
-            sheets_used: 0.0,
-            drop_consolidation_score: dc,
-            layout_score: 0,
-        };
+        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
         let pop = vec![ind(0, o(5)), ind(1, o(3))];
         let elite = select_elite(&pop, 10);
         assert_eq!(elite.len(), 2);
@@ -478,9 +446,7 @@ mod tests {
         let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
         let flat = expand_problem(&spec);
         let n = flat.pieces.len();
-        let decoder = SlasDecoder {
-            problem: Arc::new(flat),
-        };
+        let decoder = SlasDecoder { problem: Arc::new(flat) };
         let cfg = default_config();
         let mut rng = Xoshiro256StarStar::seed_from_u64(99);
         for _ in 0..20 {
@@ -493,9 +459,7 @@ mod tests {
     fn random_genome_is_deterministic() {
         let spec = parse_problem("10x10R::3x2,4x3,2x2f").unwrap();
         let flat = expand_problem(&spec);
-        let decoder = SlasDecoder {
-            problem: Arc::new(flat),
-        };
+        let decoder = SlasDecoder { problem: Arc::new(flat) };
         let cfg = default_config();
         let g1 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
         let g2 = decoder.random_genome(&cfg, &mut Xoshiro256StarStar::seed_from_u64(7));
@@ -594,11 +558,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap());
-        let cfg = Arc::new(GaConfig {
-            pop_size: 20,
-            n_generations: 30,
-            ..GaConfig::default()
-        });
+        let cfg = Arc::new(GaConfig { pop_size: 20, n_generations: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {
@@ -625,11 +585,7 @@ mod tests {
             "22x24F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
             "28x19F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
         ];
-        let cfg = GaConfig {
-            pop_size: 50,
-            n_generations: 200,
-            ..GaConfig::default()
-        };
+        let cfg = GaConfig { pop_size: 50, n_generations: 200, ..GaConfig::default() };
         for spec_str in specs {
             let problem = expand_problem(&parse_problem(spec_str).unwrap());
             for seed in 0u64..3 {

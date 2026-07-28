@@ -139,20 +139,8 @@ mod tests {
             kerf: 0,
             margin: 0,
             piece_types: vec![
-                PieceType {
-                    name: "A".into(),
-                    width: 60,
-                    height: 40,
-                    count: 1,
-                    can_rotate: false,
-                },
-                PieceType {
-                    name: "B".into(),
-                    width: 40,
-                    height: 40,
-                    count: 1,
-                    can_rotate: false,
-                },
+                PieceType { name: "A".into(), width: 60, height: 40, count: 1, can_rotate: false },
+                PieceType { name: "B".into(), width: 40, height: 40, count: 1, can_rotate: false },
             ],
         }
     }
@@ -162,20 +150,8 @@ mod tests {
         let spec = make_spec();
         let solution = SolutionSpec {
             placements: vec![
-                PlacementSpec {
-                    sheet_idx: 0,
-                    ptype_idx: 0,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
-                PlacementSpec {
-                    sheet_idx: 1,
-                    ptype_idx: 1,
-                    x: 0,
-                    y: 0,
-                    rotated: false,
-                },
+                PlacementSpec { sheet_idx: 0, ptype_idx: 0, x: 0, y: 0, rotated: false },
+                PlacementSpec { sheet_idx: 1, ptype_idx: 1, x: 0, y: 0, rotated: false },
             ],
             leftovers: vec![],
         };
