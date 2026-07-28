@@ -258,7 +258,7 @@ fn run_calc_with_sink(
     match sink_mode {
         "stdout" => {
             let mut sink = cut::transport::stdout::StdoutSink;
-            run_with_sink_any(
+            run_algorithm_with_sink(
                 algorithm,
                 spec,
                 cfg,
@@ -273,7 +273,7 @@ fn run_calc_with_sink(
             {
                 eprintln!("Waiting for client on {PIPE_NAME} ...");
                 let mut sink = cut::transport::windows::WindowsPipeSink::create_and_wait(PIPE_NAME)?;
-                run_with_sink_any(
+                run_algorithm_with_sink(
                     algorithm,
                     spec,
                     cfg,
@@ -287,7 +287,7 @@ fn run_calc_with_sink(
             {
                 eprintln!("Waiting for reader on {FIFO_PATH} ...");
                 let mut sink = cut::transport::unix::FifoSink::new(FIFO_PATH)?;
-                run_with_sink_any(
+                run_algorithm_with_sink(
                     algorithm,
                     spec,
                     cfg,
@@ -301,7 +301,7 @@ fn run_calc_with_sink(
             {
                 eprintln!("Named pipe not supported on this platform, falling back to stdout");
                 let mut sink = cut::transport::stdout::StdoutSink;
-                run_with_sink_any(
+                run_algorithm_with_sink(
                     algorithm,
                     spec,
                     cfg,
@@ -406,7 +406,7 @@ fn run_with_any_handle(
     Ok(())
 }
 
-pub(crate) fn run_with_sink_any(
+pub(crate) fn run_algorithm_with_sink(
     algorithm: Algorithm,
     spec: Arc<ProblemSpec>,
     cfg: Arc<GaConfig>,
@@ -457,7 +457,7 @@ fn run_calc_render(
     let spec_arc = Arc::new(spec.clone());
     let cfg_arc = Arc::new(cfg.clone());
     let mut sink = CapturingSink::default();
-    run_with_sink_any(algorithm, spec_arc, cfg_arc, &seeds, progress_interval, &mut sink, 0)?;
+    run_algorithm_with_sink(algorithm, spec_arc, cfg_arc, &seeds, progress_interval, &mut sink, 0)?;
     let sol = sink
         .solution
         .expect("run_with_sink_any always sends Done before returning");

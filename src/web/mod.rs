@@ -125,7 +125,7 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
             let mut sink = SseSink { tx, start: Instant::now(), sheet_w, sheet_h };
             let algorithm = params.algorithm;
             std::thread::spawn(move || {
-                crate::run_with_sink_any(algorithm, problem, cfg, &seeds, params.progress, &mut sink, 0).ok();
+                crate::run_algorithm_with_sink(algorithm, problem, cfg, &seeds, params.progress, &mut sink, 0).ok();
             });
         }
     }
