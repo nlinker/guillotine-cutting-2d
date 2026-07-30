@@ -1,16 +1,3 @@
-/// GA quality benchmark — not a correctness test.
-///
-/// For each `Suite`, generates `N_INSTANCES` problem instances (each with its own
-/// deterministic RNG seed) and runs the GA on each one, comparing the result
-/// against the generator's known reference objective.
-///
-/// Reproducibility: every instance is identified by its `gen_seed`. To reproduce
-/// a specific instance run with that seed in isolation:
-///
-///   let out = generate(&suite.gen, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
-///   let best = run_ga(&out.problem, &suite.ga, &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)));
-///
-/// Run with:  cargo run --example benchmark --release
 use cut::{
     ga::GaConfig,
     generator::{GeneratorConfig, generate},
@@ -23,7 +10,6 @@ use rand_xoshiro::Xoshiro256StarStar;
 const N_INSTANCES: usize = 100;
 const GEN_BASE_SEED: u64 = 777;
 
-/// Derive a GA seed from the generator seed so the two streams are independent.
 fn ga_seed(gen_seed: u64) -> u64 {
     gen_seed ^ 0x9e37_79b9_7f4a_7c15
 }

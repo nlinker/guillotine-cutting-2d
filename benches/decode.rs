@@ -7,6 +7,8 @@ use cut::{
     slas::decoder::{Gene as SlasGene, Genome as SlasGenome, decode as slas_decode},
 };
 
+const PROBLEM: &str = "2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r";
+
 fn slas_genome(spec: &ProblemSpec) -> SlasGenome {
     let problem = expand_problem(spec);
     (0..problem.pieces.len())
@@ -45,8 +47,7 @@ fn bench_decode(c: &mut Criterion) {
     let real_slas = slas_genome(&real_spec);
     let real_glas = glas_genome(&real_spec);
 
-    let synth_spec =
-        parser::compact::parse_problem("2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
+    let synth_spec = parser::compact::parse_problem(PROBLEM).expect("parse");
     let synth_problem = expand_problem(&synth_spec);
     let synth_slas = slas_genome(&synth_spec);
     let synth_glas = glas_genome(&synth_spec);

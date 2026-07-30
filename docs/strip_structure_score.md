@@ -40,7 +40,7 @@ mono-height and still merge, so the horizontal part is unchanged (1800). But the
 columns break: none of the bottom row's `(x, w)` keys — `(0, 15)`, `(15, 15)` — match
 any of the top row's — `(0, 10)`, `(10, 10)`, `(20, 10)` — so all 5 pieces on the sheet
 end up as separate, unmerged vertical runs of length 10 (their own height). The
-vertical part drops from 1200 to `5 · 10² = 500`, and the total drops from 3000 to
-2300. This is the point of the metric: it's not enough for each row to look tidy on
+vertical part drops from 1200 to `5 · 10² = 500`, and the total drops from 3000 to 2300.
+This is the point of the metric: it's not enough for each row to look tidy on
 its own — the columns must also stay uniform in width across every row, or the fence
 has to be reset more often.

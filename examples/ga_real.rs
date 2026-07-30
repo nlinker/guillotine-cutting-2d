@@ -1,9 +1,4 @@
-/// Fixed-problem GA benchmark: runs N_PARALLEL GA instances simultaneously (one per seed),
-/// picks the best result, and prints detailed placement info.
-///
-/// Run with:  cargo run --example ga_real --release
-use std::collections::BTreeMap;
-use std::{sync::Arc, time::Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use cut::{
     ga::GaConfig,
