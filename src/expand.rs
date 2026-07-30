@@ -2,11 +2,9 @@ use crate::model::{
     FreeRect, Piece, PieceType, Placement, PlacementSpec, Problem, ProblemSpec, Sheet, Solution, SolutionSpec,
 };
 
-/// Expand a `ProblemSpec` into a flat `Problem` (one `Piece` entry per physical copy).
-///
-/// Sheet and every piece are enlarged by `kerf` so that the decoder can place pieces
-/// flush (kerf = 0) while preserving correct spatial relationships.
-/// The sheet is also reduced by `margin` on every edge. Panics if the margin leaves no room.
+/// Expands a `ProblemSpec` into a flat `Problem` (one `Piece` per physical copy), enlarging
+/// sheet and pieces by `kerf` so the decoder can place flush, and shrinking the sheet by
+/// `margin`. Panics if the margin leaves no room.
 pub fn expand_problem(spec: &ProblemSpec) -> Problem {
     let m = spec.margin;
     let k = spec.kerf;
@@ -31,10 +29,8 @@ pub fn expand_problem(spec: &ProblemSpec) -> Problem {
     Problem { sheet: Sheet { width: spec.sheet.width - 2 * m + k, height: spec.sheet.height - 2 * m + k }, pieces }
 }
 
-/// Convert a `SolutionSpec` (type-indexed) into a flat `Solution`.
-///
-/// Each `PlacementSpec.ptype_idx` (type) is mapped to a flat piece index using the
-/// spec. Copies of the same type are assigned flat indices in spec order.
+/// Converts a `SolutionSpec` (type-indexed) into a flat `Solution`, mapping each
+/// `ptype_idx` to a flat piece index (copies of the same type get indices in spec order).
 pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     let type_to_flat_start = spec
         .piece_types
@@ -59,11 +55,8 @@ pub fn expand_solution(sol: &SolutionSpec, spec: &ProblemSpec) -> Solution {
     Solution { placements, leftovers: sol.leftovers.clone() }
 }
 
-/// Collapse a flat `Problem` into a `ProblemSpec` by grouping consecutive identical pieces.
-///
-/// Pieces are grouped by run: consecutive pieces with matching `(name, width, height,
-/// can_rotate)` are merged into one `PieceType` with their combined count. Non-consecutive
-/// identical pieces become separate entries.
+/// Collapses a flat `Problem` into a `ProblemSpec` by merging runs of consecutive pieces
+/// with matching `(name, width, height, can_rotate)`; non-consecutive duplicates stay separate.
 pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
     let mut pieces: Vec<PieceType> = Vec::new();
     for p in &problem.pieces {
@@ -87,11 +80,8 @@ pub fn shrink_problem(problem: &Problem) -> ProblemSpec {
     ProblemSpec { sheet: problem.sheet, kerf: 0, margin: 0, piece_types: pieces }
 }
 
-/// Convert a flat `Solution` into a `SolutionSpec` using the originating `ProblemSpec`.
-///
-/// Each `Placement.piece_idx` (flat) is mapped back to the type index via the
-/// `flat_to_type` table built from `spec`. Coordinates are shifted by `+spec.margin`
-/// to restore physical sheet coordinates.
+/// Converts a flat `Solution` back into a `SolutionSpec`: maps each flat `piece_idx` back
+/// to its type index, and shifts coordinates by `+spec.margin` to restore sheet coordinates.
 pub fn shrink_solution(sol: &Solution, spec: &ProblemSpec) -> SolutionSpec {
     let m = spec.margin;
     let flat_to_type = spec

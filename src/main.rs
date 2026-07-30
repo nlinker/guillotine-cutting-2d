@@ -23,23 +23,6 @@ const PIPE_NAME: &str = r"\\.\pipe\cut_progress";
 #[cfg(unix)]
 const FIFO_PATH: &str = "/tmp/cut_progress";
 
-/// Translates the CLI-facing `Algorithm` into the library's `AlgConfig`, so
-/// `cut::runner::run_algorithm` dispatches on one value instead of an
-/// `Algorithm` tag plus a separate GA config that would have to stay in sync.
-pub(crate) fn make_algorithm_config(
-    algorithm: Algorithm,
-    cfg: Arc<GaConfig>,
-    seeds: Vec<u64>,
-    progress_interval: usize,
-) -> AlgConfig {
-    match algorithm {
-        Algorithm::Slas => AlgConfig::Ga { kind: GaKind::Slas, cfg, seeds, progress_interval },
-        Algorithm::Glas => AlgConfig::Ga { kind: GaKind::Glas, cfg, seeds, progress_interval },
-        Algorithm::Bfdh => AlgConfig::Heuristic { kind: HeuristicKind::Bfdh },
-        Algorithm::Jylanki => AlgConfig::Heuristic { kind: HeuristicKind::Jylanki },
-    }
-}
-
 #[rustfmt::skip]
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -80,6 +63,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
+}
+
+/// Converts the CLI-facing `Algorithm` into the library's `AlgConfig`.
+pub(crate) fn make_algorithm_config(
+    algorithm: Algorithm,
+    cfg: Arc<GaConfig>,
+    seeds: Vec<u64>,
+    progress_interval: usize,
+) -> AlgConfig {
+    match algorithm {
+        Algorithm::Slas => AlgConfig::Ga { kind: GaKind::Slas, cfg, seeds, progress_interval },
+        Algorithm::Glas => AlgConfig::Ga { kind: GaKind::Glas, cfg, seeds, progress_interval },
+        Algorithm::Bfdh => AlgConfig::Heuristic { kind: HeuristicKind::Bfdh },
+        Algorithm::Jylanki => AlgConfig::Heuristic { kind: HeuristicKind::Jylanki },
+    }
 }
 
 fn load_problem(compact: Option<&str>, json: Option<&str>) -> Result<ProblemSpec, Box<dyn Error>> {
