@@ -90,13 +90,13 @@ since the number of possible solutions is huge and this combinatorics makes the 
 
 - Solve and render in one step with `--render` (SVG written to stdout, progress to stderr):
 ```
-cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 --render > out.svg
+cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --iterations 5000 --render > out.svg
 firefox out.svg
 ```
 
 - If you need the intermediate JSON (e.g. to inspect or re-render), use two commands:
 ```
-cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 > out.json
+cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --iterations 5000 > out.json
 cargo run --release -- render --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
 firefox out.svg
 ```
@@ -115,7 +115,7 @@ bat -p task.json
     ]
   }
 
-cargo run --release -- calc --json task.json --seed 42 --gens 5000
+cargo run --release -- calc --json task.json --seed 42 --iterations 5000
 ```
 
 - Or you can start the web UI at http://localhost:8080

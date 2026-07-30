@@ -30,7 +30,7 @@ fn main() {
     let out_dir = Path::new("tmp/glf");
     fs::create_dir_all(out_dir).expect("failed to create tmp/glf directory");
 
-    let ga_cfg = Arc::new(GaConfig { n_elite: 5, tournament_k: 5, ..GaConfig::default() });
+    let ga_cfg = Arc::new(GaConfig { n_elites: 5, tournament_size: 5, ..GaConfig::default() });
 
     let mut written = 0u32;
     let mut entries: Vec<(u32, u32)> = Vec::new(); // (width, height)

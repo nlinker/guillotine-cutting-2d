@@ -36,7 +36,7 @@ Private Const RESULT_CELL      As String = "P8"  ' top-left of placement table (
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
 Private Const CFG_SEED_CELL           As String = "O1"  ' base random seed (--seed)
-Private Const CFG_GENS_CELL           As String = "O2"  ' generations per run (--gens)
+Private Const CFG_GENS_CELL           As String = "O2"  ' generations per run (--iterations)
 Private Const CFG_POP_CELL            As String = "O3"  ' population size (--pop)
 Private Const CFG_ALGORITHM_CELL      As String = "O4"  ' algorithm: glas/bfdh/jylanki
 Private Const CFG_LARGE_AREA_CELL     As String = "O5"  ' large_area_threshold (0 = auto)
@@ -872,7 +872,7 @@ Public Sub RunCut()
     ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
-        & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
+        & " --seed " & nSeed & " --iterations " & nGens & " --pop " & nPop _
         & " --algorithm " & sAlgorithm & " --sink pipe"
     If nLargeArea > 0 Then cmd = cmd & " --large-area-threshold " & nLargeArea
     If nLongDim > 0 Then cmd = cmd & " --long-dim-threshold " & nLongDim

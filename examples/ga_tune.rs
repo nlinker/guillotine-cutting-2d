@@ -77,9 +77,9 @@ fn cfg(
 ) -> GaConfig {
     GaConfig {
         pop_size,
-        n_generations,
-        n_elite,
-        tournament_k,
+        n_iterations: n_generations,
+        n_elites: n_elite,
+        tournament_size: tournament_k,
         crossover_p,
         swap_p,
         flip_p,

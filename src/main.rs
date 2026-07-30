@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
         Command::Calc {
-            compact, json, seed, threads, gens, pop, elite, k, progress, sink,
+            compact, json, seed, threads, iterations: gens, pop, elite, tournament: k, progress, sink,
             sink_interval,render, algorithm, long_dim_threshold, large_area_threshold
         } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;

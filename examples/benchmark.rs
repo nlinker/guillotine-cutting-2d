@@ -117,7 +117,7 @@ fn main() {
             weights: vec![1.0, 1.0],
             stage_count: 2,
         },
-        ga_cfg: GaConfig { pop_size: 50, n_generations: 200, ..GaConfig::default() },
+        ga_cfg: GaConfig { pop_size: 50, n_iterations: 200, ..GaConfig::default() },
     }];
 
     for s in &suites {

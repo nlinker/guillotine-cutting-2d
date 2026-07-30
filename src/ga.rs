@@ -19,59 +19,49 @@ pub struct GaConfig {
     /// Number of individuals in the population.
     pub pop_size: usize,
 
-    /// Number of generations to run before returning the best individual found.
-    pub n_generations: usize,
+    /// Number of generations to run.
+    pub n_iterations: usize,
 
     /// Number of top individuals copied unchanged into the next generation (elitism).
-    /// Keeps the best solution from being lost to crossover or mutation.
     /// Typical value: 1-2. Set to 0 to disable.
-    pub n_elite: usize,
+    pub n_elites: usize,
 
-    /// Tournament size: how many individuals compete for each parent slot.
-    /// Higher values increase selection pressure (best wins more often).
+    /// Number of individuals competing for each parent slot (tournament selection).
     /// Typical value: 2-5.
-    pub tournament_k: usize,
+    pub tournament_size: usize,
 
-    /// Probability that two parents produce children via crossover.
-    /// With probability `1 - crossover_p` children are clones of their parents.
+    /// Probability of crossover; otherwise children are clones of their parents.
     /// Typical value: 0.7-0.9.
     pub crossover_p: f64,
 
-    /// Per-gene probability of a swap mutation (exchanges this gene with a random other).
-    /// Preserves the permutation invariant.
+    /// Per-gene swap-mutation probability (exchanges with a random other gene, permutation-safe).
     /// Typical value: 0.05-0.2.
     pub swap_p: f64,
 
-    /// Per-gene probability of flipping the `rotate` flag.
-    /// Only has effect when the piece allows rotation.
+    /// Per-gene probability of flipping the `rotate` flag (no-op if the piece can't rotate).
     /// Typical value: 0.02-0.1.
     pub flip_p: f64,
 
-    /// Per-gene probability of nudging `point_selector` by a random amount.
-    /// Controls which free rectangle the decoder tries first for this piece.
-    /// Small steps let the GA explore rect choices smoothly rather than jumping.
+    /// Per-gene probability of shifting `point_selector`, which picks the free rect the decoder
+    /// tries first for this piece.
     /// Typical value: 0.05-0.15.
     pub point_p: f64,
 
-    /// Inclusive range `(lo, hi)` for the nudge magnitude applied to `point_selector`.
-    /// A value is drawn uniformly from `lo..=hi` and added or subtracted (wrapping).
+    /// Inclusive range `(lo, hi)` for the `point_selector` shift (drawn uniformly, added or
+    /// subtracted with wrapping).
     /// Default: `(1, 3)`.
     pub point_delta: (u32, u32),
 
-    /// Per-gene probability of flipping the `inverse` flag.
-    /// When flipped, the SLAS split direction is reversed for that piece, letting the GA
-    /// represent cut trees that the default `lw <= lh` heuristic cannot.
+    /// Per-gene probability of flipping the split-direction flag.
     /// Typical value: 0.02-0.05.
     pub inverse_p: f64,
 
-    /// Minimum dominant side length (px) for a piece type to be considered "long".
-    /// Piece types with max(w,h) < long_dim_threshold go into the "small" class and are placed
+    /// Minimum dominant side (px) for a piece type to count as "long"; smaller types are placed
     /// last by the glas decoder.
     /// 0 = auto-derive: max(sheet.width, sheet.height) * 0.3.
     pub long_dim_threshold: u32,
 
-    /// Sqrt of the minimum area (px) for a long piece to be "large".
-    /// A long piece is "large" if width*height >= large_area_threshold^2; otherwise "medium".
+    /// Sqrt of the minimum area (px) for a long piece to count as "large" vs "medium".
     /// 0 = auto-derive: sqrt(sheet.width * sheet.height * 0.05).
     pub large_area_threshold: u32,
 }
@@ -82,9 +72,9 @@ impl fmt::Display for GaConfig {
             f,
             "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim_threshold={} large_area_threshold={}",
             self.pop_size,
-            self.n_generations,
-            self.n_elite,
-            self.tournament_k,
+            self.n_iterations,
+            self.n_elites,
+            self.tournament_size,
             self.crossover_p,
             self.swap_p,
             self.flip_p,
@@ -102,9 +92,9 @@ impl Default for GaConfig {
     fn default() -> Self {
         Self {
             pop_size: 200,
-            n_generations: 1000,
-            n_elite: 2,
-            tournament_k: 3,
+            n_iterations: 1000,
+            n_elites: 2,
+            tournament_size: 3,
             crossover_p: 0.80,
             swap_p: 0.15,
             flip_p: 0.05,
@@ -120,10 +110,10 @@ impl Default for GaConfig {
 impl GaConfig {
     pub fn new(
         spec: &ProblemSpec,
-        n_generations: usize,
+        n_iterations: usize,
         pop_size: usize,
-        n_elite: usize,
-        tournament_k: usize,
+        n_elites: usize,
+        tournament_size: usize,
         large_area_threshold: u32,
         long_dim_threshold: u32,
     ) -> Self {
@@ -142,9 +132,9 @@ impl GaConfig {
         };
         Self {
             pop_size,
-            n_generations,
-            n_elite,
-            tournament_k,
+            n_iterations,
+            n_elites,
+            tournament_size,
             long_dim_threshold,
             large_area_threshold,
             ..Self::default()
@@ -152,11 +142,9 @@ impl GaConfig {
     }
 }
 
-/// Encapsulates genome representation and genetic operators for one decoder variant.
-///
-/// Implementors (SlasDecoder, GlasDecoder, ...) own the problem data they need and
-/// expose a uniform interface to the generic GA loop. The trait has no knowledge of
-/// ProblemSpec / SolutionSpec -- those are wire types handled by the caller.
+/// Genome representation and genetic operators for one decoder variant (SlasDecoder,
+/// GlasDecoder, ...). Has no knowledge of ProblemSpec/SolutionSpec -- those are wire types
+/// handled by the caller.
 pub trait GaDecoder {
     type Genome: Clone + Send + 'static;
 
@@ -165,8 +153,7 @@ pub trait GaDecoder {
     fn crossover<R: Rng>(&self, p1: &Self::Genome, p2: &Self::Genome, rng: &mut R) -> (Self::Genome, Self::Genome);
     fn mutate<R: Rng>(&self, genome: &mut Self::Genome, config: &GaConfig, rng: &mut R);
 
-    /// Deterministic seed genomes injected at position 0 in the initial population.
-    /// Default: empty (all individuals are random).
+    /// Deterministic seed genomes injected into the initial population. Default: empty.
     fn seed_genomes(&self, _config: &GaConfig) -> Vec<Self::Genome> {
         vec![]
     }
@@ -192,9 +179,7 @@ pub enum GaEvent<G: Clone + Send + 'static> {
     Done(Vec<(u64, Individual<G>)>),
 }
 
-/// Caller-facing handle for observing and stopping a running GA.
-///
-/// Dropping the handle requests early termination.
+/// Caller-facing handle for observing and stopping a running GA. Drop to terminate early.
 pub struct GaHandle<G: Clone + Send + 'static> {
     pub rx: UnboundedReceiver<GaEvent<G>>,
     stop: Arc<AtomicBool>,
@@ -215,8 +200,8 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
         }
     }
 
-    /// Blocks until the GA run finishes, discarding intermediate `Progress` events.
-    /// Returns results sorted best-first (see `GaEvent::Done`).
+    /// Blocks until the GA finishes, discarding `Progress` events; returns results sorted
+    /// best-first (see `GaEvent::Done`).
     pub fn blocking_wait(mut self) -> Vec<(u64, Individual<G>)> {
         let result = loop {
             match self.rx.blocking_recv() {
@@ -230,8 +215,8 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
     }
 }
 
-/// Extracts a readable message from a thread panic payload
-/// (`std::thread::Result::Err`), with a fallback for non-string payloads.
+/// Extracts a readable message from a thread panic payload, with a fallback for non-string
+/// payloads. Called from `GaHandle::join` when the supervisor thread panicked.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     payload
         .downcast_ref::<&str>()
@@ -264,13 +249,12 @@ impl<G: Clone + Send + 'static> Clone for GaContext<G> {
     }
 }
 
-/// Shared state for barrier-based migration in `run_ga_mt`.
-///
-/// All N threads synchronize every `interval` generations via two barriers:
-/// - `barrier1`: all threads have written their best individual to their slot
-/// - `barrier2`: all threads have read the global best and injected it
-///
-/// Stop flag is checked only after `barrier2` to avoid deadlocks.
+/// Shared state for barrier-based _migration_ (GA threads exchanging their current best
+/// individual) in `run_ga_mt`. All N threads synchronize every `interval` generations via
+/// two barriers:
+/// `barrier1` once each has written its best individual to its slot, `barrier2` once each has
+/// read the global best and injected it. Stop flag is checked only after `barrier2`, to avoid
+/// deadlock.
 struct SyncMigration<'a, G: Clone + Send + 'static> {
     bests: &'a [Mutex<Option<Individual<G>>>],
     barrier1: &'a Barrier,
@@ -291,8 +275,8 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
     (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
-/// Returns the `n_elite` individuals with the lowest objective (lower is better),
-/// sorted ascending. If `n_elite >= individuals.len()`, all are returned sorted.
+/// Returns the `n_elite` best individuals by objective, sorted ascending; if
+/// `n_elite >= individuals.len()`, returns all, sorted.
 pub fn select_elite<G: Clone>(individuals: &[Individual<G>], n_elite: usize) -> Vec<Individual<G>> {
     let mut ranked = individuals.iter().collect::<Vec<&Individual<G>>>();
     ranked.sort_unstable_by_key(|ind| ind.objective);
@@ -314,21 +298,17 @@ pub fn tournament_select<'a, G, R: Rng>(individuals: &'a [Individual<G>], k: usi
     best
 }
 
-/// Runs the GA for `config.n_generations` and returns the best individual found.
+/// Runs the GA for `config.n_iterations` and returns the best individual found.
 pub fn run_ga<D: GaDecoder, R: Rng>(decoder: &D, config: &GaConfig, rng: &mut R) -> Individual<D::Genome> {
     run_ga_inner(decoder, config, None, None, rng)
 }
 
-/// Spawns the GA on multiple threads (one per seed) and returns a `GaHandle`.
+/// Spawns the GA on multiple threads (one per seed) and returns a `GaHandle`. Dropping the
+/// handle requests early termination.
 ///
-/// Events arrive through `handle.rx`: `GaEvent::Progress` every `migration_interval`
-/// generations (when `migration_interval > 0`) and `GaEvent::Done` when all islands finish.
-/// Dropping the handle requests early termination.
-///
-/// `migration_interval = 0` disables migration entirely (independent islands).
-/// With `migration_interval > 0` all islands synchronize at a global barrier every N
-/// generations and share the best individual, which makes results fully deterministic:
-/// identical seeds + identical config always produce identical output.
+/// `handle.rx` receives `GaEvent::Progress` and `GaEvent::Done` messages. With
+/// migration on, islands share their best individual via a barrier each interval, which makes
+/// output _fully deterministic_ for a given seed set and config.
 pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
     decoder: Arc<D>,
     config: Arc<GaConfig>,
@@ -415,13 +395,13 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
     let mut pop = init_population(decoder, config, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
-    for step in 0..config.n_generations {
-        let elite = select_elite(&pop, config.n_elite);
+    for step in 0..config.n_iterations {
+        let elite = select_elite(&pop, config.n_elites);
         let mut next_pop = elite;
 
         while next_pop.len() < config.pop_size {
-            let p1 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
-            let p2 = tournament_select(&pop, config.tournament_k, rng).genome.clone();
+            let p1 = tournament_select(&pop, config.tournament_size, rng).genome.clone();
+            let p2 = tournament_select(&pop, config.tournament_size, rng).genome.clone();
 
             let (mut g1, mut g2) = if rng_01(rng) < config.crossover_p {
                 decoder.crossover(&p1, &p2, rng)
@@ -446,8 +426,8 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
             best = gen_best;
         }
 
-        // Progress when migration is disabled: each island reports its local best.
-        // Stop check is safe here because there is no barrier waiting.
+        // Migration disabled. Each island reports its own local best.
+        // To check stop is safe here (no barrier waiting).
         if migration.is_none()
             && let Some(ctx) = ctx
             && ctx.progress_interval > 0
@@ -470,7 +450,7 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
             && mig.interval > 0
             && (step + 1) % mig.interval == 0
         {
-            // Phase 1: write current best into own slot
+            // Step 1 - write current best into own slot
             {
                 let mut slot = mig.bests[mig.idx].lock().expect("migration slot poisoned");
                 if slot.as_ref().is_none_or(|g| best.objective < g.objective) {
@@ -479,7 +459,7 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
             }
             mig.barrier1.wait(); // all slots written
 
-            // Phase 2: read global best, inject into worst; island 0 sends one progress event.
+            // Step 2 - read global best, inject into worst; island 0 sends one progress event.
             {
                 let global = mig
                     .bests
@@ -529,8 +509,7 @@ mod tests {
     #[derive(Clone)]
     struct PanicGenome;
 
-    /// A decoder that panics on the first `eval` call panics the scoped worker thread,
-    /// which re-panics the supervisor thread via `.expect("GA thread panicked")`.
+    /// The decoder that panics on `eval`
     struct PanicDecoder;
 
     impl GaDecoder for PanicDecoder {
@@ -556,8 +535,7 @@ mod tests {
         fn mutate<R: Rng>(&self, _genome: &mut Self::Genome, _config: &GaConfig, _rng: &mut R) {}
     }
 
-    /// This checks that the panic is joined (not leaked as a zombie thread) and that
-    /// `blocking_wait` still returns instead of hanging.
+    /// Checks the panic is joined (not a zombie thread) and `blocking_wait` still returns.
     #[test]
     fn run_ga_mt_panic_is_joined_not_lost() {
         let prev_hook = std::panic::take_hook();
@@ -565,7 +543,7 @@ mod tests {
         std::panic::set_hook(Box::new(|_| {}));
 
         let decoder = Arc::new(PanicDecoder);
-        let config = Arc::new(GaConfig { pop_size: 4, n_generations: 5, ..GaConfig::default() });
+        let config = Arc::new(GaConfig { pop_size: 4, n_iterations: 5, ..GaConfig::default() });
         let handle = run_ga_mt(decoder, config, vec![1], 0, 0);
         let results = handle.blocking_wait();
 

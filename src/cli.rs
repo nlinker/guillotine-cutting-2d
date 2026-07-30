@@ -49,9 +49,9 @@ pub(crate) enum Command {
         /// Number of parallel threads (0 = auto-detect)
         #[arg(long, default_value_t = 0)]
         threads: usize,
-        /// Generations per run
+        /// Generations per run, GA iterations
         #[arg(long, default_value_t = 2000)]
-        gens: usize,
+        iterations: usize,
         /// Population size
         #[arg(long, default_value_t = 200)]
         pop: usize,
@@ -60,7 +60,7 @@ pub(crate) enum Command {
         elite: usize,
         /// Tournament size
         #[arg(long, default_value_t = 5)]
-        k: usize,
+        tournament: usize,
         /// Report global best every N generations; 0 = silent
         #[arg(long, default_value_t = 100)]
         progress: usize,
