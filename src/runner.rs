@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn run_algorithm_glas_produces_a_solution() {
+    fn run_ga_produces_solution() {
         let spec = Arc::new(parse_problem("600x400R:0,0:200x200/4").unwrap());
         let cfg = Arc::new(GaConfig { pop_size: 20, n_generations: 10, ..GaConfig::default() });
         let mut rng = Xoshiro256StarStar::seed_from_u64(1);
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn run_algorithm_heuristic_yields_exactly_one_event_then_none() {
+    fn run_heuristic_sends_done_only() {
         let spec = Arc::new(parse_problem("600x400R:0,0:200x200/4").unwrap());
         let alg_cfg = AlgConfig::Heuristic { kind: HeuristicKind::Bfdh };
 
