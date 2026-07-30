@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Concrete individual type for the SLAS decoder.
-pub type Individual = crate::ga::Individual<Genome>;
+pub type Individual = ga::Individual<Genome>;
 
 /// SLAS GA decoder. Owns the expanded (flat) problem.
 pub struct SlasDecoder {
@@ -64,24 +64,9 @@ pub fn run_ga_mt(
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
-/// OX (Ordered Crossover) for two SLAS genomes.
-///
-/// A random segment `[lo, hi)` is copied from each donor into the corresponding child;
-/// the remaining positions are filled from the other parent in order starting at `hi`
-/// (wrapping), preserving relative order and skipping already-present `piece_idx` values.
-/// The full `Gene` (including `rotate` and `point_selector`) travels with its `piece_idx`.
-///
-/// Both genomes must be permutations of `0..n` (each `piece_idx` appears exactly once).
-///
-/// ```text
-///          lo    hi
-///           |     |
-/// P1: [ 0 | 1  2 | 3  4 ]  -->  C1: [ 4 | 1  2 | 3  0 ]
-/// P2: [ 3 | 0  4 | 1  2 ]  -->  C2: [ 2 | 0  4 | 3  1 ]
-///
-///   C1 segment <- P1;  remaining <- P2 from hi, wrapping, skipping dupes
-///   C2 segment <- P2;  remaining <- P1 from hi, wrapping, skipping dupes
-/// ```
+/// OX (Ordered Crossover) for two SLAS genomes, keyed by `piece_idx`; the full `Gene`
+/// travels with its key. See [docs/ga_crossover.md](../../docs/ga_crossover.md) for the
+/// diagram. Both genomes must be permutations of `0..n`.
 pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
     let n = p1.len();
     debug_assert_eq!(n, p2.len());
@@ -114,23 +99,8 @@ fn ox_at(p1: &Genome, p2: &Genome, lo: usize, hi: usize) -> (Genome, Genome) {
     (build_child(p1, p2, lo, hi), build_child(p2, p1, lo, hi))
 }
 
-/// CX (Cycle Crossover) for two SLAS genomes. No RNG required - cycle structure is
-/// fully determined by the two parents.
-///
-/// Each `piece_idx` value appears exactly once in the genome (bijection).
-/// Traces cycles by following P2 values back to their positions in P1. Even cycles
-/// keep their parent source; odd cycles swap it. O(n): one pass to invert P1,
-/// one pass to trace all cycles.
-///
-/// ```text
-/// pos:  0  1  2  3  4
-/// P1: [ 0  1  2  3  4 ]
-/// P2: [ 3  0  4  1  2 ]
-/// cy:   0  0  1  0  1    (cycle 0: even, cycle 1: odd)
-///
-/// C1: [ 0  1  4  3  2 ]   even from P1, odd from P2
-/// C2: [ 3  0  2  1  4 ]   even from P2, odd from P1
-/// ```
+/// CX (Cycle Crossover) for two SLAS genomes, keyed by `piece_idx`. No RNG required.
+/// See [docs/ga_crossover.md](../../docs/ga_crossover.md) for the diagram.
 pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
     let n = p1.len();
     debug_assert_eq!(n, p2.len());
@@ -176,11 +146,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome) -> (Genome, Genome) {
     (c1, c2)
 }
 
-/// Mutate a SLAS genome in-place. For each gene, independently:
-/// - with probability `swap_p`: swap it with a random other gene (preserves permutation)
-/// - with probability `flip_p`: flip `rotate`
-/// - with probability `point_p`: nudge `point_selector` by +/-`point_delta` wrapping
-/// - with probability `inverse_p`: flip `inverse` (reverses SLAS split direction)
+/// Mutate a SLAS genome in-place. See [docs/ga_mutation.md](../../docs/ga_mutation.md).
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     swap_p: f64,
@@ -267,9 +233,9 @@ mod tests {
     fn default_config() -> GaConfig {
         GaConfig {
             pop_size: 20,
-            n_generations: 10,
-            n_elite: 1,
-            tournament_k: 2,
+            n_iterations: 10,
+            n_elites: 1,
+            tournament_size: 2,
             crossover_p: 0.8,
             swap_p: 0.1,
             point_p: 0.05,
@@ -558,7 +524,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap());
-        let cfg = Arc::new(GaConfig { pop_size: 20, n_generations: 30, ..GaConfig::default() });
+        let cfg = Arc::new(GaConfig { pop_size: 20, n_iterations: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {
@@ -585,7 +551,7 @@ mod tests {
             "22x24F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
             "28x19F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
         ];
-        let cfg = GaConfig { pop_size: 50, n_generations: 200, ..GaConfig::default() };
+        let cfg = GaConfig { pop_size: 50, n_iterations: 200, ..GaConfig::default() };
         for spec_str in specs {
             let problem = expand_problem(&parse_problem(spec_str).unwrap());
             for seed in 0u64..3 {

@@ -10,10 +10,8 @@ use crate::{
     model::{Objective, PieceType, Problem, ProblemSpec},
 };
 
-/// Concrete individual type for the GLAS decoder.
-pub type Individual = crate::ga::Individual<Genome>;
+pub type Individual = ga::Individual<Genome>;
 
-/// GLAS GA decoder. Owns the spec (for genome generation) and the expanded problem.
 pub struct GlasDecoder {
     pub spec: Arc<ProblemSpec>,
     pub problem: Arc<Problem>,
@@ -52,7 +50,7 @@ impl GaDecoder for GlasDecoder {
     }
 }
 
-/// Single-threaded GLAS GA. Takes `ProblemSpec` and the expanded `Problem`.
+/// Single-threaded GLAS GA.
 pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
     let decoder = GlasDecoder { spec: Arc::new(spec.clone()), problem: Arc::new(problem.clone()) };
     ga::run_ga(&decoder, config, rng)
@@ -71,13 +69,9 @@ pub fn run_ga_mt(
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
-/// OX (Ordered Crossover) for two GLAS genomes.
-///
-/// Applied independently per class (outer vec). Within each class the permutation
-/// key is `type_idx`; the gene payload (`rotate`, `selectors`, `inverses`) travels
-/// with its gene. A random segment `[lo, hi)` is copied from each donor class into
-/// the corresponding child class; remaining positions are filled from the other parent
-/// in order starting at `hi` (wrapping), skipping already-present `type_idx` values.
+/// OX (Ordered Crossover) for two GLAS genomes, applied independently per class
+/// (outer vec) and keyed by `type_idx`; the gene payload travels with its key.
+/// See [docs/ga_crossover.md](../../docs/ga_crossover.md) for the diagram.
 ///
 /// `n_types` = total number of piece types (used to size the `in_segment` bitmap).
 pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, n_types: usize, rng: &mut R) -> (Genome, Genome) {
@@ -98,12 +92,10 @@ pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, n_types: usize, rng: &mut 
     (g1, g2)
 }
 
-/// CX (Cycle Crossover) for two GLAS genomes.
+/// CX (Cycle Crossover), applied independently per class, keyed by `type_idx`. See
+/// [docs/ga_crossover.md](../../docs/ga_crossover.md).
 ///
-/// Applied independently per class. Traces cycles via `type_idx`; even cycles keep
-/// their parent source; odd cycles swap. No RNG required.
-///
-/// `n_types` = total number of piece types (used to size the position-inverse array).
+/// `n_types` sizes `pos_in_c1` (type_idx -> position in `c1`).
 pub fn cx_crossover(p1: &Genome, p2: &Genome, n_types: usize) -> (Genome, Genome) {
     let mut g1 = Genome::with_capacity(p1.len());
     let mut g2 = Genome::with_capacity(p2.len());
@@ -150,12 +142,7 @@ pub fn cx_crossover(p1: &Genome, p2: &Genome, n_types: usize) -> (Genome, Genome
     (g1, g2)
 }
 
-/// Mutate a GLAS genome in-place. Applied independently per class.
-/// For each gene within a class (when class has >= 2 genes):
-/// - with probability `swap_p`: swap it with a random other gene within the same class
-/// - with probability `flip_p`: flip `rotate`
-/// - for each `selectors[k]` with probability `point_p`: nudge by +/-`point_delta` (wrapping)
-/// - for each `inverses[k]` with probability `inverse_p`: flip the boolean
+/// Mutate a GLAS genome in-place, per class. See [docs/ga_mutation.md](../../docs/ga_mutation.md).
 pub fn mutate<R: Rng>(
     genome: &mut Genome,
     swap_p: f64,
@@ -326,6 +313,8 @@ fn rng_01<R: Rng>(rng: &mut R) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::repeat_n;
+
     use rand::SeedableRng;
     use rand_xoshiro::Xoshiro256StarStar;
 
@@ -336,8 +325,8 @@ mod tests {
         Gene {
             type_idx,
             rotate: false,
-            selectors: std::iter::repeat_n(0u32, count).collect(),
-            inverses: std::iter::repeat_n(false, count).collect(),
+            selectors: repeat_n(0u32, count).collect(),
+            inverses: repeat_n(false, count).collect(),
         }
     }
 
@@ -358,9 +347,9 @@ mod tests {
     fn small_config() -> GaConfig {
         GaConfig {
             pop_size: 20,
-            n_generations: 10,
-            n_elite: 1,
-            tournament_k: 2,
+            n_iterations: 10,
+            n_elites: 1,
+            tournament_size: 2,
             crossover_p: 0.8,
             swap_p: 0.1,
             point_p: 0.05,
@@ -630,8 +619,6 @@ mod tests {
         assert!(g1.iter().zip(&g2).all(|(a, b)| a == b));
     }
 
-    // --- run_ga ---
-
     #[test]
     fn run_ga_smoke() {
         let spec = parse_problem("10x10R::3x2/2,4x3/2").unwrap();
@@ -663,7 +650,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap());
-        let cfg = Arc::new(GaConfig { pop_size: 20, n_generations: 30, ..GaConfig::default() });
+        let cfg = Arc::new(GaConfig { pop_size: 20, n_iterations: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {
