@@ -21,51 +21,13 @@ pub struct GeneratorConfig {
     /// Minimum side length of any generated piece.
     pub min_size: u32,
 
-    /// Blade kerf width (same unit as sheet dimensions).
-    ///
-    /// Each internal guillotine cut consumes this many units of material between
-    /// the two resulting sub-rectangles.  Boundary edges of the sheet are exempt,
-    /// matching the semantics in `model::Problem`.  A value of `0` reproduces
-    /// the original kerf-free behavior.
-    ///
-    /// Constraints imposed by a non-zero kerf:
-    /// * A rect of extent `E` is splittable only if `E >= 2 * min_size + kerf`.
-    /// * Valid cut positions along extent `E` are `[min_size, E - min_size - kerf]`.
-    /// * Total piece area will be strictly less than total sheet area (the
-    ///   difference is material lost to the blade).
+    /// Blade kerf width; consumed per internal cut, boundary edges exempt.
     pub kerf: u32,
 
-    /// Probability weights controlling how many same-size pieces are cut from a
-    /// rectangle in one step.
-    ///
-    /// `weights[i]` is the non-normalized probability of cutting `i + 1` identical
-    /// pieces from the current rectangle in a single step.  For example:
-    ///
-    /// ```text
-    /// weights = [5, 3, 2]   =>   P(1 piece) = 0.5,  P(2) = 0.3,  P(3) = 0.2
-    /// ```
-    ///
-    /// If the sampled count `m` does not physically fit (accounting for
-    /// `min_size` and `kerf` on each internal cut), the generator falls back to
-    /// `m - 1`, then `m - 2`, and so on; `m = 1` always fits.
-    ///
-    /// When `m > 1` pieces of size `s` are cut, they are placed side by side
-    /// along the chosen direction, separated by kerf gaps.  Any remaining strip
-    /// of the rectangle becomes a new rect that is split further in subsequent
-    /// steps, consuming the rest of the budget.
-    ///
-    /// `weights` must be non-empty and contain at least one positive value.
+    /// Weights for how many identical pieces to cut per step: `weights[i]` ~ P(`i+1` pieces).
     pub weights: Vec<f32>,
 
-    /// Number of alternating guillotine-cut stages applied to each sheet.
-    ///
-    /// Stage 1 slices horizontally, stage 2 vertically, stage 3 horizontally
-    /// again, and so on.  A value of `2` (the typical default) produces a
-    /// 2-level H -> V cut tree, yielding a grid-like layout.  A value of `1`
-    /// produces only horizontal strips.  Values above `2` create deeper trees
-    /// and many more (smaller) pieces.
-    ///
-    /// Must be at least `1`.
+    /// Alternating H/V cut stages per sheet; `2` gives a grid, `1` gives strips.
     pub stage_count: usize,
 }
 
@@ -294,115 +256,56 @@ mod tests {
     }
 
     #[test]
-    fn pieces_tile_sheets_exactly_when_kerf_zero() {
-        // With kerf=0 the pieces still tile the sheets perfectly.
-        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let out = generate(&cfg(0, w_single()), &mut rng);
-        let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
-        assert_eq!(total, 10 * 8 * 2, "total piece area must equal total sheet area");
-    }
+    fn generate_invariants() {
+        for (sheets_count, min_size, kerf, weights) in
+            [(2, 2, 0, w_single()), (2, 2, 1, w_multi()), (3, 1, 2, w_single())]
+        {
+            let mut rng = Xoshiro256StarStar::seed_from_u64(42);
+            let c = GeneratorConfig { sheet: sheet_10x8(), sheets_count, min_size, kerf, weights, stage_count: 2 };
+            let out = generate(&c, &mut rng);
 
-    #[test]
-    fn pieces_tile_expanded_sheet_when_kerf_nonzero() {
-        // With kerf>0, expanded pieces (w+k)×(h+k) tile the expanded sheet (W+k)×(H+k) exactly.
-        let mut rng = Xoshiro256StarStar::seed_from_u64(66);
-        let cfg = cfg(1, w_multi());
-        let out = generate(&cfg, &mut rng);
-        // Don't bother on the overflow, the integers are small
-        let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
-        let expanded_sheet_area = out.problem.sheet.width * out.problem.sheet.height * cfg.sheets_count as u32;
-        assert_eq!(total, expanded_sheet_area);
-    }
+            let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
+            let expanded_area = out.problem.sheet.width * out.problem.sheet.height * sheets_count as u32;
+            assert_eq!(total, expanded_area, "kerf={kerf}: pieces must tile the sheet exactly");
 
-    #[test]
-    fn no_piece_exceeds_sheet() {
-        // Every piece must fit within the sheet bounds from its placement origin.
-        let sheet = sheet_10x8();
-        for kerf in [0, 1, 2] {
-            let mut rng = Xoshiro256StarStar::seed_from_u64(7);
-            let out = generate(
-                &GeneratorConfig { sheet, sheets_count: 2, min_size: 1, kerf, weights: w_single(), stage_count: 2 },
-                &mut rng,
+            assert!(
+                out.optimal_solution.leftovers.is_empty(),
+                "kerf={kerf}: expected no leftovers"
             );
+
+            let max_sheet_idx = out
+                .optimal_solution
+                .placements
+                .iter()
+                .map(|p| p.sheet_idx)
+                .max()
+                .unwrap_or(0);
+            assert_eq!(
+                max_sheet_idx,
+                sheets_count - 1,
+                "kerf={kerf}: sheet indices must cover every sheet"
+            );
+
             for pl in &out.optimal_solution.placements {
                 let p = &out.problem.pieces[pl.piece_idx];
                 assert!(
+                    p.width >= min_size && p.height >= min_size,
+                    "kerf={kerf}: piece below min_size"
+                );
+                assert!(
                     pl.x + p.width <= out.problem.sheet.width,
-                    "kerf={kerf}: piece {} overflows width",
-                    pl.piece_idx
+                    "kerf={kerf}: piece overflows width"
                 );
                 assert!(
                     pl.y + p.height <= out.problem.sheet.height,
-                    "kerf={kerf}: piece {} overflows height",
-                    pl.piece_idx
+                    "kerf={kerf}: piece overflows height"
                 );
             }
         }
     }
 
     #[test]
-    fn min_size_respected() {
-        let mut rng = Xoshiro256StarStar::seed_from_u64(99);
-        let c = GeneratorConfig {
-            sheet: sheet_10x8(),
-            sheets_count: 2,
-            min_size: 2,
-            kerf: 1,
-            weights: w_single(),
-            stage_count: 2,
-        };
-        let out = generate(&c, &mut rng);
-        for p in &out.problem.pieces {
-            assert!(p.width >= c.min_size, "piece {:?} width  < min_size", p.name);
-            assert!(p.height >= c.min_size, "piece {:?} height < min_size", p.name);
-        }
-    }
-
-    #[test]
-    fn pieces_do_not_overlap() {
-        // PieceTypes on the same sheet must not overlap.
-        for kerf in [0u32, 1] {
-            let mut rng = Xoshiro256StarStar::seed_from_u64(123);
-            let out = generate(
-                &GeneratorConfig {
-                    sheet: sheet_10x8(),
-                    sheets_count: 2,
-                    min_size: 1,
-                    kerf,
-                    weights: w_single(),
-                    stage_count: 2,
-                },
-                &mut rng,
-            );
-            for sheet_idx in 0..2usize {
-                let on = out
-                    .optimal_solution
-                    .placements
-                    .iter()
-                    .filter(|pl| pl.sheet_idx == sheet_idx)
-                    .collect::<Vec<_>>();
-                for i in 0..on.len() {
-                    for j in i + 1..on.len() {
-                        let (a, b) = (on[i], on[j]);
-                        let ap = &out.problem.pieces[a.piece_idx];
-                        let bp = &out.problem.pieces[b.piece_idx];
-                        let overlap = a.x < b.x + bp.width
-                            && a.x + ap.width > b.x
-                            && a.y < b.y + bp.height
-                            && a.y + ap.height > b.y;
-                        assert!(
-                            !overlap,
-                            "kerf={kerf}: pieces {} and {} overlap on sheet {}",
-                            a.piece_idx, b.piece_idx, sheet_idx
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn seed_is_deterministic() {
+    fn generate_is_deterministic() {
         let c = cfg(1, vec![1.0, 1.0, 1.0]);
         let o1 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let o2 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
@@ -419,37 +322,6 @@ mod tests {
             .map(|p| (p.width, p.height))
             .collect::<Vec<_>>();
         assert_eq!(ids1, ids2);
-    }
-
-    #[test]
-    fn no_leftovers_in_optimal_solution() {
-        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let out = generate(&cfg(0, w_single()), &mut rng);
-        assert!(out.optimal_solution.leftovers.is_empty());
-    }
-
-    #[test]
-    fn sheet_indices_are_zero_based() {
-        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let out = generate(
-            &GeneratorConfig {
-                sheet: sheet_10x8(),
-                sheets_count: 3,
-                min_size: 1,
-                kerf: 0,
-                weights: w_single(),
-                stage_count: 2,
-            },
-            &mut rng,
-        );
-        let max_idx = out
-            .optimal_solution
-            .placements
-            .iter()
-            .map(|p| p.sheet_idx)
-            .max()
-            .unwrap_or(0);
-        assert_eq!(max_idx, 2);
     }
 
     #[test]

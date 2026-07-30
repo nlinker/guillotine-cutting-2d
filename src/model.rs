@@ -84,7 +84,7 @@ impl ProblemSpec {
     ///
     /// For rotatable pieces: normalize dimensions to `(min(w,h), max(w,h))`.
     /// Then merge entries with identical `(width, height, can_rotate)` by summing `count`.
-    /// First-appearance order is preserved.
+    /// Original order from the `piece_types` is preserved.
     pub fn normalize(&mut self) {
         for ps in &mut self.piece_types {
             if ps.can_rotate && ps.width > ps.height {
@@ -193,7 +193,6 @@ impl SolutionSpec {
 }
 
 /// A single physical piece instance in the flat expanded problem.
-/// `name`: carried from the originating `PieceType` for display purposes.
 /// `can_rotate`: when false, must be placed in original (width × height) orientation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Piece {

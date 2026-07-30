@@ -9,15 +9,12 @@ const PALETTE: &[&str] = &[
 ];
 
 /// Render a `SolutionSpec` as an SVG string.
-///
-/// Sheets are stacked vertically with a gap. Pieces are colored by `piece_idx`
-/// (type index) cycling through [`PALETTE`]. Free rects shown as dashed outlines.
 pub fn render_svg(spec: &ProblemSpec, solution: &SolutionSpec) -> Result<String, std::fmt::Error> {
     let n_sheets = solution.sheets_used().max(1);
     let sw = spec.sheet.width as f64;
     let sh = spec.sheet.height as f64;
 
-    // Normalize to a fixed display width so both 12×41 and 3000×2000 look reasonable.
+    // Normalize to a fixed display width so both 12×41 and 3000×2000 look good
     const DISPLAY_W: f64 = 700.0;
     let scale = DISPLAY_W / sw;
     let dw = DISPLAY_W;
@@ -160,6 +157,8 @@ mod tests {
         assert!(svg.ends_with("</svg>\n"));
         assert!(svg.contains(">A<"));
         assert!(svg.contains(">B<"));
+        // sw/sh = sheet width/height (source, problem units)
+        // dw/dh = display width/height (scaled SVG pixels)
         // With DISPLAY_W=700, sw=100: scale=7, dw=700, dh=80*7=560, margin=max(28,8)=28, sep=6
         let dw = 700.0_f64;
         let scale = dw / spec.sheet.width as f64;
