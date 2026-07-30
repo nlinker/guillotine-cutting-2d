@@ -873,7 +873,7 @@ Public Sub RunCut()
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
         & " --seed " & nSeed & " --gens " & nGens & " --pop " & nPop _
-        & " --algorithm " & sAlgorithm
+        & " --algorithm " & sAlgorithm & " --sink pipe"
     If nLargeArea > 0 Then cmd = cmd & " --large-area-threshold " & nLargeArea
     If nLongDim > 0 Then cmd = cmd & " --long-dim-threshold " & nLongDim
     Shell cmd, vbHide

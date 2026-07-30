@@ -64,8 +64,8 @@ pub(crate) enum Command {
         /// Report global best every N generations; 0 = silent
         #[arg(long, default_value_t = 100)]
         progress: usize,
-        /// Progress sink: "pipe" (default) or "stdout"
-        #[arg(long, default_value = "pipe")]
+        /// Progress sink: "stdout" (default) or "pipe"
+        #[arg(long, default_value = "stdout")]
         sink: String,
         /// Throttle sink: send at most one progress per N ms; 0 = no throttle
         #[arg(long, default_value_t = 1000)]

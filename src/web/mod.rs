@@ -118,14 +118,15 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
         Ok(spec) => {
             let sheet_w = spec.sheet.width;
             let sheet_h = spec.sheet.height;
-            let cfg = Arc::new(crate::ga::GaConfig::new(&spec, params.gens, params.pop, 5, 5, 0, 0));
+            let cfg = Arc::new(cut::ga::GaConfig::new(&spec, params.gens, params.pop, 5, 5, 0, 0));
             let problem = Arc::new(spec);
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
             let mut sink = SseSink { tx, start: Instant::now(), sheet_w, sheet_h };
-            let algorithm = params.algorithm;
-            std::thread::spawn(move || {
-                crate::run_algorithm_with_sink(algorithm, problem, cfg, &seeds, params.progress, &mut sink, 0).ok();
+            let alg_cfg = crate::make_algorithm_config(params.algorithm, cfg, seeds, params.progress);
+            let handle = cut::runner::run_algorithm(Arc::clone(&problem), &alg_cfg);
+            tokio::spawn(async move {
+                cut::runner::drain(handle, problem, &mut sink, 0).await.ok();
             });
         }
     }

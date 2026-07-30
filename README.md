@@ -96,7 +96,7 @@ firefox out.svg
 
 - If you need the intermediate JSON (e.g. to inspect or re-render), use two commands:
 ```
-cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --sink stdout --gens 5000 > out.json
+cargo run --release -- calc --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --gens 5000 > out.json
 cargo run --release -- render --compact "2600x1800F:3,0:400x400/6,495x495/6,270x320/10,150x450/17r" --solution out.json > out.svg
 firefox out.svg
 ```
@@ -115,7 +115,7 @@ bat -p task.json
     ]
   }
 
-cargo run --release -- calc --json task.json --sink stdout --seed 42 --gens 5000
+cargo run --release -- calc --json task.json --seed 42 --gens 5000
 ```
 
 - Or you can start the web UI at http://localhost:8080
@@ -131,8 +131,8 @@ cargo run --release -- serve --port 8080
 use std::sync::Arc;
 use cut::{
     ga::GaConfig,
-    glas::{decoder::decode_spec, ga::run_ga_mt},
-    parse::parse_problem,
+    parser::compact::parse_problem,
+    runner::{AlgConfig, GaKind, run_algorithm},
 };
 
 fn main() {
@@ -141,16 +141,17 @@ fn main() {
     );
     let cfg = Arc::new(GaConfig { pop_size: 200, n_generations: 1000, ..GaConfig::default() });
 
-    // 8 independent GA islands in parallel;
-    // progress_interval=0 (no events), migration_interval=0 (no migration between islands)
+    // 8 independent GA islands in parallel; progress_interval=0 (no progress events)
     let seeds: Vec<u64> = (0..8).collect();
-    let handle = run_ga_mt(Arc::clone(&spec), Arc::clone(&cfg), seeds, 0, 0);
+    let alg_cfg = AlgConfig::Ga { kind: GaKind::Glas, cfg, seeds, progress_interval: 0 };
+    let handle = run_algorithm(Arc::clone(&spec), &alg_cfg);
 
-    // Block until all islands finish; results are sorted best-first
-    let results = handle.blocking_wait();
+    // Block until done, discarding intermediate progress; results are sorted best-first
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let mut results = rt.block_on(handle.blocking_wait());
 
-    let (best_seed, best_ind) = &results[0];
-    let solution = decode_spec(&spec, &best_ind.genome);
+    let (best_seed, _, lazy, _) = results.remove(0);
+    let solution = lazy.decode(&spec);
     let sheets = solution.sheets_used();
     println!("seed={best_seed}  {sheets} sheet(s)");
 }

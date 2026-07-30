@@ -41,22 +41,9 @@ impl ProgressMessage {
     }
 }
 
-pub trait ProgressSink {
+/// `Send`-bound so `Box<dyn ProgressSink>`/`&mut dyn ProgressSink` can be held
+/// across `.await` points (needed by `drain` when spawned on a tokio task).
+pub trait ProgressSink: Send {
     /// Returns `Err` when the client disconnected - caller should stop the GA.
     fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error>;
-}
-
-/// Sink that discards `Progress` events and keeps only the final solution.
-#[derive(Default)]
-pub struct CapturingSink {
-    pub solution: Option<SolutionSpec>,
-}
-
-impl ProgressSink for CapturingSink {
-    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
-        if let ProgressMessage::Done { solution, .. } = msg {
-            self.solution = Some(solution.clone());
-        }
-        Ok(())
-    }
 }

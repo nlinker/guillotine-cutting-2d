@@ -10,5 +10,6 @@ pub mod heuristic;
 pub mod model;
 pub mod parser;
 pub mod render;
+pub mod runner;
 pub mod slas;
 pub mod transport;
