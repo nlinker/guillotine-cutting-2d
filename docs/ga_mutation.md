@@ -1,5 +1,7 @@
 # GA mutation
 
+Interactive step-by-step demo: [demos/ga_mutation_gsap.html](../demos/ga_mutation_gsap.html).
+
 Shared by `slas::ga::mutate` (one field per gene) and `glas::ga::mutate` (per-gene
 arrays `selectors`/`inverses`, applied independently per class). For every gene,
 four independent coin flips - a gene can be swapped *and* flipped *and* nudged in

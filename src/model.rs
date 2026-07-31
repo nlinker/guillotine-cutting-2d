@@ -203,7 +203,8 @@ pub struct Piece {
 }
 
 /// Flat cutting problem: one `Piece` entry per physical copy (no counts).
-/// Produced by `expand::expand_problem`; consumed by the decoder and GA internals.
+/// Produced by `expand::expand_problem`; consumed by the decoders, GA,
+/// heuristics and the GLF solver.
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
     pub sheet: Sheet,

@@ -23,10 +23,13 @@
     .tab:hover  { color: #1a1a18; }
     .tab.active { color: #1a1a18; border-bottom: 2px solid #1a1a18; font-weight: 500; }
 
-    .scene      { position: relative; height: 180px; margin-bottom: 8px; }
+    .scene      { position: relative; height: 180px; margin-bottom: 8px; perspective: 700px; }
     .chrom-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: flex; gap: 5px; }
 
-    .gene { width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:500; border:1.5px solid transparent; user-select:none; }
+    .gene { width:44px; height:54px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-weight:500; border:1.5px solid transparent; user-select:none; }
+    .gid   { font-size:14px; line-height:1; }
+    .gattr { font-size:8.5px; line-height:1; font-family: ui-monospace, "SF Mono", Consolas, monospace; opacity:.72; letter-spacing:.03em; transition: color .15s, transform .15s; }
+    .gattr.hit { color:#EF9F27; opacity:1; transform:scale(1.7); }
     .g1{background:#EEEDFE;color:#3C3489;border-color:#7F77DD;}
     .g2{background:#E1F5EE;color:#085041;border-color:#1D9E75;}
     .g3{background:#FAECE7;color:#712B13;border-color:#D85A30;}
@@ -39,10 +42,16 @@
 
     #arc-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 
-    .idx-row { display:flex; gap:5px; justify-content:center; margin-bottom:4px; }
-    .idx     { width:42px; text-align:center; font-size:10px; color:#888780; }
+    .legend      { display:flex; align-items:center; gap:10px; margin-bottom:12px; font-size:11px; color:#444441; line-height:1.55; }
+    .legend-card { width:44px; height:54px; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:#F1EFE8; border:1.5px solid #888780; flex-shrink:0; }
+    .legend-card .gid   { font-size:14px; }
+    .legend-card .gattr { font-size:8.5px; opacity:.72; }
+    .legend strong { font-family: ui-monospace, "SF Mono", Consolas, monospace; color:#1a1a18; }
 
-    .explain        { border:0.5px solid #e8e6df; border-radius:8px; padding:9px 13px; background:#f5f4f0; font-size:12px; line-height:1.65; color:#444441; height:64px; overflow:hidden; }
+    .idx-row { display:flex; gap:5px; justify-content:center; margin-bottom:4px; }
+    .idx     { width:44px; text-align:center; font-size:10px; color:#888780; }
+
+    .explain        { border:0.5px solid #e8e6df; border-radius:8px; padding:9px 13px; background:#f5f4f0; font-size:12px; line-height:1.65; color:#444441; min-height:64px; overflow:hidden; }
     .explain strong { color: #1a1a18; }
 
     .tag       { display:inline-block; font-size:10px; font-weight:500; border-radius:3px; padding:1px 6px; margin-right:4px; vertical-align:middle; }
@@ -63,7 +72,7 @@
     .kbd { font-size:10px; background:#f5f4f0; border:0.5px solid #d3d1c7; border-radius:3px; padding:1px 5px; color:#888780; margin-left:2px; }
     .sc  { font-size:11px; color:#888780; margin-left:auto; }
 
-    .progress { display:flex; gap:3px; margin:6px 0 0; min-height:16px; align-items:center; }
+    .progress { display:flex; gap:3px; margin:6px 0 0; min-height:16px; align-items:center; flex-wrap:wrap; }
     .pdot      { width:7px; height:7px; border-radius:50%; background:#d3d1c7; transition:background .25s, transform .2s; }
     .pdot.done { background:#1D9E75; }
     .pdot.cur  { background:#EF9F27; transform:scale(1.5); }
@@ -83,9 +92,20 @@
       .explain              { background: #232320; border-color: #2e2e2b; color: #b4b2a9; }
       .explain strong       { color: #e8e6df; }
       .idx                  { color: #6b6965; }
+      .legend               { color: #b4b2a9; }
+      .legend-card          { background: #232320; border-color: #3d3d3a; }
+      .legend strong        { color: #e8e6df; }
+      .t-init               { background: #232320; color: #c4c2b8; }
+      .t-sel                { background: #2a1500; color: #ffbe50; }
+      .t-swap               { background: #16133a; color: #a8a3ff; }
+      .t-seg                { background: #0a1e30; color: #60b8ff; }
+      .t-rev                { background: #071a12; color: #3ecf97; }
+      .t-ins                { background: #2a0f1a; color: #ff8fc0; }
+      .t-done               { background: #071a12; color: #3ecf97; }
       .ctrl button          { background: #1a1a18; border-color: #3d3d3a; color: #e8e6df; }
       .ctrl button:hover    { background: #232320; }
       .ctrl button.primary  { background: #e8e6df; color: #1a1a18; border-color: #e8e6df; }
+      .ctrl button:disabled { opacity: .3; }
       .kbd                  { background: #232320; border-color: #3d3d3a; color: #6b6965; }
       .sc                   { color: #6b6965; }
       .pdot                 { background: #3d3d3a; }
@@ -98,8 +118,17 @@
 
 <div class="tabs">
   <div class="tab active" onclick="switchTab('swap')">Swap</div>
-  <div class="tab"        onclick="switchTab('inv')">Inversion</div>
-  <div class="tab"        onclick="switchTab('ins')">Insertion</div>
+  <div class="tab"        onclick="switchTab('rotate')">Rotate</div>
+  <div class="tab"        onclick="switchTab('point')">Point</div>
+  <div class="tab"        onclick="switchTab('inverse')">Inverse</div>
+</div>
+
+<div class="legend">
+  <div class="legend-card"><span class="gid">3</span><span class="gattr">R3&middot;</span></div>
+  <div>
+    Top number = <strong>piece_idx</strong> (gene id).<br>
+    Caption below = <strong>rotate</strong> (R = true, &middot; = false), <strong>point_selector</strong> (3), <strong>inverse</strong> (I = true, &middot; = false).
+  </div>
 </div>
 
 <div class="idx-row" id="idx-row"></div>
@@ -122,50 +151,70 @@
 <div class="randrow">
   <label>Length:</label>
   <input type="number" id="n-len" value="7" min="5" max="9"/>
+  <label>Prob:</label>
+  <input type="number" id="n-prob" value="0.5" min="0" max="1" step="0.1"/>
   <button onclick="randomize()">&#x1F3B2; Random</button>
 </div>
 
 <script>
+// Mirrors cutting::slas::ga::mutate (src/slas/ga.rs): a single pass over every
+// gene where swap/rotate/point/inverse each fire independently per locus,
+// gated by their own probability (swap_p/flip_p/point_p/inverse_p). Each tab
+// below isolates one of the four with the other three at p=0, same as the
+// crate's own mutate_flips_all_rotate / mutate_flips_all_inverse tests.
 const GC = ['','g1','g2','g3','g4','g5','g6','g7','g8','g9'];
-const GW = 42, GG = 5, GS = GW + GG;
+const GW = 44, GG = 5, GS = GW + GG;
+const POINT_LO = 1, POINT_HI = 3, POINT_MOD = 10; // point_delta = (1,3); point_selector wraps like a u32, shown mod 10 here for readability
 
 const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[b[i],b[j]]=[b[j],b[i]];} return b; };
 const range   = n => Array.from({length:n},(_,i)=>i+1);
 const wait    = ms => new Promise(r => setTimeout(r, ms));
 const tween   = (targets, vars) => new Promise(r => gsap.to(targets, {...vars, onComplete:r}));
 
+const cloneGene = g => ({...g});
+const cloneArr  = arr => arr.map(cloneGene);
+const attrCaption = g => `${g.rotate ? 'R' : '·'}${g.point}${g.inverse ? 'I' : '·'}`;
+
 let curTab = 'swap', perm = [], steps = [], stepIdx = -1;
 let busy = false, autoRunning = false;
 
-// Stored mutation params — set once by generateNew(), replayed by startCurrent()
+// Stored mutation params -- set once by generateNew(), replayed by startCurrent()
 let mutationParams = null;
 
+function makeGene(id) {
+  return { id, rotate: Math.random() < 0.5, point: Math.floor(Math.random()*POINT_MOD), inverse: Math.random() < 0.5 };
+}
+
+function readN()    { return Math.max(5, Math.min(9, parseInt(document.getElementById('n-len').value)||7)); }
+function readProb() { return Math.max(0, Math.min(1, parseFloat(document.getElementById('n-prob').value)||0)); }
+
 function generateNew() {
-  const n = Math.max(5, Math.min(9, parseInt(document.getElementById('n-len').value)||7));
-  perm = shuffle(range(n));
-  // Pre-roll all random choices for the current tab
-  if (curTab === 'swap') {
-    const a = Math.floor(Math.random()*n); let b; do{b=Math.floor(Math.random()*n);}while(b===a);
-    mutationParams = {i: Math.min(a,b), j: Math.max(a,b)};
-  } else if (curTab === 'inv') {
-    const len   = 2 + Math.floor(Math.random()*Math.min(n-2,4));
-    const start = Math.floor(Math.random()*(n-len));
-    mutationParams = {start, end: start+len-1};
-  } else {
-    const from = Math.floor(Math.random()*n); let to; do{to=Math.floor(Math.random()*n);}while(to===from);
-    mutationParams = {from, to};
+  const n = readN(), p = readProb();
+  perm = shuffle(range(n)).map(makeGene);
+  // Pre-roll every locus's trial up front so Prev/Next/Auto replay identically.
+  const events = [];
+  for (let i = 0; i < n; i++) {
+    const roll = Math.random();
+    const pass = roll < p;
+    let extra = null;
+    if (pass) {
+      if (curTab === 'swap')  extra = Math.floor(Math.random() * (n - 1)); // offset in [0, n-2] -> j != i
+      if (curTab === 'point') extra = { delta: POINT_LO + Math.floor(Math.random()*(POINT_HI-POINT_LO+1)), sign: Math.random() < 0.5 ? 1 : -1 };
+    }
+    events.push({ roll, pass, extra });
   }
+  mutationParams = { p, events };
 }
 
 function buildChrom(arr) {
   const wrap = document.getElementById('chrom-wrap');
   wrap.innerHTML = '';
   wrap.style.width = (arr.length * GS - GG) + 'px';
-  arr.forEach((v, i) => {
+  arr.forEach((g, i) => {
     const d = document.createElement('div');
-    d.className = 'gene ' + GC[v];
+    d.className = 'gene ' + GC[g.id];
     d.id = 'g' + i;
-    d.textContent = v;
+    d.innerHTML = `<span class="gid">${g.id}</span><span class="gattr">${attrCaption(g)}</span>`;
     wrap.appendChild(d);
   });
   const ir = document.getElementById('idx-row');
@@ -177,7 +226,7 @@ function buildChrom(arr) {
 }
 
 const el         = i    => document.getElementById('g' + i);
-const resetGenes = ()   => gsap.set('[id^=g]', {x:0, y:0, scale:1, opacity:1});
+const resetGenes = ()   => gsap.set('[id^=g]', {x:0, y:0, scale:1, rotationY:0, opacity:1});
 const setExplain = html => document.getElementById('explain').innerHTML = html;
 const clearArc   = ()   => document.getElementById('arc-svg').innerHTML = '';
 
@@ -223,63 +272,125 @@ async function animSwap(i, j) {
   await Promise.all([tween(ei,{y:0,   duration:0.22,ease:'bounce.out'}),   tween(ej,{y:0,   duration:0.22,ease:'bounce.out'})]);
 }
 
-async function animInvert(seg) {
-  const LIFT = 58, n = seg.length;
-  await Promise.all(seg.map((i,k) => tween(el(i), {y:-(LIFT+(k%2)*10), duration:0.25, ease:'power2.out',    delay:k*0.04})));
-  await Promise.all(seg.map((i,k) => tween(el(i), {x:(seg[n-1-k]-i)*GS, duration:0.38, ease:'power1.inOut', delay:k*0.02})));
-  await Promise.all(seg.map(i     => tween(el(i), {y:0, duration:0.26, ease:'bounce.out'})));
+async function flashAttr(cap) {
+  cap.classList.add('hit');
+  await wait(280);
+  cap.classList.remove('hit');
 }
 
-async function animInsert(from, to) {
-  const LIFT = 52, dir = from < to ? 1 : -1;
-  const affected = [];
-  if (dir===1) for(let k=from+1;k<=to;k++) affected.push(k);
-  else         for(let k=to;k<from;k++)    affected.push(k);
-  await tween(el(from), {y:-LIFT, duration:0.22, ease:'power2.out'});
-  await Promise.all([
-    ...affected.map(k => tween(el(k), {x:-dir*GS, duration:0.32, ease:'power1.inOut'})),
-    tween(el(from), {x:(to-from)*GS, duration:0.38, ease:'power1.inOut'}),
-  ]);
-  await tween(el(from), {y:0, duration:0.24, ease:'power2.in'});
+// Card-flip: swap the caption at the edge-on midpoint, matching the real
+// rotate/inverse flags flipping in place (no position change).
+async function animFlip(i, newGene) {
+  await tween(el(i), {rotationY:90, duration:0.18, ease:'power1.in'});
+  const cap = el(i).querySelector('.gattr');
+  cap.textContent = attrCaption(newGene);
+  await tween(el(i), {rotationY:0, duration:0.22, ease:'power1.out'});
+  await flashAttr(cap);
 }
 
-function buildSwapSteps(arr, {i, j}) {
-  const after = [...arr]; [after[i],after[j]] = [after[j],after[i]];
-  return [
-    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Swap picks two random positions and exchanges their genes.` },
-    { show:arr,   arc:{pos:[i,j],color:'#EF9F27'}, hl:[i,j],
-      text:`<span class="tag t-sel">Select</span>Positions <strong>${i}</strong> (gene <strong>${arr[i]}</strong>) and <strong>${j}</strong> (gene <strong>${arr[j]}</strong>) will be swapped.` },
-    { show:arr,   anim:async()=>animSwap(i,j), next:after,
-      text:`<span class="tag t-swap">Swap</span>Genes <strong>${arr[i]}</strong> and <strong>${arr[j]}</strong> fly towards each other.` },
-    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Swap changes exactly two genes.` },
-  ];
+// Bump: lift, swap the point_selector digit, settle -- position and id unchanged.
+async function animPoint(i, newGene) {
+  await tween(el(i), {y:-14, duration:0.16, ease:'power2.out'});
+  const cap = el(i).querySelector('.gattr');
+  cap.textContent = attrCaption(newGene);
+  await tween(el(i), {y:0, duration:0.24, ease:'bounce.out'});
+  await flashAttr(cap);
 }
 
-function buildInvSteps(arr, {start, end}) {
-  const len = end - start + 1;
-  const seg   = Array.from({length:len},(_,k)=>start+k);
-  const after = [...arr]; const sub = arr.slice(start,end+1).reverse();
-  for(let k=0;k<len;k++) after[start+k]=sub[k];
-  return [
-    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Inversion reverses a sub-segment — the gene order inside is flipped.` },
-    { show:arr,   arc:{pos:seg,color:'#378ADD'}, hl:seg,
-      text:`<span class="tag t-seg">Segment</span>Segment <strong>[${start}...${end}]</strong> selected: genes <strong>${arr.slice(start,end+1).join(', ')}</strong> will be reversed.` },
-    { show:arr,   anim:async()=>animInvert(seg), next:after,
-      text:`<span class="tag t-rev">Inversion</span>Genes fly up and land in reverse order: <strong>${arr.slice(start,end+1).join(', ')}</strong> &rarr; <strong>${sub.join(', ')}</strong>.` },
-    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Order of all other genes is preserved.` },
-  ];
+function rollText(i, e, p, tag, verb) {
+  return `<span class="tag t-sel">i=${i}</span>roll <strong>${e.roll.toFixed(2)}</strong> `+
+         `${e.pass ? '&lt;' : '&ge;'} p=${p} &rarr; ${e.pass ? `<span class="tag ${tag}">${verb} fires</span>` : 'skip'}.`;
 }
 
-function buildInsSteps(arr, {from, to}) {
-  const after = [...arr]; const [val] = after.splice(from,1); after.splice(to,0,val);
-  return [
-    { show:arr,   text:`<span class="tag t-init">Start</span>Initial chromosome. Insertion picks one gene and places it at a new position.` },
-    { show:arr,   arc:{pos:[Math.min(from,to),Math.max(from,to)],color:'#D4537E'}, hl:[from],
-      text:`<span class="tag t-sel">Select</span>Gene <strong>${arr[from]}</strong> at position <strong>${from}</strong> will be inserted at position <strong>${to}</strong>.` },
-    { show:arr,   anim:async()=>animInsert(from,to), next:after,
-      text:`<span class="tag t-ins">Insert</span>Gene <strong>${arr[from]}</strong> lifts up, neighbours slide, gene drops at position <strong>${to}</strong>.` },
-    { show:after, text:`<span class="tag t-done">Done</span>Result: <strong>[${after.join(', ')}]</strong>. Relative order of all other genes is preserved.` },
-  ];
+function buildSwapSteps(arr, {p, events}) {
+  const n = arr.length;
+  let cur = cloneArr(arr);
+  const steps = [{ show: cloneArr(cur),
+    text: `<span class="tag t-init">Start</span>mutate() scans every gene once. At locus i, swap draws its own roll `+
+          `and fires the whole-gene swap if roll &lt; swap_p (here p=${p}).` }];
+  for (let i = 0; i < n; i++) {
+    const e = events[i];
+    if (!e.pass) {
+      steps.push({ show: cloneArr(cur), hl: [i], text: rollText(i, e, p, 't-swap', 'Swap') });
+      continue;
+    }
+    const j = (i + 1 + e.extra) % n;
+    steps.push({ show: cloneArr(cur), hl: [i,j], arc: {pos:[i,j], color:'#7F77DD'},
+      text: rollText(i, e, p, 't-swap', 'Swap') + ` Position <strong>${i}</strong> swaps its whole gene `+
+            `(id, rotate, point, inverse together) with position <strong>${j}</strong>.` });
+    const before = cloneArr(cur);
+    [cur[i], cur[j]] = [cur[j], cur[i]];
+    steps.push({ show: before, anim: async()=>animSwap(i,j), next: cloneArr(cur),
+      text: `Genes fly to each other's slot.` });
+  }
+  steps.push({ show: cloneArr(cur),
+    text: `<span class="tag t-done">Done</span>One pass finished. Order: <strong>[${cur.map(g=>g.id).join(', ')}]</strong>.` });
+  return steps;
+}
+
+function buildRotateSteps(arr, {p, events}) {
+  let cur = cloneArr(arr);
+  const steps = [{ show: cloneArr(cur),
+    text: `<span class="tag t-init">Start</span>At each locus, rotate independently flips the gene's <strong>rotate</strong> `+
+          `flag if roll &lt; flip_p (here p=${p}). Position and other fields are untouched.` }];
+  for (let i = 0; i < cur.length; i++) {
+    const e = events[i];
+    steps.push({ show: cloneArr(cur), hl: [i], text: rollText(i, e, p, 't-seg', 'Rotate') });
+    if (!e.pass) continue;
+    const before = cloneArr(cur);
+    const after  = cloneArr(cur); after[i] = { ...after[i], rotate: !after[i].rotate };
+    cur = after;
+    steps.push({ show: before, anim: async()=>animFlip(i, after[i]), next: cloneArr(cur),
+      text: `<span class="tag t-seg">Rotate</span>Gene <strong>${before[i].id}</strong> at position <strong>${i}</strong>: `+
+            `rotate &rarr; <strong>${after[i].rotate}</strong>.` });
+  }
+  steps.push({ show: cloneArr(cur),
+    text: `<span class="tag t-done">Done</span>One pass finished. Rotate flags: <strong>[${cur.map(g=>g.rotate?1:0).join(', ')}]</strong>.` });
+  return steps;
+}
+
+function buildPointSteps(arr, {p, events}) {
+  let cur = cloneArr(arr);
+  const steps = [{ show: cloneArr(cur),
+    text: `<span class="tag t-init">Start</span>At each locus, point independently nudges <strong>point_selector</strong> `+
+          `by &plusmn;[${POINT_LO},${POINT_HI}] if roll &lt; point_p (here p=${p}). Shown mod ${POINT_MOD}.` }];
+  for (let i = 0; i < cur.length; i++) {
+    const e = events[i];
+    steps.push({ show: cloneArr(cur), hl: [i], text: rollText(i, e, p, 't-rev', 'Point') });
+    if (!e.pass) continue;
+    const before = cloneArr(cur);
+    const after  = cloneArr(cur);
+    const raw = after[i].point + e.extra.sign * e.extra.delta;
+    after[i] = { ...after[i], point: ((raw % POINT_MOD) + POINT_MOD) % POINT_MOD };
+    cur = after;
+    steps.push({ show: before, anim: async()=>animPoint(i, after[i]), next: cloneArr(cur),
+      text: `<span class="tag t-rev">Point</span>Gene <strong>${before[i].id}</strong> at position <strong>${i}</strong>: `+
+            `point_selector ${before[i].point} ${e.extra.sign>0?'+':'-'} ${e.extra.delta} &rarr; <strong>${after[i].point}</strong>.` });
+  }
+  steps.push({ show: cloneArr(cur),
+    text: `<span class="tag t-done">Done</span>One pass finished. point_selector: <strong>[${cur.map(g=>g.point).join(', ')}]</strong>.` });
+  return steps;
+}
+
+function buildInverseSteps(arr, {p, events}) {
+  let cur = cloneArr(arr);
+  const steps = [{ show: cloneArr(cur),
+    text: `<span class="tag t-init">Start</span>At each locus, inverse independently flips the gene's <strong>inverse</strong> `+
+          `flag (SLAS tie-break direction) if roll &lt; inverse_p (here p=${p}).` }];
+  for (let i = 0; i < cur.length; i++) {
+    const e = events[i];
+    steps.push({ show: cloneArr(cur), hl: [i], text: rollText(i, e, p, 't-ins', 'Inverse') });
+    if (!e.pass) continue;
+    const before = cloneArr(cur);
+    const after  = cloneArr(cur); after[i] = { ...after[i], inverse: !after[i].inverse };
+    cur = after;
+    steps.push({ show: before, anim: async()=>animFlip(i, after[i]), next: cloneArr(cur),
+      text: `<span class="tag t-ins">Inverse</span>Gene <strong>${before[i].id}</strong> at position <strong>${i}</strong>: `+
+            `inverse &rarr; <strong>${after[i].inverse}</strong>.` });
+  }
+  steps.push({ show: cloneArr(cur),
+    text: `<span class="tag t-done">Done</span>One pass finished. Inverse flags: <strong>[${cur.map(g=>g.inverse?1:0).join(', ')}]</strong>.` });
+  return steps;
 }
 
 async function renderStep(idx) {
@@ -338,12 +449,13 @@ function updateProgress() {
 async function startCurrent() {
   autoRunning = false; gsap.killTweensOf('[id^=g]'); busy = false; clearArc();
   // If no params yet (first launch), generate them
-  if (!mutationParams || perm.length !== Math.max(5, Math.min(9, parseInt(document.getElementById('n-len').value)||7))) {
+  if (!mutationParams || perm.length !== readN()) {
     generateNew();
   }
-  steps   = curTab==='swap' ? buildSwapSteps(perm, mutationParams)
-          : curTab==='inv'  ? buildInvSteps(perm, mutationParams)
-          :                   buildInsSteps(perm, mutationParams);
+  steps   = curTab==='swap'    ? buildSwapSteps(perm, mutationParams)
+          : curTab==='rotate'  ? buildRotateSteps(perm, mutationParams)
+          : curTab==='point'   ? buildPointSteps(perm, mutationParams)
+          :                      buildInverseSteps(perm, mutationParams);
   stepIdx = 0;
   document.getElementById('btn-auto').innerHTML = '&#x25B7; Auto<span class="kbd">Space</span>';
   await renderStep(0);
@@ -356,14 +468,14 @@ function randomize() {
 
 function switchTab(t) {
   curTab = t;
-  document.querySelectorAll('.tab').forEach((e,i) => e.classList.toggle('active', ['swap','inv','ins'][i]===t));
+  document.querySelectorAll('.tab').forEach((e,i) => e.classList.toggle('active', ['swap','rotate','point','inverse'][i]===t));
   autoRunning = false; gsap.killTweensOf('[id^=g]'); busy = false;
   steps = []; stepIdx = -1; mutationParams = null; clearArc();
   setExplain('Press Start to begin the step-by-step mutation animation.');
   document.getElementById('progress-row').innerHTML = '';
   document.getElementById('sc').textContent = '';
   updateButtons(false);
-  buildChrom(perm.length ? perm : shuffle(range(7)));
+  buildChrom(perm.length ? perm : shuffle(range(7)).map(makeGene));
 }
 
 document.addEventListener('keydown', ev => {

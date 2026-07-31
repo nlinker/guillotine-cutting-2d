@@ -15,9 +15,9 @@ use crate::{
     transport::{ProgressMessage, ProgressSink},
 };
 
-/// Lazy genome decoder: calls `decode_spec` exactly once when `.decode()` is called.
-/// Most progress events are throttled or superseded before ever being sent, so
-/// deferring the decode avoids wasting it on generations nobody sees.
+/// Lazy genome decoder: calls `decode_spec` exactly once when `LazyDecode::decode()` is called.
+/// `decode` call is expensive, and Progress events are throttled or superseded before
+/// ever being sent, so deferring the decode avoids wasting it on generations nobody sees.
 pub struct LazyDecode(Box<dyn FnOnce(&ProblemSpec) -> SolutionSpec + Send>);
 
 impl LazyDecode {
