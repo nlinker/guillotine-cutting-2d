@@ -7,13 +7,9 @@ struct Shelf {
     x_cursor: u32,
 }
 
-/// Multi-sheet BFDH variant with shelf backfill.
-///
-/// Pieces are sorted by height descending (rotating to portrait if taller that way).
-/// All open shelves across all sheets are retained. For each piece the algorithm
-/// picks the fitting shelf with the minimum remaining width waste (best-fit);
-/// if no shelf fits, a new shelf is opened on the earliest sheet that still has
-/// vertical room, and only then is a new sheet allocated.
+/// Multi-sheet BFDH: pieces sorted by height descending, each placed on the best-fit
+/// (the least width waste) open shelf across all sheets. When nothing fits,
+/// it opens a new shelf, then a new sheet.
 pub fn bfdh_solve(problem: &Problem) -> Solution {
     let sw = problem.sheet.width;
     let sh = problem.sheet.height;

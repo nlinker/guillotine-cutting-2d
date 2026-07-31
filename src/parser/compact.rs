@@ -16,11 +16,8 @@ pub enum ParseError {
     InvalidPieceType(String),
 }
 
-/// Parse a compact problem string into a `ProblemSpec`.
-///
-/// Format: `"<sheet>:<kerf>,<margin>:<pieces>"` — see
-/// [Compact input format for the parser](../README.md#compact-input-format-for-the-parser)
-/// for the full grammar.
+/// Parse a compact problem string (`"<sheet>:<kerf>,<margin>:<pieces>"`) into a `ProblemSpec`.
+/// See [Compact input format](../README.md#compact-input-format-for-the-parser) for the grammar.
 ///
 /// # Example
 /// ```

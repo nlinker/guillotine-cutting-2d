@@ -145,16 +145,18 @@ pub fn min_fn(f1: &StepFn, f2: &StepFn) -> StepFn {
 }
 
 /// The complete GLF DP table.
+/// * `type_to_flat` - For each GLF type index, the list of `Problem.pieces` flat indices
+///   that contributed to it (one entry per physical copy, in insertion order).
 pub struct GlfTable {
     pub types: Vec<GlfType>,
     strides: Vec<usize>,
     cells: Vec<StepFn>,
-    /// For each GLF type index, the list of `Problem.pieces` flat indices that
-    /// contributed to it (one entry per physical copy, in insertion order).
     type_to_flat: Vec<Vec<usize>>,
 }
 
 impl GlfTable {
+    /// _Mixed-radix encoding_: `counts[i]` is a digit with radix `types[i].count + 1`,
+    /// `strides[i]` its place-value weight. Converts the digit vector to a linear index.
     fn flat_index(&self, counts: &[u32]) -> usize {
         counts.iter().zip(&self.strides).map(|(&k, &s)| k as usize * s).sum()
     }
@@ -177,10 +179,7 @@ impl GlfTable {
     }
 
     /// Reconstruct an optimal 1-sheet placement for the full piece set at the given width.
-    ///
     /// Returns `None` if the pieces don't fit at this width.
-    /// `piece_idx` values come from the `indices` slice passed to `build_glf_from_flat`;
-    /// `sheet_idx` is always 0.
     pub fn reconstruct_flat(&self, width: u32) -> Option<Vec<Placement>> {
         let height = self.eval_full_set(width)?;
         let full = self.types.iter().map(|t| t.count).collect::<Vec<_>>();
@@ -194,6 +193,10 @@ impl GlfTable {
         }
     }
 
+    /// Recursively partitions `counts` into two subsets and searches, via the cached GLF
+    /// entries, for a split (vertical or horizontal) that tiles `[x, x+width) x [y, y+height)`.
+    /// Appends found placements to `placements` and advances `used` (per-type index into
+    /// `type_to_flat`) on success.
     #[allow(clippy::too_many_arguments)]
     fn recon_flat(
         &self,
@@ -278,9 +281,9 @@ impl GlfTable {
         eval_f(&self.cells[idx], width)
     }
 
-    /// The `[w_min, w_max]` range over which `eval_full_set` is defined and strictly decreasing.
-    /// Beyond `w_max`, the minimum height is constant - sweeping further yields no new layouts.
-    /// Returns `None` if the full set is infeasible.
+    /// `[w_min, w_max]` for the full set: below `w_min` nothing fits (height = infinity),
+    /// above `w_max` height has already hit its minimum, so widening further changes nothing.
+    /// Returns `None` if the full set never fits.
     pub fn feasible_width_range(&self) -> Option<(u32, u32)> {
         let full = self.types.iter().map(|t| t.count).collect::<Vec<u32>>();
         let idx = self.flat_index(&full);
@@ -341,6 +344,7 @@ impl GlfTable {
     }
 }
 
+/// Format counts as `{2·A,B}`, e.g. skipping zero-count types.
 fn subset_label(labels: &[String], counts: &[u32]) -> String {
     let parts = counts
         .iter()
@@ -365,23 +369,15 @@ fn format_step_fn(f: &StepFn) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-/// Build the GLF (Guillotine Layout Function) table for a whole problem.
-///
 /// `problem` must already be kerf/margin-expanded (i.e. produced by
 /// `expand::expand_problem`) - piece dimensions are used as-is, not adjusted here.
-/// Query `eval_full_set` with `problem.sheet.width` to check feasibility.
 pub fn build_glf(problem: &Problem) -> GlfTable {
     let indices = (0..problem.pieces.len()).collect::<Vec<_>>();
     build_glf_from_flat(&problem.pieces, &indices)
 }
 
-/// Build a GLF table from a subset of flat (kerf-expanded) pieces.
-///
-/// `pieces` is `Problem.pieces`; dimensions are already kerf-expanded - do not add kerf here.
-/// `indices` selects which entries of `pieces` to include (e.g. all `piece_idx` on one sheet).
-///
-/// Use `reconstruct_flat(sheet.width)` on the result to get `Vec<Placement>`
-/// with `piece_idx` values taken directly from `indices`.
+/// `pieces` (already kerf-expanded, do not re-apply kerf) is indexed by `indices`, e.g. all
+/// `piece_idx` on one sheet. `reconstruct_flat` reuses these `indices` as `piece_idx` values.
 pub fn build_glf_from_flat(pieces: &[Piece], indices: &[usize]) -> GlfTable {
     let mut type_map: HashMap<(u32, u32, bool), usize> = HashMap::new();
     let mut types: Vec<GlfType> = Vec::new();
@@ -515,13 +511,13 @@ mod tests {
     #[test]
     fn eval_f_inv_basic() {
         // f = [(8,6),(10,3)]:
-        //      x∈[0,8)  -> f(x) = ∞
-        //      x∈[8,10) -> f(x) = 6
-        //      x∈[10,∞) -> f(x) = 3
+        //      x ∈ [0,8)  -> f(x) = ∞
+        //      x ∈ [8,10) -> f(x) = 6
+        //      x ∈ [10,∞) -> f(x) = 3
         // f⁻¹ = [(3,10),(6,8)]:
-        //      x∈[0,3) -> f(x) = ∞
-        //      x∈[3,6) -> f(x) = 10
-        //      x∈[6,∞) -> f(x) = 8
+        //      x ∈ [0,3) -> f(x) = ∞
+        //      x ∈ [3,6) -> f(x) = 10
+        //      x ∈ [6,∞) -> f(x) = 8
         let f: StepFn = vec![(8, 6), (10, 3)];
         assert_eq!(eval_f_inv(&f, 2), None);
         assert_eq!(eval_f_inv(&f, 3), Some(10));
@@ -561,7 +557,6 @@ mod tests {
 
     #[test]
     fn tutorial_example() {
-        // "10x8F::2x3/4,4x3,8x3,5x2/2" - all fixed, kerf=0
         let p = parse_problem("10x8F::2x3/4,4x3,8x3,5x2/2").unwrap();
         let problem = expand_problem(&p);
         let table = build_glf(&problem);

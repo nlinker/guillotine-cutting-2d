@@ -202,8 +202,8 @@ pub fn run_algorithm(spec: Arc<ProblemSpec>, alg_cfg: &AlgConfig) -> AnyHandle {
         AlgConfig::Heuristic { kind } => {
             let problem = expand_problem(&spec);
             let flat_sol = match kind {
-                HeuristicKind::Jylanki => crate::heuristic::jylanki_solve(&problem),
-                HeuristicKind::Bfdh => crate::heuristic::bfdh_solve(&problem),
+                HeuristicKind::Jylanki => crate::heuristic::jylanki::jylanki_solve(&problem),
+                HeuristicKind::Bfdh => crate::heuristic::bfdh::bfdh_solve(&problem),
             };
             let objective = flat_sol.eval(&problem);
             let sol_spec = shrink_solution(&flat_sol, &spec);

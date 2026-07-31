@@ -1,6 +1,3 @@
-mod bfdh;
+pub mod bfdh;
 mod common;
-mod jylanki;
-
-pub use bfdh::bfdh_solve;
-pub use jylanki::jylanki_solve;
+pub mod jylanki;

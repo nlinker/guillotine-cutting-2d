@@ -3,16 +3,6 @@ use std::error::Error;
 use crate::model::{ProblemSpec, SolutionSpec};
 
 /// Parse a JSON problem spec into a `ProblemSpec`.
-///
-/// ```json
-/// {
-///   "sheet": {"width": 3000, "height": 4000},
-///   "kerf": 7,
-///   "piece_types": [
-///     {"name": "стойка", "width": 835, "height": 620, "count": 4, "can_rotate": true}
-///   ]
-/// }
-/// ```
 pub fn parse_problem(s: &str) -> Result<ProblemSpec, serde_json::Error> {
     serde_json::from_str(s)
 }

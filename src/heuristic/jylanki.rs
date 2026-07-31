@@ -3,13 +3,9 @@ use strum::IntoEnumIterator;
 use super::common::{SelectionRule, SortDir, SortKey, SplitRule, selection_score, sort_cmp};
 use crate::model::{FreeRect, Objective, Placement, Problem, Solution};
 
-/// One deterministic greedy pass with a fixed strategy combination.
-///
-/// Pieces are sorted by `key`/`dir`, then placed one by one: every
-/// (free rect, orientation) pair the piece fits into is scored with `sel`,
-/// the minimum wins (ties: earlier rect index, then non-rotated). The chosen
-/// rect is split along the direction dictated by `split`. A new sheet is
-/// opened when nothing fits.
+/// One greedy pass: pieces sorted by `key`/`dir`, each placed into its best
+/// free rect and orientation (`sel`), which is then split per `split` rule. Opens a new
+/// sheet when nothing fits.
 fn jylanki_pass(problem: &Problem, key: SortKey, dir: SortDir, sel: SelectionRule, split: SplitRule) -> Solution {
     use crate::slas::decoder::{sheet_rect, split_directional};
 
@@ -79,12 +75,8 @@ fn jylanki_pass(problem: &Problem, key: SortKey, dir: SortDir, sel: SelectionRul
     Solution { placements, leftovers: free }
 }
 
-/// Portfolio guillotine packer after Jylanki's "A Thousand Ways to Pack the Bin".
-///
-/// Runs a deterministic greedy pass for every strategy combination
-/// (6 sort keys x 2 directions x 3 selection rules x 4 split rules = 144)
-/// and returns the solution with the best `Objective`. With strict comparison
-/// and a fixed iteration order the result is fully deterministic.
+/// Jylanki's "A Thousand Ways to Pack the Bin": runs `jylanki_pass` for every
+/// strategy combination (6x2x3x4 = 144) and keeps the best `Objective`.
 pub fn jylanki_solve(problem: &Problem) -> Solution {
     let mut best: Option<(Objective, Solution)> = None;
     for key in SortKey::iter() {
