@@ -23,6 +23,7 @@ futures-util = "0.3"
 serde_json = "1"
 smallvec = { version = "1", features = ["union", "serde"] }
 chumsky = "0.13"
+strum = { version = "0.27", features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

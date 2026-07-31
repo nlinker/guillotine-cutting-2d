@@ -1,7 +1,6 @@
-use super::common::{
-    SELECTION_RULES, SORT_DIRS, SORT_KEYS, SPLIT_RULES, SelectionRule, SortDir, SortKey, SplitRule, selection_score,
-    sort_cmp,
-};
+use strum::IntoEnumIterator;
+
+use super::common::{SelectionRule, SortDir, SortKey, SplitRule, selection_score, sort_cmp};
 use crate::model::{FreeRect, Objective, Placement, Problem, Solution};
 
 /// One deterministic greedy pass with a fixed strategy combination.
@@ -88,10 +87,10 @@ fn jylanki_pass(problem: &Problem, key: SortKey, dir: SortDir, sel: SelectionRul
 /// and a fixed iteration order the result is fully deterministic.
 pub fn jylanki_solve(problem: &Problem) -> Solution {
     let mut best: Option<(Objective, Solution)> = None;
-    for key in SORT_KEYS {
-        for dir in SORT_DIRS {
-            for sel in SELECTION_RULES {
-                for split in SPLIT_RULES {
+    for key in SortKey::iter() {
+        for dir in SortDir::iter() {
+            for sel in SelectionRule::iter() {
+                for split in SplitRule::iter() {
                     let sol = jylanki_pass(problem, key, dir, sel, split);
                     let obj = sol.eval(problem);
                     if best.as_ref().is_none_or(|(b, _)| obj < *b) {

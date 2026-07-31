@@ -1,20 +1,27 @@
 use std::cmp::Ordering;
 
+use strum::EnumIter;
+
 use crate::model::{FreeRect, Problem};
 
-/// Piece ordering criterion for a Jylanki pass. All keys compare on u64 to
-/// avoid overflow; Ratio compares w/h by cross-multiplication (no floats).
-#[derive(Clone, Copy)]
+/// Piece ordering criterion for a Jylanki pass.
+#[derive(Clone, Copy, EnumIter)]
 pub(crate) enum SortKey {
+    /// `w * h`.
     Area,
+    /// `min(w, h)`, ties broken by `max(w, h)`.
     ShortSide,
+    /// `max(w, h)`, ties broken by `min(w, h)`.
     LongSide,
+    /// `w + h`.
     Perimeter,
+    /// `|w - h|`, i.e. how far the piece is from square.
     Diff,
+    /// `w / h`, compared via cross-multiplication (no floats).
     Ratio,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, EnumIter)]
 pub(crate) enum SortDir {
     Asc,
     Desc,
@@ -22,7 +29,7 @@ pub(crate) enum SortDir {
 
 /// Free-rect selection criterion; the candidate (rect, orientation) with the
 /// minimum score wins.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, EnumIter)]
 pub(crate) enum SelectionRule {
     /// Smallest rect area (Best-Area-Fit); orientation-independent, ties resolved by tie-break.
     Area,
@@ -34,7 +41,7 @@ pub(crate) enum SelectionRule {
 
 /// Cut direction rule applied after placing a piece into a free rect.
 /// `horizontal` in `split_directional` terms: the full-span cut runs horizontally.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, EnumIter)]
 pub(crate) enum SplitRule {
     /// Horizontal when the right leftover strip is the narrower one (== SLAS).
     ShorterLeftover,
@@ -45,24 +52,6 @@ pub(crate) enum SplitRule {
     /// Horizontal when the free rect is wider than tall.
     LongAxis,
 }
-
-pub(crate) const SORT_KEYS: [SortKey; 6] = [
-    SortKey::Area,
-    SortKey::ShortSide,
-    SortKey::LongSide,
-    SortKey::Perimeter,
-    SortKey::Diff,
-    SortKey::Ratio,
-];
-pub(crate) const SORT_DIRS: [SortDir; 2] = [SortDir::Asc, SortDir::Desc];
-pub(crate) const SELECTION_RULES: [SelectionRule; 3] =
-    [SelectionRule::Area, SelectionRule::ShortSide, SelectionRule::LongSide];
-pub(crate) const SPLIT_RULES: [SplitRule; 4] = [
-    SplitRule::ShorterLeftover,
-    SplitRule::LongerLeftover,
-    SplitRule::ShortAxis,
-    SplitRule::LongAxis,
-];
 
 pub(crate) fn sort_cmp(problem: &Problem, a: usize, b: usize, key: SortKey) -> Ordering {
     let pa = &problem.pieces[a];
