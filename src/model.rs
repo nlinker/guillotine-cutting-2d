@@ -695,8 +695,6 @@ mod tests {
         assert_eq!(stacked.strip_structure_score(&problem), 59);
     }
 
-    // --- drop_consolidation_score ---
-
     #[test]
     fn full_sheet_placement_yields_zero_drop_score() {
         let problem = flat_problem(10, 10, &[(10, 10)]);

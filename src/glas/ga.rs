@@ -5,7 +5,7 @@ use rand::Rng;
 pub use crate::ga::{GaEvent, GaHandle, ProgressEvent, select_elite, tournament_select};
 use crate::{
     expand::expand_problem,
-    ga::{self, GaConfig, GaDecoder},
+    ga::{self, GaConfig, GaDecoder, rng_01},
     glas::decoder::{Gene, Genome, decode},
     model::{Objective, PieceType, Problem, ProblemSpec},
 };
@@ -307,10 +307,6 @@ fn make_genome<R: Rng>(spec: &ProblemSpec, long_dim_threshold: u32, large_area_t
     genome
 }
 
-fn rng_01<R: Rng>(rng: &mut R) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter::repeat_n;
@@ -360,12 +356,6 @@ mod tests {
     fn one_class(genes: Vec<Gene>) -> Genome {
         vec![genes]
     }
-
-    fn ind(type_idx: usize, obj: crate::model::Objective) -> Individual {
-        Individual { genome: one_class(vec![gg(type_idx, 1)]), objective: obj }
-    }
-
-    // --- mutate ---
 
     #[test]
     fn mutate_preserves_permutation() {
@@ -489,40 +479,6 @@ mod tests {
         assert_eq!(g1, g2);
     }
 
-    // --- selection ---
-
-    #[test]
-    fn tournament_full_k_returns_best() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
-        let mut rng = Xoshiro256StarStar::seed_from_u64(1);
-        let winner = tournament_select(&pop, 3, &mut rng);
-        assert_eq!(
-            (
-                winner.objective.sheets_used_int(),
-                winner.objective.drop_consolidation_score
-            ),
-            (0, 20)
-        );
-    }
-
-    #[test]
-    fn elite_returns_best() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
-        let elite = select_elite(&pop, 1);
-        assert_eq!(elite.len(), 1);
-        assert_eq!(
-            (
-                elite[0].objective.sheets_used_int(),
-                elite[0].objective.drop_consolidation_score
-            ),
-            (0, 30)
-        );
-    }
-
-    // --- OX crossover ---
-
     #[test]
     fn ox_at_known() {
         let p1 = (0..5).map(|i| gg(i, 1)).collect::<Vec<_>>();
@@ -569,8 +525,6 @@ mod tests {
         assert_eq!(c2a, c2b);
     }
 
-    // --- CX crossover ---
-
     #[test]
     fn cx_known() {
         let p1 = one_class((0..5).map(|i| gg(i, 1)).collect());
@@ -589,8 +543,6 @@ mod tests {
         assert_eq!(sorted_type_ids(&c1), (0..n).collect::<Vec<_>>());
         assert_eq!(sorted_type_ids(&c2), (0..n).collect::<Vec<_>>());
     }
-
-    // --- genome generation ---
 
     #[test]
     fn random_genome_valid_permutation() {

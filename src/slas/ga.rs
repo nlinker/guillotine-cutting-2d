@@ -5,7 +5,7 @@ use rand::Rng;
 pub use crate::ga::{GaEvent, GaHandle, ProgressEvent, select_elite, tournament_select};
 use crate::{
     expand::expand_problem,
-    ga::{self, GaConfig, GaDecoder},
+    ga::{self, GaConfig, GaDecoder, rng_01},
     model::{Objective, Problem, ProblemSpec},
     slas::decoder::{Gene, Genome, decode},
 };
@@ -64,9 +64,8 @@ pub fn run_ga_mt(
     ga::run_ga_mt(decoder, config, seeds, progress_interval, migration_interval)
 }
 
-/// OX (Ordered Crossover) for two SLAS genomes, keyed by `piece_idx`; the full `Gene`
-/// travels with its key. See [docs/ga_crossover.md](../../docs/ga_crossover.md) for the
-/// diagram. Both genomes must be permutations of `0..n`.
+/// OX (Ordered Crossover) for two SLAS genomes, keyed by `piece_idx`.
+/// See [docs/ga_crossover.md](../../docs/ga_crossover.md) for the diagram.
 pub fn ox_crossover<R: Rng>(p1: &Genome, p2: &Genome, rng: &mut R) -> (Genome, Genome) {
     let n = p1.len();
     debug_assert_eq!(n, p2.len());
@@ -200,10 +199,6 @@ fn make_genome<R: Rng>(n: usize, rng: &mut R) -> Genome {
         .collect()
 }
 
-fn rng_01<R: Rng>(rng: &mut R) -> f64 {
-    (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-}
-
 #[cfg(test)]
 mod tests {
     use rand::SeedableRng;
@@ -226,10 +221,6 @@ mod tests {
         v
     }
 
-    fn ind(piece_idx: usize, objective: crate::model::Objective) -> Individual {
-        Individual { genome: vec![g(piece_idx)], objective }
-    }
-
     fn default_config() -> GaConfig {
         GaConfig {
             pop_size: 20,
@@ -242,8 +233,6 @@ mod tests {
             ..GaConfig::default()
         }
     }
-
-    // --- mutate ---
 
     #[test]
     fn mutate_preserves_permutation() {
@@ -335,78 +324,6 @@ mod tests {
         assert_eq!(g1, g2);
     }
 
-    // --- selection ---
-
-    #[test]
-    fn tournament_full_k_returns_best() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
-        let mut rng = Xoshiro256StarStar::seed_from_u64(1);
-        let winner = tournament_select(&pop, 3, &mut rng);
-        assert_eq!(
-            (
-                winner.objective.sheets_used_int(),
-                winner.objective.drop_consolidation_score
-            ),
-            (0, 20)
-        );
-    }
-
-    #[test]
-    fn tournament_is_deterministic() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(5)), ind(1, o(3)), ind(2, o(8)), ind(3, o(1))];
-        let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
-        let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
-        assert_eq!(w1.objective, w2.objective);
-    }
-
-    #[test]
-    fn elite_returns_best() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(30)), ind(1, o(10)), ind(2, o(20))];
-        let elite = select_elite(&pop, 1);
-        assert_eq!(elite.len(), 1);
-        assert_eq!(
-            (
-                elite[0].objective.sheets_used_int(),
-                elite[0].objective.drop_consolidation_score
-            ),
-            (0, 30)
-        );
-    }
-
-    #[test]
-    fn elite_top_k_sorted() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(50)), ind(1, o(10)), ind(2, o(30)), ind(3, o(20))];
-        let elite = select_elite(&pop, 2);
-        assert_eq!(
-            elite
-                .iter()
-                .map(|e| (e.objective.sheets_used_int(), e.objective.drop_consolidation_score))
-                .collect::<Vec<_>>(),
-            [(0, 50), (0, 30)]
-        );
-    }
-
-    #[test]
-    fn elite_n_exceeds_pop() {
-        let o = |dc| crate::model::Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
-        let pop = vec![ind(0, o(5)), ind(1, o(3))];
-        let elite = select_elite(&pop, 10);
-        assert_eq!(elite.len(), 2);
-        assert_eq!(
-            (
-                elite[0].objective.sheets_used_int(),
-                elite[0].objective.drop_consolidation_score
-            ),
-            (0, 5)
-        );
-    }
-
-    // --- genome generation ---
-
     #[test]
     fn random_genome_valid_permutation() {
         let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
@@ -432,8 +349,6 @@ mod tests {
         assert_eq!(g1, g2);
     }
 
-    // --- CX crossover ---
-
     #[test]
     fn cx_known() {
         let p1: Genome = (0..5usize).map(g).collect();
@@ -452,18 +367,6 @@ mod tests {
         assert_eq!(sorted_ids(&c1), (0..n).collect::<Vec<_>>());
         assert_eq!(sorted_ids(&c2), (0..n).collect::<Vec<_>>());
     }
-
-    #[test]
-    fn cx_identity_parent_gives_self() {
-        let n = 6;
-        let p1: Genome = (0..n).map(g).collect();
-        let p2: Genome = [5, 4, 3, 2, 1, 0].into_iter().map(g).collect();
-        let (c1, c2) = cx_crossover(&p1, &p2);
-        assert_eq!(sorted_ids(&c1), (0..n).collect::<Vec<_>>());
-        assert_eq!(sorted_ids(&c2), (0..n).collect::<Vec<_>>());
-    }
-
-    // --- OX crossover ---
 
     #[test]
     fn ox_at_known() {
@@ -501,16 +404,6 @@ mod tests {
         assert_eq!(c2a, c2b);
     }
 
-    // --- run_ga ---
-
-    #[test]
-    fn run_ga_smoke() {
-        let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
-        let problem = expand_problem(&spec);
-        let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let _best = run_ga(&problem, &default_config(), &mut rng);
-    }
-
     #[test]
     fn run_ga_is_deterministic() {
         let spec = parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap();
@@ -542,7 +435,7 @@ mod tests {
         }
     }
 
-    /// GA solutions must be non-overlapping and in-bounds.
+    // GA solutions must be non-overlapping and in-bounds.
     #[test]
     fn ga_cut_promotion_solutions_are_valid() {
         let specs = [

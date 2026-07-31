@@ -10,42 +10,32 @@ type FreeList = SmallVec<[FreeRect; 16]>;
 type FreePair = SmallVec<[FreeRect; 2]>;
 
 /// One element of the solution genome (V-vector encoding).
-/// `piece_idx`: index into the flat `Problem::pieces` list (one entry per physical copy).
-/// `rotate`: when true and `piece.can_rotate`, try (height × width) orientation first.
-/// `point_selector`: selects the starting free rect as `free[point_selector % |free|]`;
-/// scanning from a variable offset gives the GA freedom to steer pieces to different regions.
-/// `inverse`: when true, flips the SLAS split direction - `lw <= lh` picks vertical instead
-/// of horizontal. Lets the GA represent cut trees that SLAS cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gene {
+    /// Index into the flat `Problem::pieces` list.
     pub piece_idx: usize,
+    /// If true and the piece can rotate, try it rotated first.
     pub rotate: bool,
+    /// Picks the starting free rect: `free[point_selector % |free|]`.
     pub point_selector: u32,
+    /// If true, splits vertical instead of horizontal on ties.
     pub inverse: bool,
 }
 
-/// Ordered genome - one gene per piece, defining placement order, rotation
-/// preference, and free-rect selection. `piece_idx` values form a permutation
-/// of `0..problem.pieces.len()` (one gene per physical piece).
+/// Ordered genome, one gene per piece; `piece_idx` values form a permutation.
 pub type Genome = Vec<Gene>;
 
-/// Decode a genome into a type-indexed `SolutionSpec`.
-///
-/// Expands `spec` into a flat `Problem`, runs `decoder::decode`, then maps each
-/// `Placement.piece_idx` from flat index back to the type index in `spec`.
+/// Decode a genome into a `SolutionSpec`, mapping flat piece indices back to
+/// the type indices in `spec`.
 pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::SolutionSpec {
     let problem = expand::expand_problem(spec);
     let sol = decode(&problem, genome);
     expand::shrink_solution(&sol, spec)
 }
 
-/// Decode a genome into placements using strict guillotine splitting (no merge).
-///
-/// Pieces are placed in genome order. `point_selector % |free|` picks the
-/// preferred free rect; if the piece does not fit there the decoder scans the
-/// rest of the list in order. A new sheet is opened when nothing fits.
-///
-/// Precondition: every piece fits on an empty sheet.
+/// Decode a genome into placements via SLAS: pieces placed in genome order,
+/// `point_selector` picks the preferred free rect. Opens a new sheet when
+/// nothing fits. Precondition: every piece fits on an empty sheet.
 pub fn decode(problem: &Problem, genome: &Genome) -> Solution {
     let mut free: FreeList = smallvec![sheet_rect(problem, 0)];
     let mut placements: Vec<Placement> = Vec::with_capacity(genome.len());
@@ -148,13 +138,9 @@ pub(crate) fn fits_in(fr: &FreeRect, piece: &Piece, prefer_rotate: bool) -> Opti
     None
 }
 
-/// Split `fr` after placing a `pw × ph` piece at its top-left origin.
-///
-/// Uses the Shorter Leftover Axis (SLAS) heuristic: if the right leftover is
-/// narrower than the bottom leftover, the right child gets the piece's height
-/// and the bottom child spans the full rect width (and vice versa).
-/// When `inverse` is true the direction is flipped: `lw <= lh` picks vertical instead.
-/// Piece dimensions already include kerf (baked in by `expand_problem`), so splits are flush.
+/// Split `fr` after placing a `pw x ph` piece at its top-left origin.
+/// SLAS: the longer leftover strip spans the full rect, the shorter one stays
+/// piece-sized. `inverse` flips it.
 pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, inverse: bool) -> FreePair {
     let lw = fr.w - pw;
     let lh = fr.h - ph;
@@ -162,11 +148,9 @@ pub(crate) fn guillotine_split(fr: &FreeRect, pw: u32, ph: u32, inverse: bool) -
     split_directional(fr, pw, ph, (lw <= lh) != inverse)
 }
 
-/// Split `fr` after placing a `pw × ph` piece at its top-left origin, with an
-/// explicit cut direction. `horizontal` means the full-span cut runs horizontally:
-/// the bottom child gets the full rect width and the right child the piece height
-/// (first diagram); otherwise the right child gets the full height (second diagram).
-/// Children with a zero side are omitted.
+/// Split `fr` after placing a `pw × ph` piece, with an explicit direction
+/// (unlike `guillotine_split`, which picks it via SLAS). Zero-side leftover
+/// rects are omitted.
 pub(crate) fn split_directional(fr: &FreeRect, pw: u32, ph: u32, horizontal: bool) -> FreePair {
     debug_assert!(pw <= fr.w && ph <= fr.h);
     let lw = fr.w - pw;
@@ -233,9 +217,6 @@ mod tests {
         // │             ├─────────────┤    │ free 100×10│               │
         // └─────────────┴─────────────┘    └────────────┴───────────────┘
         // kerf = 5 between every pair of pieces
-        // improve_tl_corners checks only the root (top-level) split per sheet.
-        // Sheet 0 root is HSplit: tl(top)=P0 9600 > tl(bottom)=0 - no swap.
-        // Sheet 1 root is HSplit: tl(top)=P2 12000 > tl(bottom)=P3r 7000 - no swap.
         let spec = parse_problem("200x150F:5,0:120x80,60x80,200x60,70x100r,60x70r").expect("Error parsing problem");
         let problem = expand_problem(&spec);
         let genome = vec![

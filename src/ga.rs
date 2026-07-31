@@ -271,7 +271,7 @@ fn ga_channel<G: Clone + Send + 'static>(progress_interval: usize) -> (GaHandle<
     (handle, context)
 }
 
-fn rng_01<R: Rng>(rng: &mut R) -> f64 {
+pub fn rng_01<R: Rng>(rng: &mut R) -> f64 {
     (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
@@ -506,6 +506,10 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
 mod tests {
     use super::*;
 
+    fn ind(objective: Objective) -> Individual<()> {
+        Individual { genome: (), objective }
+    }
+
     #[derive(Clone)]
     struct PanicGenome;
 
@@ -535,7 +539,7 @@ mod tests {
         fn mutate<R: Rng>(&self, _genome: &mut Self::Genome, _config: &GaConfig, _rng: &mut R) {}
     }
 
-    /// Checks the panic is joined (not a zombie thread) and `blocking_wait` still returns.
+    // Checks the panic is joined (not a zombie thread) and `blocking_wait` still returns.
     #[test]
     fn run_ga_mt_panic_is_joined_not_lost() {
         let prev_hook = std::panic::take_hook();
@@ -550,5 +554,58 @@ mod tests {
         std::panic::set_hook(prev_hook);
 
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn tournament_full_k_returns_best() {
+        let o = |dc| Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
+        let pop = vec![ind(o(30)), ind(o(10)), ind(o(20))];
+        let mut rng = Xoshiro256StarStar::seed_from_u64(1);
+        let winner = tournament_select(&pop, 3, &mut rng);
+        assert_eq!(
+            (
+                winner.objective.sheets_used_int(),
+                winner.objective.drop_consolidation_score
+            ),
+            (0, 20)
+        );
+    }
+
+    #[test]
+    fn tournament_is_deterministic() {
+        let o = |dc| Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
+        let pop = vec![ind(o(5)), ind(o(3)), ind(o(8)), ind(o(1))];
+        let w1 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
+        let w2 = tournament_select(&pop, 2, &mut Xoshiro256StarStar::seed_from_u64(42));
+        assert_eq!(w1.objective, w2.objective);
+    }
+
+    #[test]
+    fn elite_top_k_sorted() {
+        let o = |dc| Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
+        let pop = vec![ind(o(50)), ind(o(10)), ind(o(30)), ind(o(20))];
+        let elite = select_elite(&pop, 2);
+        assert_eq!(
+            elite
+                .iter()
+                .map(|e| (e.objective.sheets_used_int(), e.objective.drop_consolidation_score))
+                .collect::<Vec<_>>(),
+            [(0, 50), (0, 30)]
+        );
+    }
+
+    #[test]
+    fn elite_n_exceeds_pop() {
+        let o = |dc| Objective { sheets_used: 0.0, drop_consolidation_score: dc, layout_score: 0 };
+        let pop = vec![ind(o(5)), ind(o(3))];
+        let elite = select_elite(&pop, 10);
+        assert_eq!(elite.len(), 2);
+        assert_eq!(
+            (
+                elite[0].objective.sheets_used_int(),
+                elite[0].objective.drop_consolidation_score
+            ),
+            (0, 5)
+        );
     }
 }
