@@ -194,9 +194,8 @@ Examples:
 ```
 cargo build
 cargo test
-cargo test <test_name>                              # single test
 cargo clippy -- -D warnings
-cargo +nightly fmt
+cargo +nightly fmt                                 # you need nightly toolchain, not only stable
 cargo run --example benchmark --release            # GA quality benchmark
 cargo run --release -- serve --port 8080           # web UI, use http://localhost:8080 to view
 ```

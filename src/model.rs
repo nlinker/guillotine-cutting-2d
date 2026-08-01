@@ -134,7 +134,7 @@ impl SolutionSpec {
             .unwrap_or(0)
     }
 
-    /// Total guillotine cut length per sheet (mm): each shared internal edge of a
+    /// Total guillotine cut length per sheet - each shared internal edge of a
     /// piece/leftover counted once, plus the working-area perimeter when `margin > 0`.
     pub fn cut_lengths(&self, spec: &ProblemSpec) -> Vec<u64> {
         let n = self.sheets_used();
