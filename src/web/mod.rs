@@ -1,5 +1,3 @@
-mod sse;
-
 use std::{convert::Infallible, sync::Arc, time::Instant};
 
 use axum::{
@@ -13,12 +11,14 @@ use axum::{
     },
     routing::get,
 };
-use cut::model::{PieceType, ProblemSpec, Sheet};
+use cut::{
+    model::{PieceType, ProblemSpec, Sheet},
+    transport::sse::SseSink,
+};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use serde::Deserialize;
-use sse::SseSink;
 
 #[derive(Deserialize)]
 struct SolveParams {

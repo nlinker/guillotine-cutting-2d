@@ -1,3 +1,4 @@
+pub mod sse;
 pub mod stdout;
 #[cfg(unix)]
 pub mod unix;

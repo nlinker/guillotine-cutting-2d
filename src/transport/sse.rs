@@ -1,8 +1,9 @@
 use std::time::Instant;
 
 use axum::response::sse::Event;
-use cut::transport::{ProgressMessage, ProgressSink};
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::transport::{ProgressMessage, ProgressSink};
 
 pub struct SseSink {
     pub tx: UnboundedSender<Event>,
