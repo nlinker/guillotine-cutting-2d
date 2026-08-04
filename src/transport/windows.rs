@@ -109,7 +109,7 @@ impl WindowsPipeSink {
 }
 
 impl ProgressSink for WindowsPipeSink {
-    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
+    fn send(&mut self, msg: ProgressMessage) -> Result<(), std::io::Error> {
         if self.write_message(&msg.to_line()) {
             Ok(())
         } else {

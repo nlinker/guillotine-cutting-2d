@@ -46,5 +46,5 @@ impl ProgressMessage {
 /// across `.await` points (needed by `drain` when spawned on a tokio task).
 pub trait ProgressSink: Send {
     /// Returns `Err` when the client disconnected - caller should stop the GA.
-    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error>;
+    fn send(&mut self, msg: ProgressMessage) -> Result<(), std::io::Error>;
 }

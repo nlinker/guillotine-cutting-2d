@@ -14,28 +14,6 @@ fn ga_cfg() -> GaConfig {
     GaConfig { n_iterations: 2000, n_elites: 5, tournament_size: 5, ..GaConfig::default() }
 }
 
-fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, String) {
-    let last = sol.sheets_used().saturating_sub(1);
-    let on_last: Vec<&PieceType> = sol
-        .placements
-        .iter()
-        .filter(|pl| pl.sheet_idx == last)
-        .map(|pl| &spec.piece_types[pl.ptype_idx])
-        .collect();
-    let count = on_last.len();
-    let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
-    for p in &on_last {
-        let key = (p.width.min(p.height), p.width.max(p.height));
-        *groups.entry(key).or_default() += 1;
-    }
-    let summary = groups
-        .iter()
-        .map(|((w, h), n)| format!("{n}×{w}×{h}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    (count, summary)
-}
-
 fn main() {
     let spec = parse_problem(PROBLEM).expect("parse error");
     let total: u32 = spec.piece_types.iter().map(|p| p.count).sum();
@@ -92,6 +70,28 @@ fn main() {
         best_obj.drop_consolidation_score
     );
     print_solution(&spec, best_sol);
+}
+
+fn summarize_last_sheet(spec: &ProblemSpec, sol: &SolutionSpec) -> (usize, String) {
+    let last = sol.sheets_used().saturating_sub(1);
+    let on_last: Vec<&PieceType> = sol
+        .placements
+        .iter()
+        .filter(|pl| pl.sheet_idx == last)
+        .map(|pl| &spec.piece_types[pl.ptype_idx])
+        .collect();
+    let count = on_last.len();
+    let mut groups: BTreeMap<(u32, u32), usize> = BTreeMap::new();
+    for p in &on_last {
+        let key = (p.width.min(p.height), p.width.max(p.height));
+        *groups.entry(key).or_default() += 1;
+    }
+    let summary = groups
+        .iter()
+        .map(|((w, h), n)| format!("{n}×{w}×{h}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    (count, summary)
 }
 
 fn print_solution(spec: &ProblemSpec, sol: &SolutionSpec) {

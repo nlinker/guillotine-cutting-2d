@@ -173,10 +173,15 @@ pub struct ProgressEvent<G> {
     pub objective: Objective,
 }
 
+#[derive(Debug, Clone)]
+pub struct DoneEvent<G> {
+    pub pairs: Vec<(u64, Individual<G>)>,
+}
+
 #[derive(Debug)]
 pub enum GaEvent<G: Clone + Send + 'static> {
     Progress(ProgressEvent<G>),
-    Done(Vec<(u64, Individual<G>)>),
+    Done(DoneEvent<G>),
 }
 
 /// Caller-facing handle for observing and stopping a running GA. Drop to terminate early.
@@ -205,7 +210,7 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
     pub fn blocking_wait(mut self) -> Vec<(u64, Individual<G>)> {
         let result = loop {
             match self.rx.blocking_recv() {
-                Some(GaEvent::Done(results)) => break results,
+                Some(GaEvent::Done(done)) => break done.pairs,
                 Some(GaEvent::Progress(_)) => continue,
                 None => break Vec::new(),
             }
@@ -355,7 +360,7 @@ pub fn run_ga_mt<D: GaDecoder + Send + Sync + 'static>(
                 .collect::<Vec<(u64, Individual<D::Genome>)>>()
         });
         results.sort_by_key(|(_, ind)| ind.objective);
-        ctx.tx.send(GaEvent::Done(results)).ok();
+        ctx.tx.send(GaEvent::Done(DoneEvent { pairs: results })).ok();
     });
     handle.join = Some(join);
     handle

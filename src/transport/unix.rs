@@ -20,7 +20,7 @@ impl FifoSink {
 }
 
 impl ProgressSink for FifoSink {
-    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
+    fn send(&mut self, msg: ProgressMessage) -> Result<(), std::io::Error> {
         self.writer.write_all(msg.to_line().as_bytes())?;
         self.writer.flush()
     }

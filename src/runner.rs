@@ -1,10 +1,8 @@
 use std::{
-    future::Future,
-    pin::Pin,
     sync::Arc,
     time::{Duration, Instant},
 };
-
+use futures_util::future::BoxFuture;
 use crate::{
     expand::{expand_problem, shrink_solution},
     ga,
@@ -43,11 +41,10 @@ pub enum AnyEvent {
         lazy: LazyDecode,
     },
     Done {
+        // seed, objective, decode, genome_json5
         results: Vec<(u64, Objective, LazyDecode, Option<serde_json::Value>)>,
     },
 }
-
-type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Erases genome type `G` so the typed GA handle can be wrapped in `AnyHandle::Ga(Box<dyn Eraser>)`.
 pub trait Eraser: Send {
@@ -78,8 +75,9 @@ where
                         lazy: LazyDecode(Box::new(move |spec| f(&genome, spec))),
                     })
                 }
-                Some(ga::GaEvent::Done(results)) => Some(AnyEvent::Done {
-                    results: results
+                Some(ga::GaEvent::Done(done)) => Some(AnyEvent::Done {
+                    results: done
+                        .pairs
                         .into_iter()
                         .map(|(seed, ind)| {
                             let (genome, f) = (ind.genome, self.decode.clone());
@@ -207,14 +205,15 @@ pub fn run_algorithm(spec: Arc<ProblemSpec>, alg_cfg: &AlgConfig) -> AnyHandle {
             };
             let objective = flat_sol.eval(&problem);
             let sol_spec = shrink_solution(&flat_sol, &spec);
-            AnyHandle::Heuristic(Some(AnyEvent::Done {
+            let done_event = Some(AnyEvent::Done {
                 results: vec![(
                     0,
                     objective,
                     LazyDecode(Box::new(move |_spec: &ProblemSpec| sol_spec)),
                     None,
                 )],
-            }))
+            });
+            AnyHandle::Heuristic(done_event)
         }
     }
 }
@@ -247,7 +246,7 @@ pub async fn drain(
                         solution: None,
                         pieces: None,
                     };
-                    if sink.send(&msg).is_err() {
+                    if sink.send(msg).is_err() {
                         break;
                     }
                 } else {
@@ -267,7 +266,7 @@ pub async fn drain(
                             solution: Some(sol),
                             pieces: Some(spec.piece_types.clone()),
                         };
-                        if sink.send(&msg).is_err() {
+                        if sink.send(msg).is_err() {
                             break;
                         }
                         last_sent = Some(Instant::now());
@@ -278,7 +277,7 @@ pub async fn drain(
                 // Flush any throttled pending event first
                 if let Some(pending) = best_pending.take() {
                     let sol = pending.lazy.decode(&spec);
-                    sink.send(&ProgressMessage::Progress {
+                    sink.send(ProgressMessage::Progress {
                         generation: pending.generation,
                         sheets_used: pending.objective.sheets_used_int(),
                         secondary_objective: pending.objective.secondary(),
@@ -292,7 +291,7 @@ pub async fn drain(
                 let (best_seed, best_obj, lazy, genome_json) = results.remove(0);
                 let sol = lazy.decode(&spec);
                 let cut_lengths = sol.cut_lengths(&spec);
-                sink.send(&ProgressMessage::Done {
+                sink.send(ProgressMessage::Done {
                     seed: best_seed,
                     sheets_used: best_obj.sheets_used_int(),
                     cut_lengths,

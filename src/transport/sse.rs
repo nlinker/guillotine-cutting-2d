@@ -13,7 +13,7 @@ pub struct SseSink {
 }
 
 impl ProgressSink for SseSink {
-    fn send(&mut self, msg: &ProgressMessage) -> Result<(), std::io::Error> {
+    fn send(&mut self, msg: ProgressMessage) -> Result<(), std::io::Error> {
         let (event_name, data) = match msg {
             ProgressMessage::Progress { .. } => ("progress", msg.to_line()),
             ProgressMessage::Done { .. } => {
