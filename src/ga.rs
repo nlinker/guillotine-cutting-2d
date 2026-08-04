@@ -11,7 +11,7 @@ use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::model::{Objective, ProblemSpec};
+use crate::model::{Objective, ProblemSpec, SolutionSpec};
 
 /// GA hyperparameters.
 #[derive(Debug, Clone)]
@@ -184,7 +184,13 @@ pub enum GaEvent<G: Clone + Send + 'static> {
     Done(DoneEvent<G>),
 }
 
-/// Caller-facing handle for observing and stopping a running GA. Drop to terminate early.
+/// A genome that can decode itself into a solution. Lets `runner::Eraser` be implemented
+/// directly on `GaHandle<G>`, no separate decode closure needed.
+pub trait Decodable {
+    fn decode(&self, spec: &ProblemSpec) -> SolutionSpec;
+}
+
+/// Caller-side handle for observing and stopping a running GA. Drop to terminate early.
 pub struct GaHandle<G: Clone + Send + 'static> {
     pub rx: UnboundedReceiver<GaEvent<G>>,
     stop: Arc<AtomicBool>,
@@ -197,6 +203,8 @@ impl<G: Clone + Send + 'static> GaHandle<G> {
     }
 
     /// Joins the supervisor thread, if not already joined.
+    /// Called from `blocking_wait` below, and from
+    /// `AnyHandle::blocking_wait`/`drain` via `Eraser::join`.
     pub fn join(&mut self) {
         if let Some(h) = self.join.take()
             && let Err(payload) = h.join()

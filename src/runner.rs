@@ -2,11 +2,13 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
 use futures_util::future::BoxFuture;
+
 use crate::{
     expand::{expand_problem, shrink_solution},
     ga,
-    ga::GaConfig,
+    ga::{Decodable, GaConfig},
     glas::ga as glas_ga,
     model::{Objective, ProblemSpec, SolutionSpec},
     slas::ga as slas_ga,
@@ -46,33 +48,27 @@ pub enum AnyEvent {
     },
 }
 
-/// Erases genome type `G` so the typed GA handle can be wrapped in `AnyHandle::Ga(Box<dyn Eraser>)`.
+/// Erases genome type `G` so `GaHandle<G>` can be wrapped in `AnyHandle::Ga(Box<dyn Eraser>)`.
 pub trait Eraser: Send {
     fn recv(&mut self) -> BoxFuture<'_, Option<AnyEvent>>;
     fn join(&mut self);
 }
 
-struct TypedGaHandle<G: Clone + Send + 'static, F> {
-    handle: ga::GaHandle<G>,
-    decode: F,
-}
-
-impl<G, F> Eraser for TypedGaHandle<G, F>
+impl<G> Eraser for ga::GaHandle<G>
 where
-    G: Clone + Send + serde::Serialize + 'static,
-    F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
+    G: Decodable + Clone + Send + serde::Serialize + 'static,
 {
     fn recv(&mut self) -> BoxFuture<'_, Option<AnyEvent>> {
         Box::pin(async move {
-            match self.handle.rx.recv().await {
+            match self.rx.recv().await {
                 None => None,
                 Some(ga::GaEvent::Progress(p)) => {
-                    let (genome, f) = (p.genome, self.decode.clone());
+                    let ga::ProgressEvent { seed, generation, genome, objective } = p;
                     Some(AnyEvent::Progress {
-                        seed: p.seed,
-                        generation: p.generation,
-                        objective: p.objective,
-                        lazy: LazyDecode(Box::new(move |spec| f(&genome, spec))),
+                        seed,
+                        generation,
+                        objective,
+                        lazy: LazyDecode(Box::new(move |spec| genome.decode(spec))),
                     })
                 }
                 Some(ga::GaEvent::Done(done)) => Some(AnyEvent::Done {
@@ -80,12 +76,12 @@ where
                         .pairs
                         .into_iter()
                         .map(|(seed, ind)| {
-                            let (genome, f) = (ind.genome, self.decode.clone());
-                            let genome_json = serde_json::to_value(&genome).ok();
+                            let genome_json = serde_json::to_value(&ind.genome).ok();
+                            let genome = ind.genome;
                             (
                                 seed,
                                 ind.objective,
-                                LazyDecode(Box::new(move |spec| f(&genome, spec))),
+                                LazyDecode(Box::new(move |spec| genome.decode(spec))),
                                 genome_json,
                             )
                         })
@@ -96,19 +92,8 @@ where
     }
 
     fn join(&mut self) {
-        self.handle.join();
+        ga::GaHandle::join(self);
     }
-}
-
-/// Converts a `GaHandle<G>` into a boxed, type-erased `Eraser`, wrapping each
-/// genome in a lazy closure produced by `decode` (`slas::decoder::decode_spec`
-/// or `glas::decoder::decode_spec`).
-fn ga_handle_to_any<G, F>(handle: ga::GaHandle<G>, decode: F) -> Box<dyn Eraser>
-where
-    G: Clone + Send + serde::Serialize + 'static,
-    F: Fn(&G, &ProblemSpec) -> SolutionSpec + Send + Clone + 'static,
-{
-    Box::new(TypedGaHandle { handle, decode })
 }
 
 /// Algorithm plus the parameters it needs to run.
@@ -149,7 +134,7 @@ impl AnyHandle {
 
     pub async fn recv(&mut self) -> Option<AnyEvent> {
         match self {
-            // Dyn dispatches to `TypedGaHandle::recv`
+            // Dyn dispatches to `GaHandle<G>`'s `Eraser::recv` impl
             AnyHandle::Ga(inner) => inner.recv().await,
             AnyHandle::Heuristic(slot) => slot.take(),
         }
@@ -173,27 +158,21 @@ impl AnyHandle {
 pub fn run_algorithm(spec: Arc<ProblemSpec>, alg_cfg: &AlgConfig) -> AnyHandle {
     match alg_cfg {
         AlgConfig::Ga { kind, cfg, seeds, progress_interval } => {
-            let inner = match kind {
-                GaKind::Slas => {
-                    let handle = slas_ga::run_ga_mt(
-                        Arc::clone(&spec),
-                        Arc::clone(cfg),
-                        seeds.clone(),
-                        *progress_interval,
-                        *progress_interval,
-                    );
-                    ga_handle_to_any(handle, |g, spec| crate::slas::decoder::decode_spec(spec, g))
-                }
-                GaKind::Glas => {
-                    let handle = glas_ga::run_ga_mt(
-                        Arc::clone(&spec),
-                        Arc::clone(cfg),
-                        seeds.clone(),
-                        *progress_interval,
-                        *progress_interval,
-                    );
-                    ga_handle_to_any(handle, |g, spec| crate::glas::decoder::decode_spec(spec, g))
-                }
+            let inner: Box<dyn Eraser> = match kind {
+                GaKind::Slas => Box::new(slas_ga::run_ga_mt(
+                    Arc::clone(&spec),
+                    Arc::clone(cfg),
+                    seeds.clone(),
+                    *progress_interval,
+                    *progress_interval,
+                )),
+                GaKind::Glas => Box::new(glas_ga::run_ga_mt(
+                    Arc::clone(&spec),
+                    Arc::clone(cfg),
+                    seeds.clone(),
+                    *progress_interval,
+                    *progress_interval,
+                )),
             };
             AnyHandle::Ga(inner)
         }

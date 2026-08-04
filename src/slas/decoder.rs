@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 
 use crate::{
-    expand, model,
+    expand,
+    ga::Decodable,
+    model,
     model::{FreeRect, Piece, Placement, Problem, Solution},
 };
 
@@ -31,6 +33,12 @@ pub fn decode_spec(spec: &model::ProblemSpec, genome: &Genome) -> model::Solutio
     let problem = expand::expand_problem(spec);
     let sol = decode(&problem, genome);
     expand::shrink_solution(&sol, spec)
+}
+
+impl Decodable for Genome {
+    fn decode(&self, spec: &model::ProblemSpec) -> model::SolutionSpec {
+        decode_spec(spec, self)
+    }
 }
 
 /// Decode a genome into placements via SLAS: pieces placed in genome order,

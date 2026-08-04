@@ -2,6 +2,7 @@ use smallvec::{SmallVec, smallvec};
 
 use crate::{
     expand,
+    ga::Decodable,
     model::{FreeRect, Piece, Placement, Problem, ProblemSpec, Solution},
     slas::decoder::{find_placement, fits_in, split_directional},
 };
@@ -37,6 +38,12 @@ pub fn decode_spec(spec: &ProblemSpec, genome: &Genome) -> crate::model::Solutio
     let problem = expand::expand_problem(spec);
     let sol = decode(&problem, spec, genome);
     expand::shrink_solution(&sol, spec)
+}
+
+impl Decodable for Genome {
+    fn decode(&self, spec: &ProblemSpec) -> crate::model::SolutionSpec {
+        decode_spec(spec, self)
+    }
 }
 
 /// Decode a group genome into a flat `Solution`.
