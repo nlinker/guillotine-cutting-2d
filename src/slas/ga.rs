@@ -224,8 +224,8 @@ mod tests {
     fn default_config() -> GaConfig {
         GaConfig {
             pop_size: 20,
-            n_iterations: 10,
-            n_elites: 1,
+            iteration_count: 10,
+            elite_count: 1,
             tournament_size: 2,
             crossover_p: 0.8,
             swap_p: 0.1,
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2,4x3,2x2f,5x1").unwrap());
-        let cfg = Arc::new(GaConfig { pop_size: 20, n_iterations: 30, ..GaConfig::default() });
+        let cfg = Arc::new(GaConfig { pop_size: 20, iteration_count: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {
@@ -444,7 +444,7 @@ mod tests {
             "22x24F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
             "28x19F::12x3/2,3x12/2,8x4/4r,7x5/4r,6x4/4r",
         ];
-        let cfg = GaConfig { pop_size: 50, n_iterations: 200, ..GaConfig::default() };
+        let cfg = GaConfig { pop_size: 50, iteration_count: 200, ..GaConfig::default() };
         for spec_str in specs {
             let problem = expand_problem(&parse_problem(spec_str).unwrap());
             for seed in 0u64..3 {

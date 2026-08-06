@@ -19,12 +19,12 @@ pub struct GaConfig {
     /// Number of individuals in the population.
     pub pop_size: usize,
 
-    /// Number of generations to run.
-    pub n_iterations: usize,
+    /// Number of generations (=GA iterations) to run
+    pub iteration_count: usize,
 
     /// Number of top individuals copied unchanged into the next generation (elitism).
     /// Typical value: 1-2. Set to 0 to disable.
-    pub n_elites: usize,
+    pub elite_count: usize,
 
     /// Number of individuals competing for each parent slot (tournament selection).
     /// Typical value: 2-5.
@@ -72,8 +72,8 @@ impl fmt::Display for GaConfig {
             f,
             "pop={} gens={} elite={} k={} crossover_p={:.2} swap_p={:.2} flip_p={:.2} point_p={:.2} delta={}..={} inverse_p={:.2} long_dim_threshold={} large_area_threshold={}",
             self.pop_size,
-            self.n_iterations,
-            self.n_elites,
+            self.iteration_count,
+            self.elite_count,
             self.tournament_size,
             self.crossover_p,
             self.swap_p,
@@ -92,8 +92,8 @@ impl Default for GaConfig {
     fn default() -> Self {
         Self {
             pop_size: 200,
-            n_iterations: 1000,
-            n_elites: 2,
+            iteration_count: 1000,
+            elite_count: 2,
             tournament_size: 3,
             crossover_p: 0.80,
             swap_p: 0.15,
@@ -110,10 +110,8 @@ impl Default for GaConfig {
 impl GaConfig {
     pub fn new(
         spec: &ProblemSpec,
-        n_iterations: usize,
+        iteration_count: usize,
         pop_size: usize,
-        n_elites: usize,
-        tournament_size: usize,
         large_area_threshold: u32,
         long_dim_threshold: u32,
     ) -> Self {
@@ -132,9 +130,7 @@ impl GaConfig {
         };
         Self {
             pop_size,
-            n_iterations,
-            n_elites,
-            tournament_size,
+            iteration_count,
             long_dim_threshold,
             large_area_threshold,
             ..Self::default()
@@ -408,8 +404,8 @@ fn run_ga_inner<D: GaDecoder, R: Rng>(
     let mut pop = init_population(decoder, config, config.pop_size, rng);
     let mut best = select_elite(&pop, 1).into_iter().next().expect("pop is non-empty");
 
-    for step in 0..config.n_iterations {
-        let elite = select_elite(&pop, config.n_elites);
+    for step in 0..config.iteration_count {
+        let elite = select_elite(&pop, config.elite_count);
         let mut next_pop = elite;
 
         while next_pop.len() < config.pop_size {
@@ -560,7 +556,7 @@ mod tests {
         std::panic::set_hook(Box::new(|_| {}));
 
         let decoder = Arc::new(PanicDecoder);
-        let config = Arc::new(GaConfig { pop_size: 4, n_iterations: 5, ..GaConfig::default() });
+        let config = Arc::new(GaConfig { pop_size: 4, iteration_count: 5, ..GaConfig::default() });
         let handle = run_ga_mt(decoder, config, vec![1], 0, 0);
         let results = handle.blocking_wait();
 

@@ -11,7 +11,7 @@ const PROBLEM: &str = "200x160F:1,0:22x26/4,32x20/7,35x20/2,42x21/5,46x26r,67x34
 const N_PARALLEL: usize = 12;
 
 fn ga_cfg() -> GaConfig {
-    GaConfig { n_iterations: 2000, n_elites: 5, tournament_size: 5, ..GaConfig::default() }
+    GaConfig { iteration_count: 2000, elite_count: 5, tournament_size: 5, ..GaConfig::default() }
 }
 
 fn main() {

@@ -55,12 +55,6 @@ pub(crate) enum Command {
         /// Population size
         #[arg(long, default_value_t = 200)]
         pop: usize,
-        /// Elite count
-        #[arg(long, default_value_t = 5)]
-        elite: usize,
-        /// Tournament size
-        #[arg(long, default_value_t = 5)]
-        tournament: usize,
         /// Report global best every N generations; 0 = silent
         #[arg(long, default_value_t = 100)]
         progress: usize,

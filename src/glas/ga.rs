@@ -343,8 +343,8 @@ mod tests {
     fn small_config() -> GaConfig {
         GaConfig {
             pop_size: 20,
-            n_iterations: 10,
-            n_elites: 1,
+            iteration_count: 10,
+            elite_count: 1,
             tournament_size: 2,
             crossover_p: 0.8,
             swap_p: 0.1,
@@ -602,7 +602,7 @@ mod tests {
     #[test]
     fn run_ga_mt_is_deterministic() {
         let spec = Arc::new(parse_problem("10x10R::3x2/3,4x3/2,5x1/4").unwrap());
-        let cfg = Arc::new(GaConfig { pop_size: 20, n_iterations: 30, ..GaConfig::default() });
+        let cfg = Arc::new(GaConfig { pop_size: 20, iteration_count: 30, ..GaConfig::default() });
         let seeds = vec![0u64, 1, 2];
 
         let collect = || {

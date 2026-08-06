@@ -28,11 +28,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     match cli.command {
         Command::Calc {
-            compact, json, seed, threads, iterations: gens, pop, elite, tournament: k, progress, sink,
+            compact, json, seed, threads, iterations, pop, progress, sink,
             sink_interval,render, algorithm, long_dim_threshold, large_area_threshold
         } => {
             let spec = load_problem(compact.as_deref(), json.as_deref())?;
-            let cfg = GaConfig::new(&spec, gens, pop, elite, k, large_area_threshold, long_dim_threshold);
+            let cfg = GaConfig::new(&spec, iterations, pop, large_area_threshold, long_dim_threshold);
             let n_threads = resolve_threads(threads);
             if render {
                 run_calc_render(algorithm, &spec, &cfg, seed, n_threads, progress)?;

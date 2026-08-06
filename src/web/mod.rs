@@ -11,10 +11,7 @@ use axum::{
     },
     routing::get,
 };
-use cut::{
-    model::{PieceType, ProblemSpec, Sheet},
-    transport::sse::SseSink,
-};
+use cut::{ga, model::{PieceType, ProblemSpec, Sheet}, runner, transport::sse::SseSink};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -30,8 +27,8 @@ struct SolveParams {
     seed: u64,
     #[serde(default = "default_threads")]
     threads: usize,
-    #[serde(default = "default_gens")]
-    gens: usize,
+    #[serde(default = "default_iterations")]
+    iterations: usize,
     #[serde(default = "default_pop")]
     pop: usize,
     #[serde(default = "default_progress")]
@@ -44,9 +41,9 @@ fn default_seed() -> u64 {
     42
 }
 fn default_threads() -> usize {
-    std::thread::available_parallelism().map_or(8, |p| p.get())
+    std::thread::available_parallelism().map_or(4, |p| p.get())
 }
-fn default_gens() -> usize {
+fn default_iterations() -> usize {
     1000
 }
 fn default_pop() -> usize {
@@ -118,15 +115,15 @@ async fn stream_handler(Query(params): Query<SolveParams>) -> Sse<impl Stream<It
         Ok(spec) => {
             let sheet_w = spec.sheet.width;
             let sheet_h = spec.sheet.height;
-            let cfg = Arc::new(cut::ga::GaConfig::new(&spec, params.gens, params.pop, 5, 5, 0, 0));
+            let cfg = Arc::new(ga::GaConfig::new(&spec, params.iterations, params.pop, 0, 0));
             let problem = Arc::new(spec);
             let mut rng = Xoshiro256StarStar::seed_from_u64(params.seed);
             let seeds = (0..params.threads.max(1)).map(|_| rng.next_u64()).collect::<Vec<_>>();
             let mut sink = SseSink { tx, start: Instant::now(), sheet_w, sheet_h };
             let alg_cfg = crate::make_algorithm_config(params.algorithm, cfg, seeds, params.progress);
-            let handle = cut::runner::run_algorithm(Arc::clone(&problem), &alg_cfg);
+            let handle = runner::run_algorithm(Arc::clone(&problem), &alg_cfg);
             tokio::spawn(async move {
-                cut::runner::drain(handle, problem, &mut sink, 0).await.ok();
+                runner::drain(handle, problem, &mut sink, 0).await.ok();
             });
         }
     }

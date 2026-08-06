@@ -72,7 +72,7 @@
     <label>Seed <input type="number" id="seed" value="42" min="0"></label>
     <label><input type="checkbox" id="random-seed" checked> random</label>
     <label>Threads <input type="number" id="threads" min="1" max="64"></label>
-    <label>Gens <input type="number" id="gens" value="1000" min="10"></label>
+    <label>Iterations <input type="number" id="iterations" value="1000" min="10"></label>
     <label>Pop <input type="number" id="pop" value="200" min="10"></label>
     <label>Progress <input type="number" id="progress" value="50" min="1"></label>
     <label>Algorithm <select id="algorithm">
@@ -336,7 +336,7 @@ document.getElementById('form').addEventListener('submit', (e) => {
   params.set('pieces',   JSON.stringify(lastSpecs));
   params.set('seed',     seedInput.value);
   params.set('threads',  document.getElementById('threads').value);
-  params.set('gens',     document.getElementById('gens').value);
+  params.set('iterations', document.getElementById('iterations').value);
   params.set('pop',      document.getElementById('pop').value);
   params.set('progress', document.getElementById('progress').value);
   params.set('algorithm', document.getElementById('algorithm').value);
@@ -399,7 +399,7 @@ document.getElementById('cancel').addEventListener('click', () => {
   document.getElementById('cancel').style.display = 'none';
 });
 
-const gaOnlyIds = ['seed', 'random-seed', 'threads', 'gens', 'pop', 'progress'];
+const gaOnlyIds = ['seed', 'random-seed', 'threads', 'iterations', 'pop', 'progress'];
 function applyAlgorithmState(value) {
   const isGA = value === 'glas' || value === 'slas';
   gaOnlyIds.forEach(id => {
