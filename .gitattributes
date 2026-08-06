@@ -1,0 +1,15 @@
+# Normalize all text files to LF on git add, no matter what is core.autocrlf.
+* text=auto eol=lf
+
+# Known binary formats to avoid corrupting them
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.avif binary
+*.ico binary
+*.pdf binary
+*.xls binary
+*.xlsm binary
+*.woff binary
+*.woff2 binary
