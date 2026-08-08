@@ -51,7 +51,8 @@ impl GaDecoder for GlasDecoder {
 }
 
 /// Single-threaded GLAS GA.
-pub fn run_ga<R: Rng>(spec: &ProblemSpec, problem: &Problem, config: &GaConfig, rng: &mut R) -> Individual {
+pub fn run_ga<R: Rng>(spec: &ProblemSpec, config: &GaConfig, rng: &mut R) -> Individual {
+    let problem = expand_problem(spec);
     let decoder = GlasDecoder { spec: Arc::new(spec.clone()), problem: Arc::new(problem.clone()) };
     ga::run_ga(&decoder, config, rng)
 }
@@ -574,24 +575,20 @@ mod tests {
     #[test]
     fn run_ga_smoke() {
         let spec = parse_problem("10x10R::3x2/2,4x3/2").unwrap();
-        let problem = expand_problem(&spec);
         let mut rng = Xoshiro256StarStar::seed_from_u64(42);
-        let _best = run_ga(&spec, &problem, &small_config(), &mut rng);
+        let _best = run_ga(&spec, &small_config(), &mut rng);
     }
 
     #[test]
     fn run_ga_is_deterministic() {
         let spec = parse_problem("10x10R::3x2/2,4x3/2,2x2/3").unwrap();
-        let problem = expand_problem(&spec);
         let b1 = run_ga(
             &spec,
-            &problem,
             &small_config(),
             &mut Xoshiro256StarStar::seed_from_u64(123),
         );
         let b2 = run_ga(
             &spec,
-            &problem,
             &small_config(),
             &mut Xoshiro256StarStar::seed_from_u64(123),
         );

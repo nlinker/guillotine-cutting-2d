@@ -1,13 +1,9 @@
-use cut::{
-    ga::GaConfig,
-    generator::{GeneratorConfig, generate},
-    model::{Objective, Sheet},
-    slas::ga::run_ga,
-};
+use cut::{ga::GaConfig, generator::{GeneratorConfig, generate}, glas, model::{Objective, Sheet}};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
+use cut::expand::shrink_problem;
 
-const N_INSTANCES: usize = 100;
+const N_INSTANCES: usize = 10;
 const GEN_BASE_SEED: u64 = 777;
 
 fn ga_seed(gen_seed: u64) -> u64 {
@@ -26,20 +22,42 @@ struct InstanceResult {
     ga_obj: Objective,
 }
 
-fn run_suite(s: &Suite) -> Vec<InstanceResult> {
-    (0..N_INSTANCES)
-        .map(|i| {
-            let gen_seed = GEN_BASE_SEED + i as u64;
-            let out = generate(&s.gen_cfg, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
-            let ref_obj = out.optimal_solution.eval(&out.problem);
-            let best = run_ga(
-                &out.problem,
-                &s.ga_cfg,
-                &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)),
-            );
-            InstanceResult { gen_seed, ref_obj, ga_obj: best.objective }
-        })
-        .collect()
+fn main() {
+    let suites = [Suite {
+        name: "baseline",
+        gen_cfg: GeneratorConfig {
+            sheet: Sheet { width: 100, height: 100 },
+            sheets_count: 2,
+            min_size: 5,
+            kerf: 0,
+            weights: vec![3., 3., 3., 2., 2., 2., 1., 1., 1.],
+            stage_count: 4,
+        },
+        ga_cfg: GaConfig { pop_size: 200, iteration_count: 2000, ..GaConfig::default() },
+    }];
+
+    for s in &suites {
+        run_suite(s);
+    }
+}
+
+fn run_suite(s: &Suite) {
+    let mut results = Vec::with_capacity(N_INSTANCES);
+    for i in 0..N_INSTANCES {
+        let gen_seed = GEN_BASE_SEED + i as u64;
+        let out = generate(&s.gen_cfg, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
+        let spec = shrink_problem(&out.problem);
+        let ref_obj = out.optimal_solution.eval(&out.problem);
+
+        let best = glas::ga::run_ga(
+            &spec,
+            &s.ga_cfg,
+            &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)),
+        );
+        let r = InstanceResult { gen_seed, ref_obj, ga_obj: best.objective };
+        results.push(r);
+    }
+    print_report(s, &results);
 }
 
 fn print_report(s: &Suite, results: &[InstanceResult]) {
@@ -104,24 +122,4 @@ fn print_report(s: &Suite, results: &[InstanceResult]) {
     }
 
     println!();
-}
-
-fn main() {
-    let suites = [Suite {
-        name: "baseline",
-        gen_cfg: GeneratorConfig {
-            sheet: Sheet { width: 60, height: 50 },
-            sheets_count: 4,
-            min_size: 15,
-            kerf: 1,
-            weights: vec![1.0, 1.0],
-            stage_count: 2,
-        },
-        ga_cfg: GaConfig { pop_size: 50, iteration_count: 200, ..GaConfig::default() },
-    }];
-
-    for s in &suites {
-        let results = run_suite(s);
-        print_report(s, &results);
-    }
 }

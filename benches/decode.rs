@@ -1,20 +1,14 @@
+use std::collections::HashMap;
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use cut::{
     expand::expand_problem,
+    generator::{GeneratorConfig, generate},
     glas::decoder::{Gene as GlasGene, Genome as GlasGenome, decode as glas_decode},
-    model::ProblemSpec,
-    parser,
-    slas::decoder::{Gene as SlasGene, Genome as SlasGenome, decode as slas_decode},
+    model::{PieceType, Problem, ProblemSpec, Sheet},
 };
-
-const PROBLEM: &str = "2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r";
-
-fn slas_genome(spec: &ProblemSpec) -> SlasGenome {
-    let problem = expand_problem(spec);
-    (0..problem.pieces.len())
-        .map(|i| SlasGene { piece_idx: i, rotate: false, point_selector: 0, inverse: false })
-        .collect()
-}
+use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256StarStar;
 
 fn glas_genome(spec: &ProblemSpec) -> GlasGenome {
     let mut indices: Vec<usize> = (0..spec.piece_types.len()).collect();
@@ -40,63 +34,49 @@ fn glas_genome(spec: &ProblemSpec) -> GlasGenome {
     vec![genes, vec![], vec![]]
 }
 
+fn problem_to_spec(problem: &Problem) -> ProblemSpec {
+    let mut counts: HashMap<(u32, u32, bool), u32> = HashMap::new();
+    for p in &problem.pieces {
+        *counts.entry((p.width, p.height, p.can_rotate)).or_insert(0) += 1;
+    }
+    let piece_types = counts
+        .into_iter()
+        .map(|((width, height, can_rotate), count)| PieceType { name: String::new(), width, height, count, can_rotate })
+        .collect();
+    ProblemSpec { sheet: problem.sheet, kerf: 0, margin: 0, piece_types }
+}
+
+fn heavy_spec() -> ProblemSpec {
+    let cfg = GeneratorConfig {
+        sheet: Sheet { width: 100, height: 100 },
+        sheets_count: 2,
+        min_size: 5,
+        kerf: 0,
+        weights: vec![3., 3., 3., 2., 2., 2., 1., 1., 1.],
+        stage_count: 4,
+    };
+    let mut rng = Xoshiro256StarStar::seed_from_u64(42);
+    let out = generate(&cfg, &mut rng);
+    problem_to_spec(&out.problem)
+}
+
 fn bench_decode(c: &mut Criterion) {
-    let real_json = include_str!("../src/web/real1.json");
-    let real_spec = parser::json::parse_problem(real_json).expect("parse real1.json");
-    let real_problem = expand_problem(&real_spec);
-    let real_slas = slas_genome(&real_spec);
-    let real_glas = glas_genome(&real_spec);
+    let spec = heavy_spec();
+    let problem = expand_problem(&spec);
+    let glas = glas_genome(&spec);
 
-    let synth_spec = parser::compact::parse_problem(PROBLEM).expect("parse");
-    let synth_problem = expand_problem(&synth_spec);
-    let synth_slas = slas_genome(&synth_spec);
-    let synth_glas = glas_genome(&synth_spec);
-
-    let mut g = c.benchmark_group("decode/synthetic");
-    g.bench_function("slas", |b| {
-        b.iter(|| slas_decode(black_box(&synth_problem), black_box(&synth_slas)))
-    });
+    let mut g = c.benchmark_group("decode/heavy");
     g.bench_function("glas", |b| {
-        b.iter(|| {
-            glas_decode(
-                black_box(&synth_problem),
-                black_box(&synth_spec),
-                black_box(&synth_glas),
-            )
-        })
+        b.iter(|| glas_decode(black_box(&problem), black_box(&spec), black_box(&glas)))
     });
     g.finish();
 
-    let mut g = c.benchmark_group("decode/real");
-    g.bench_function("slas", |b| {
-        b.iter(|| slas_decode(black_box(&real_problem), black_box(&real_slas)))
-    });
-    g.bench_function("glas", |b| {
-        b.iter(|| glas_decode(black_box(&real_problem), black_box(&real_spec), black_box(&real_glas)))
-    });
+    // Objective::eval alone
+    let sol = glas_decode(&problem, &spec, &glas);
+    let mut g = c.benchmark_group("eval/heavy");
+    g.bench_function("glas", |b| b.iter(|| black_box(&sol).eval(black_box(&problem))));
     g.finish();
 }
 
-fn bench_staircase_area(c: &mut Criterion) {
-    let real_json = include_str!("../src/web/real1.json");
-    let real_spec = parser::json::parse_problem(real_json).expect("parse real1.json");
-    let real_problem = expand_problem(&real_spec);
-    let real_sol = slas_decode(&real_problem, &slas_genome(&real_spec));
-
-    let synth_spec =
-        parser::compact::parse_problem("2600x1800R:3,0:400x400/6,495x495/6,270x320/10,150x450/17r").expect("parse");
-    let synth_problem = expand_problem(&synth_spec);
-    let synth_sol = slas_decode(&synth_problem, &slas_genome(&synth_spec));
-
-    let mut g = c.benchmark_group("staircase_area");
-    g.bench_function("synthetic", |b| {
-        b.iter(|| black_box(&synth_sol).staircase_area(black_box(&synth_problem)))
-    });
-    g.bench_function("real", |b| {
-        b.iter(|| black_box(&real_sol).staircase_area(black_box(&real_problem)))
-    });
-    g.finish();
-}
-
-criterion_group!(benches, bench_decode, bench_staircase_area);
+criterion_group!(benches, bench_decode);
 criterion_main!(benches);

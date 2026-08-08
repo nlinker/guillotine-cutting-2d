@@ -157,6 +157,36 @@ fn main() {
 }
 ```
 
+## Performance
+
+You can measure throughput with `cargo bench --bench decode`; this benchmark separately covers the GLAS
+decoder and the `Solution::eval` objective function.
+```
+>cargo bench --bench decode
+decode/heavy/glas       time:   [5.4857 µs 5.6030 µs 5.7773 µs]
+eval/heavy/glas         time:   [26.517 µs 26.775 µs 27.079 µs]
+
+```
+That's roughly 178_500 calls/sec for `decode` (~17.3%) and 37_350 calls/sec for `eval` (~82.7%).
+In total roughly 30_900 calls/sec.
+
+![performance.png](docs/img/performance.png)
+A profiler screenshot shows a slightly different time split: 39% on `decode` and 48% on `eval` - the
+difference comes from genomes being random on every iteration, and some genomes driving more work
+through the decoder than others.
+
+There's also a flamegraph if you're curious: [flamegraph.svg](docs/img/flamegraph.svg)
+Compare the contribution of `cut::glas::decoder::decode` and `cut::model::Solution::eval` to the total
+time - visually the same 39%/48% split.
+
+`cut::model::Solution::eval`'s time essentially breaks down into
+- `cut_line_concentration_score` - 54%
+- `strip_structure_score` - 32%
+- `drop_consolidation_score` - 13%
+
+Computing these three metrics takes a fair amount of time, but it's necessary - we care about layouts
+that aren't just compact, but manufacturable.
+
 ## Compact input format for the parser
 
 `parse_problem` accepts a compact string: `"<sheet>:<kerf>,<margin>:<pieces>"`.
@@ -197,6 +227,7 @@ cargo test
 cargo clippy -- -D warnings
 cargo +nightly fmt                                 # you need nightly toolchain, not only stable
 cargo run --example benchmark --release            # GA quality benchmark
+cargo bench --bench decode                         # wall clock GA benchmark
 cargo run --release -- serve --port 8080           # web UI, use http://localhost:8080 to view
 ```
 

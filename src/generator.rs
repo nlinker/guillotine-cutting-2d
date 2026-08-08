@@ -5,7 +5,7 @@ use rand::prelude::{Rng, RngExt, SliceRandom};
 use crate::model::{FreeRect, Piece, Placement, Problem, Sheet, Solution};
 
 #[derive(Debug)]
-pub struct Output {
+pub struct GenOutput {
     pub problem: Problem,
     pub optimal_solution: Solution,
 }
@@ -34,7 +34,7 @@ pub struct GeneratorConfig {
 /// Generate a 2-D guillotine cutting-stock instance with a known optimal solution.
 /// * `cfg` - generator settings (see [`GeneratorConfig`]).
 /// * `rng` - random-number source.
-pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
+pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> GenOutput {
     let sheet = cfg.sheet;
     assert!(cfg.min_size >= 1, "min_size must be at least 1");
     assert!(!cfg.weights.is_empty(), "weights must be non-empty");
@@ -96,7 +96,7 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> Output {
             can_rotate: true,
         });
     }
-    Output {
+    GenOutput {
         problem: Problem {
             sheet: Sheet { width: cfg.sheet.width + kerf, height: cfg.sheet.height + kerf },
             pieces: problem_pieces,
