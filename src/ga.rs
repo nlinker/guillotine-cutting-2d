@@ -128,13 +128,7 @@ impl GaConfig {
         } else {
             large_area_threshold
         };
-        Self {
-            pop_size,
-            iteration_count,
-            long_dim_threshold,
-            large_area_threshold,
-            ..Self::default()
-        }
+        Self { pop_size, iteration_count, long_dim_threshold, large_area_threshold, ..Self::default() }
     }
 }
 

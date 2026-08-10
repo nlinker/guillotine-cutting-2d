@@ -11,7 +11,12 @@ use axum::{
     },
     routing::get,
 };
-use cut::{ga, model::{PieceType, ProblemSpec, Sheet}, runner, transport::sse::SseSink};
+use cut::{
+    ga,
+    model::{PieceType, ProblemSpec, Sheet},
+    runner,
+    transport::sse::SseSink,
+};
 use futures_util::{Stream, stream};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;

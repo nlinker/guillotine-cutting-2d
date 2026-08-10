@@ -1,13 +1,13 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use rand::prelude::{Rng, RngExt, SliceRandom};
 
-use crate::model::{FreeRect, Piece, Placement, Problem, Sheet, Solution};
+use crate::model::{FreeRect, PieceType, PlacementSpec, ProblemSpec, Sheet, SolutionSpec};
 
 #[derive(Debug)]
 pub struct GenOutput {
-    pub problem: Problem,
-    pub optimal_solution: Solution,
+    pub problem: ProblemSpec,
+    pub optimal_solution: SolutionSpec,
 }
 
 /// Configuration for the generator.
@@ -82,26 +82,30 @@ pub fn generate<R: Rng>(cfg: &GeneratorConfig, rng: &mut R) -> GenOutput {
         }
         all_rects.extend(queue);
     }
-    // Shuffle before assigning indices so piece_idx == position in problem.piece_types.
+    // Shuffle before grouping so piece-type discovery order doesn't reveal sheet origin.
     all_rects.shuffle(rng);
 
-    let mut placements: Vec<Placement> = Vec::new();
-    let mut problem_pieces: Vec<Piece> = Vec::new();
-    for (piece_idx, rect) in all_rects.iter().enumerate() {
-        placements.push(Placement { sheet_idx: rect.sheet_idx, piece_idx, x: rect.x, y: rect.y, rotated: false });
-        problem_pieces.push(Piece {
-            name: String::new(),
-            width: rect.w + kerf,
-            height: rect.h + kerf,
-            can_rotate: true,
+    let mut type_index: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut piece_types: Vec<PieceType> = Vec::new();
+    let mut placements: Vec<PlacementSpec> = Vec::new();
+    for rect in &all_rects {
+        let width = rect.w + kerf;
+        let height = rect.h + kerf;
+        let ptype_idx = *type_index.entry((width, height)).or_insert_with(|| {
+            piece_types.push(PieceType { name: String::new(), width, height, count: 0, can_rotate: true });
+            piece_types.len() - 1
         });
+        piece_types[ptype_idx].count += 1;
+        placements.push(PlacementSpec { sheet_idx: rect.sheet_idx, ptype_idx, x: rect.x, y: rect.y, rotated: false });
     }
     GenOutput {
-        problem: Problem {
+        problem: ProblemSpec {
             sheet: Sheet { width: cfg.sheet.width + kerf, height: cfg.sheet.height + kerf },
-            pieces: problem_pieces,
+            kerf: 0,
+            margin: 0,
+            piece_types,
         },
-        optimal_solution: Solution { placements, leftovers: Vec::new() },
+        optimal_solution: SolutionSpec { placements, leftovers: Vec::new() },
     }
 }
 
@@ -264,7 +268,12 @@ mod tests {
             let c = GeneratorConfig { sheet: sheet_10x8(), sheets_count, min_size, kerf, weights, stage_count: 2 };
             let out = generate(&c, &mut rng);
 
-            let total: u32 = out.problem.pieces.iter().map(|p| p.width * p.height).sum();
+            let total: u32 = out
+                .problem
+                .piece_types
+                .iter()
+                .map(|p| p.width * p.height * p.count)
+                .sum();
             let expanded_area = out.problem.sheet.width * out.problem.sheet.height * sheets_count as u32;
             assert_eq!(total, expanded_area, "kerf={kerf}: pieces must tile the sheet exactly");
 
@@ -287,7 +296,7 @@ mod tests {
             );
 
             for pl in &out.optimal_solution.placements {
-                let p = &out.problem.pieces[pl.piece_idx];
+                let p = &out.problem.piece_types[pl.ptype_idx];
                 assert!(
                     p.width >= min_size && p.height >= min_size,
                     "kerf={kerf}: piece below min_size"
@@ -310,16 +319,22 @@ mod tests {
         let o1 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let o2 = generate(&c, &mut Xoshiro256StarStar::seed_from_u64(42));
         let ids1 = o1
-            .problem
-            .pieces
+            .optimal_solution
+            .placements
             .iter()
-            .map(|p| (p.width, p.height))
+            .map(|pl| {
+                let pt = &o1.problem.piece_types[pl.ptype_idx];
+                (pt.width, pt.height)
+            })
             .collect::<Vec<_>>();
         let ids2 = o2
-            .problem
-            .pieces
+            .optimal_solution
+            .placements
             .iter()
-            .map(|p| (p.width, p.height))
+            .map(|pl| {
+                let pt = &o2.problem.piece_types[pl.ptype_idx];
+                (pt.width, pt.height)
+            })
             .collect::<Vec<_>>();
         assert_eq!(ids1, ids2);
     }
@@ -341,8 +356,8 @@ mod tests {
         );
         // Must produce exactly 1 piece covering the whole sheet (nothing fits the multi-piece
         // counts). Piece dims are expanded by kerf=1.
-        assert_eq!(out.problem.pieces.len(), 1);
-        let p = &out.problem.pieces[0];
+        assert_eq!(out.problem.piece_types.len(), 1);
+        let p = &out.problem.piece_types[0];
         assert_eq!(p.width, 4 + 1);
         assert_eq!(p.height, 4 + 1);
     }

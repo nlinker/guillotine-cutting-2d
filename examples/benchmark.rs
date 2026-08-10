@@ -1,7 +1,12 @@
-use cut::{ga::GaConfig, generator::{GeneratorConfig, generate}, glas, model::{Objective, Sheet}};
+use cut::{
+    expand::{expand_problem, expand_solution},
+    ga::GaConfig,
+    generator::{GeneratorConfig, generate},
+    glas,
+    model::{Objective, Sheet},
+};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
-use cut::expand::shrink_problem;
 
 const N_INSTANCES: usize = 10;
 const GEN_BASE_SEED: u64 = 777;
@@ -46,11 +51,13 @@ fn run_suite(s: &Suite) {
     for i in 0..N_INSTANCES {
         let gen_seed = GEN_BASE_SEED + i as u64;
         let out = generate(&s.gen_cfg, &mut Xoshiro256StarStar::seed_from_u64(gen_seed));
-        let spec = shrink_problem(&out.problem);
-        let ref_obj = out.optimal_solution.eval(&out.problem);
+        let spec = &out.problem;
+        let problem = expand_problem(spec);
+        let solution = expand_solution(&out.optimal_solution, spec);
+        let ref_obj = solution.eval(&problem);
 
         let best = glas::ga::run_ga(
-            &spec,
+            spec,
             &s.ga_cfg,
             &mut Xoshiro256StarStar::seed_from_u64(ga_seed(gen_seed)),
         );

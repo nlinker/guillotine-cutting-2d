@@ -582,16 +582,8 @@ mod tests {
     #[test]
     fn run_ga_is_deterministic() {
         let spec = parse_problem("10x10R::3x2/2,4x3/2,2x2/3").unwrap();
-        let b1 = run_ga(
-            &spec,
-            &small_config(),
-            &mut Xoshiro256StarStar::seed_from_u64(123),
-        );
-        let b2 = run_ga(
-            &spec,
-            &small_config(),
-            &mut Xoshiro256StarStar::seed_from_u64(123),
-        );
+        let b1 = run_ga(&spec, &small_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
+        let b2 = run_ga(&spec, &small_config(), &mut Xoshiro256StarStar::seed_from_u64(123));
         assert_eq!(b1.objective, b2.objective);
         assert_eq!(b1.genome, b2.genome);
     }
