@@ -1,6 +1,6 @@
 Attribute VB_Name = "Cut"
 ''
-'' Cut.bas  -  VBA module: launches cut.exe and reads progress via named pipe
+'' Cut.bas  -  VBA module: launches solver.exe and reads progress via named pipe
 ''
 '' Requires JsonConverter module (excel/JsonConverter.bas) imported into the workbook.
 ''
@@ -203,6 +203,34 @@ End Function
 
 Private Function DataEndRow(ws As Worksheet) As Long
     DataEndRow = ws.Range(DATA_CELL).Row + MAX_PIECE_ROWS
+End Function
+
+' A row is considered empty if its height or width equals zero
+Private Function IsBlankPieceRow(ws As Worksheet, row As Long, dc As Long) As Boolean
+    Dim w As Long, h As Long
+    w = 0: h = 0
+    If ws.Cells(row, dc + 1).Value <> "" Then w = CLng(ws.Cells(row, dc + 1).Value)
+    If ws.Cells(row, dc + 2).Value <> "" Then h = CLng(ws.Cells(row, dc + 2).Value)
+    IsBlankPieceRow = (w = 0 Or h = 0)
+End Function
+
+' Final row of the fragment table: individual empty rows act as visual gaps,
+' whereas a consecutive pair of blank rows terminates the table (or hits DataEndRow first).
+' Returns DataStartRow(ws) - 1 for an empty table.
+Private Function LastPieceRow(ws As Worksheet) As Long
+    Dim dc As Long: dc = DataCol(ws)
+    Dim i As Long, blankRun As Long
+    LastPieceRow = DataStartRow(ws) - 1
+    blankRun = 0
+    For i = DataStartRow(ws) To DataEndRow(ws)
+        If IsBlankPieceRow(ws, i, dc) Then
+            blankRun = blankRun + 1
+            If blankRun >= 2 Then Exit For
+        Else
+            blankRun = 0
+            LastPieceRow = i
+        End If
+    Next i
 End Function
 
 ' Writes progress values to status cells.
@@ -526,31 +554,33 @@ Private Function ReadPieceRows(ws As Worksheet, ByRef names() As String, ByRef w
     ReDim ets(1 To MAX_PIECE_ROWS)
 
     Dim dc As Long: dc = DataCol(ws)
+    Dim lastRow As Long: lastRow = LastPieceRow(ws)
     Dim n As Long: n = 0
     Dim i As Long
-    For i = DataStartRow(ws) To DataEndRow(ws)
-        Dim w As Long, h As Long
-        w = 0: h = 0
-        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
-        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
-        If w = 0 Or h = 0 Then Exit For
+    For i = DataStartRow(ws) To lastRow
+        If Not IsBlankPieceRow(ws, i, dc) Then
+            Dim w As Long, h As Long
+            w = 0: h = 0
+            If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+            If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
 
-        n = n + 1
-        names(n) = Trim(ws.Cells(i, dc).Value)
-        widths(n) = w
-        heights(n) = h
-        ' dc + 3 = "D" is the counts column
-        cnts(n) = 0
-        If ws.Cells(i, dc + 3).Value <> "" Then cnts(n) = CLng(ws.Cells(i, dc + 3).Value)
-        ' dc + 5 = "F" is the edge widths column
-        ews(n) = 0
-        If ws.Cells(i, dc + 5).Value <> "" Then ews(n) = CLng(ws.Cells(i, dc + 5).Value)
-        ' dc + 6 = "G" is the edge heights column
-        ehs(n) = 0
-        If ws.Cells(i, dc + 6).Value <> "" Then ehs(n) = CLng(ws.Cells(i, dc + 6).Value)
-        ' dc + 7 = "H" is the edge types column
-        ets(n) = 0
-        If ws.Cells(i, dc + 7).Value <> "" Then ets(n) = CLng(ws.Cells(i, dc + 7).Value)
+            n = n + 1
+            names(n) = Trim(ws.Cells(i, dc).Value)
+            widths(n) = w
+            heights(n) = h
+            ' dc + 3 = "D" is the counts column
+            cnts(n) = 0
+            If ws.Cells(i, dc + 3).Value <> "" Then cnts(n) = CLng(ws.Cells(i, dc + 3).Value)
+            ' dc + 5 = "F" is the edge widths column
+            ews(n) = 0
+            If ws.Cells(i, dc + 5).Value <> "" Then ews(n) = CLng(ws.Cells(i, dc + 5).Value)
+            ' dc + 6 = "G" is the edge heights column
+            ehs(n) = 0
+            If ws.Cells(i, dc + 6).Value <> "" Then ehs(n) = CLng(ws.Cells(i, dc + 6).Value)
+            ' dc + 7 = "H" is the edge types column
+            ets(n) = 0
+            If ws.Cells(i, dc + 7).Value <> "" Then ets(n) = CLng(ws.Cells(i, dc + 7).Value)
+        End If
     Next i
 
     ReadPieceRows = n
@@ -773,36 +803,37 @@ Private Function BuildProblemJson(ws As Worksheet) As String
     Dim margin      As Long: margin      = ws.Range(MARGIN_CELL).Value
 
     Dim dc As Long: dc = DataCol(ws)
+    Dim lastRow As Long: lastRow = LastPieceRow(ws)
     Dim sPieces As String
     Dim bFirst  As Boolean: bFirst = True
-    Dim i As Long: i = DataStartRow(ws)
+    Dim i As Long
 
-    Do
-        Dim w As Long, h As Long
-        w = 0: h = 0
-        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
-        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
-        If w = 0 Or h = 0 Then Exit Do
+    For i = DataStartRow(ws) To lastRow
+        If Not IsBlankPieceRow(ws, i, dc) Then
+            Dim w As Long, h As Long
+            w = 0: h = 0
+            If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+            If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
 
-        Dim pName   As String:  pName   = Trim(ws.Cells(i, dc).Value)
-        Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, dc + 3).Value)
-        Dim pRotate As Boolean: pRotate = (ws.Cells(i, dc + 4).Value = True)
+            Dim pName   As String:  pName   = Trim(ws.Cells(i, dc).Value)
+            Dim pCount  As Long:    pCount  = CLng(ws.Cells(i, dc + 3).Value)
+            Dim pRotate As Boolean: pRotate = (ws.Cells(i, dc + 4).Value = True)
 
-        Dim sPiece As String
-        sPiece = "{""name"":"""  & JsonEscapeStr(pName) & """" & _
-                 ",""width"":"  & CStr(w) & _
-                 ",""height"":" & CStr(h) & _
-                 ",""count"":"  & CStr(pCount) & _
-                 ",""can_rotate"":" & IIf(pRotate, "true", "false") & "}"
+            Dim sPiece As String
+            sPiece = "{""name"":"""  & JsonEscapeStr(pName) & """" & _
+                     ",""width"":"  & CStr(w) & _
+                     ",""height"":" & CStr(h) & _
+                     ",""count"":"  & CStr(pCount) & _
+                     ",""can_rotate"":" & IIf(pRotate, "true", "false") & "}"
 
-        If bFirst Then
-            sPieces = sPiece
-            bFirst = False
-        Else
-            sPieces = sPieces & "," & sPiece
+            If bFirst Then
+                sPieces = sPiece
+                bFirst = False
+            Else
+                sPieces = sPieces & "," & sPiece
+            End If
         End If
-        i = i + 1
-    Loop
+    Next i
 
     BuildProblemJson = "{""sheet"":{""width"":" & CStr(sheetWidth) & _
                        ",""height"":" & CStr(sheetHeight) & "}" & _
@@ -825,7 +856,7 @@ Public Sub RunCut()
     Dim exePath As String
     exePath = Trim(ws.Cells(1, 2).Value)  ' B1
     If Dir(exePath) = "" Then
-        MsgBox "cut.exe not found: " & exePath & Chr(13) & _
+        MsgBox "solver.exe not found: " & exePath & Chr(13) & _
                "Set the correct path in cell B1.", vbCritical
         Exit Sub
     End If
@@ -869,7 +900,7 @@ Public Sub RunCut()
     Dim nLongDim As Long: nLongDim = 0
     If ws.Range(CFG_LONG_DIM_CELL).Value <> "" Then nLongDim = CLng(ws.Range(CFG_LONG_DIM_CELL).Value)
 
-    ' Launch cut.exe (non-blocking Shell); threads = 0 means auto-detect
+    ' Launch solver.exe (non-blocking Shell); threads = 0 means auto-detect
     Dim cmd As String
     cmd = Chr(34) & exePath & Chr(34) & " calc --json " & Chr(34) & tmpFile & Chr(34) _
         & " --seed " & nSeed & " --iterations " & nGens & " --pop " & nPop _
@@ -878,7 +909,7 @@ Public Sub RunCut()
     If nLongDim > 0 Then cmd = cmd & " --long-dim-threshold " & nLongDim
     Shell cmd, vbHide
 
-    ' Give cut.exe time to create the pipe
+    ' Give solver.exe time to create the pipe
     Sleep 800
 
     ' Connect to the named pipe (with retries)
@@ -903,7 +934,7 @@ Public Sub RunCut()
 
     If hPipe = INVALID_HANDLE Then
         MsgBox "Could not connect to named pipe." & Chr(13) & _
-               "Make sure cut.exe started successfully.", vbCritical
+               "Make sure solver.exe started successfully.", vbCritical
         SetProgress ws, "Connection error", "", "", ""
         Exit Sub
     End If
@@ -1011,29 +1042,31 @@ Public Function TotalEdgeLength(edgeType As Long) As Long
     overhang = CLng(ws.Range(EDGE_MARGIN_CELL).Value)
 
     Dim dc As Long:    dc    = DataCol(ws)
+    Dim lastRow As Long: lastRow = LastPieceRow(ws)
     Dim total As Long: total = 0
     Dim i As Long
 
-    For i = DataStartRow(ws) To DataEndRow(ws)
-        Dim w As Long, h As Long
-        w = 0: h = 0
-        If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
-        If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
-        If w = 0 Or h = 0 Then Exit For
+    For i = DataStartRow(ws) To lastRow
+        If Not IsBlankPieceRow(ws, i, dc) Then
+            Dim w As Long, h As Long
+            w = 0: h = 0
+            If ws.Cells(i, dc + 1).Value <> "" Then w = CLng(ws.Cells(i, dc + 1).Value)
+            If ws.Cells(i, dc + 2).Value <> "" Then h = CLng(ws.Cells(i, dc + 2).Value)
 
-        Dim et As Long: et = 0
-        If ws.Cells(i, dc + 7).Value <> "" Then et = CLng(ws.Cells(i, dc + 7).Value)
-        If et = edgeType Then
-            Dim cnt As Long: cnt = 0
-            If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
+            Dim et As Long: et = 0
+            If ws.Cells(i, dc + 7).Value <> "" Then et = CLng(ws.Cells(i, dc + 7).Value)
+            If et = edgeType Then
+                Dim cnt As Long: cnt = 0
+                If ws.Cells(i, dc + 3).Value <> "" Then cnt = CLng(ws.Cells(i, dc + 3).Value)
 
-            Dim ew As Long: ew = 0
-            Dim eh As Long: eh = 0
-            If ws.Cells(i, dc + 5).Value <> "" Then ew = CLng(ws.Cells(i, dc + 5).Value)
-            If ws.Cells(i, dc + 6).Value <> "" Then eh = CLng(ws.Cells(i, dc + 6).Value)
+                Dim ew As Long: ew = 0
+                Dim eh As Long: eh = 0
+                If ws.Cells(i, dc + 5).Value <> "" Then ew = CLng(ws.Cells(i, dc + 5).Value)
+                If ws.Cells(i, dc + 6).Value <> "" Then eh = CLng(ws.Cells(i, dc + 6).Value)
 
-            total = total + cnt * ew * (w + overhang)
-            total = total + cnt * eh * (h + overhang)
+                total = total + cnt * ew * (w + overhang)
+                total = total + cnt * eh * (h + overhang)
+            End If
         End If
     Next i
 
@@ -1292,15 +1325,14 @@ End Sub
 Sub MainCheckboxClick()
     Dim ws As Worksheet
     Dim mainVal As Boolean
-    Dim i As Integer
+    Dim i As Long
 
     Set ws = ActiveSheet
     mainVal = (ws.CheckBoxes("cbMain").Value = xlOn)
 
     Dim dc As Long: dc = DataCol(ws)
-    For i = DataStartRow(ws) To DataEndRow(ws)
-        If ws.Cells(i, dc + 4).Value <> "" Then
-            ws.Cells(i, dc + 4).Value = mainVal
-        End If
+    Dim lastRow As Long: lastRow = LastPieceRow(ws)
+    For i = DataStartRow(ws) To lastRow
+        If Not IsBlankPieceRow(ws, i, dc) Then ws.Cells(i, dc + 4).Value = mainVal
     Next i
 End Sub
