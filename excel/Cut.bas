@@ -1288,8 +1288,10 @@ Private Sub SetupAlgorithmValidation()
     End With
 End Sub
 
-'' == Checkboxes for "Can rotate?" =============================================
-
+' Creates only the header "all" checkbox (cbMain); dc+4 cells are plain
+' TRUE/FALSE values now. Kept the cleanup loop below for migration: it
+' deletes every checkbox except CFG_RANDOM_SEED_CHK, so re-running this also
+' puts an older workbook (with one cbRow<i> per row) into the correct state.
 Sub CreateCheckboxes()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
@@ -1303,23 +1305,13 @@ Sub CreateCheckboxes()
     Dim colWidth  As Double: colWidth  = ws.Columns(cbCol).Width
     Dim cell      As Range
     Dim cb        As CheckBox
-    Dim i         As Integer
-
-    Dim mg As Double: mg = 1#
+    Dim mg        As Double: mg = 1#
 
     Set cell = ws.Cells(DataHeaderRow(ws), cbCol)
     Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
-    cb.Caption  = "all"
+    cb.Caption  = ""
     cb.OnAction = "Cut.MainCheckboxClick"
     cb.Name     = "cbMain"
-
-    For i = DataStartRow(ws) To DataEndRow(ws)
-        Set cell = ws.Cells(i, cbCol)
-        Set cb = ws.CheckBoxes.Add(cell.Left + mg, cell.Top + mg, colWidth - 2*mg, cell.Height - 2*mg)
-        cb.LinkedCell = ws.Cells(i, DataCol(ws) + 4).Address
-        cb.Caption    = ""
-        cb.Name       = "cbRow" & i
-    Next i
 End Sub
 
 Sub MainCheckboxClick()
