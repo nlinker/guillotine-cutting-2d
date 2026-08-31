@@ -33,6 +33,12 @@ Private Const EDGE_MARGIN_CELL As String = "L5"  ' edging overhang per strip (mm
 Private Const DATA_CELL        As String = "A8"  ' top-left of piece table ("Panel" label column, first input row)
 Private Const RESULT_CELL      As String = "P8"  ' top-left of placement table ("Sheet" label column, first result row)
 
+Private Const EDGE_COLOR1_CELL As String = "B5"       ' fill color swatch used for edge count = 1
+Private Const EDGE_COLOR2_CELL As String = "C5"       ' fill color swatch used for edge count = 2
+Private Const EDGE_ERROR_COLOR As Long   = 13551615   ' RGB(255, 199, 206), light red - anything but 0/1/2
+Private Const EDGE_APPLY_BTN_CELL As String = "D5"    ' "Apply" button - reruns SetupEdgeHighlight
+Private Const EDGE_APPLY_BTN_NAME As String = "btnApplyEdgeColors"
+
 Private Const CFG_RANDOM_SEED_CHK As String = "ChkRandomSeed"  ' checkbox: randomize seed on each run
 
 Private Const CFG_SEED_CELL           As String = "O1"  ' base random seed (--seed)
@@ -1270,12 +1276,13 @@ Public Sub SendToAutoCAD()
     acad.ZoomExtents
 End Sub
 
-'' == One-time sheet setup =====================================================
-
-' Runs one-time setup: "Can rotate?" checkboxes + algorithm dropdown.
+' Runs one-time setup: "Can rotate?" checkbox + algorithm dropdown + edge-count
+' highlight + its "Применить" button.
 Public Sub SetupAll()
     CreateCheckboxes
     SetupAlgorithmValidation
+    SetupEdgeHighlight
+    CreateApplyEdgeButton
 End Sub
 
 Private Sub SetupAlgorithmValidation()
@@ -1285,6 +1292,82 @@ Private Sub SetupAlgorithmValidation()
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
              Formula1:="glas - Генетический алгоритм,bfdh - Лучший подходящий,jylanki - Эвристика Джиланки"
+    End With
+End Sub
+
+' Creates (or recreates) the "Применить" button over EDGE_APPLY_BTN_CELL that
+' reruns SetupEdgeHighlight - lets the user pick new B5/C5 swatch colors and
+' apply them without re-running the whole SetupAll.
+Private Sub CreateApplyEdgeButton()
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
+
+    Dim shp As Object
+    For Each shp In ws.Buttons
+        If shp.Name = EDGE_APPLY_BTN_NAME Then shp.Delete
+    Next shp
+
+    ' Oversized vs. the cell so it visibly reads as a button, not a colored cell (Line/border is ignored).
+    Dim cell As Range: Set cell = ws.Range(EDGE_APPLY_BTN_CELL)
+    Dim mg As Double: mg = 1
+    Dim btn As Button
+    Set btn = ws.Buttons.Add(cell.Left, cell.Top - mg, cell.Width + 2 * mg, cell.Height + 2 * mg)
+    btn.Caption = "Apply"
+    btn.OnAction = "Cut.SetupEdgeHighlight"
+    btn.Name = EDGE_APPLY_BTN_NAME
+End Sub
+
+' Colors B (width) by its edge count in F, C (height) by its edge count in G,
+' and colors F or G by their own value: 
+' edge count = 1 -> EDGE_COLOR1_CELL's fill,
+'            = 2 -> EDGE_COLOR2_CELL's fill,
+'        0/blank -> default,
+'  anything else -> EDGE_ERROR_COLOR.
+' Applied one cell at a time with a fully absolute address
+' ($F$11) - B and F share reference column F, C and G share column G, so as
+' multi-row ranges two of them get byte-identical Formula1 text and Excel's
+' relative anchoring confuses them.
+Sub SetupEdgeHighlight()
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Sheets(MAIN_SHEET_INDEX)
+    Dim dc As Long: dc = DataCol(ws)
+    Dim r1 As Long: r1 = DataStartRow(ws)
+    Dim r2 As Long: r2 = DataEndRow(ws)
+
+    Dim color1 As Long: color1 = ws.Range(EDGE_COLOR1_CELL).Interior.Color
+    Dim color2 As Long: color2 = ws.Range(EDGE_COLOR2_CELL).Interior.Color
+
+    Dim i As Long
+    For i = r1 To r2
+        ApplyEdgeHighlight ws.Cells(i, dc + 1), ws.Cells(i, dc + 5), color1, color2  ' B (width) by F
+        ApplyEdgeHighlight ws.Cells(i, dc + 5), ws.Cells(i, dc + 5), color1, color2  ' F itself
+        ApplyEdgeHighlight ws.Cells(i, dc + 2), ws.Cells(i, dc + 6), color1, color2  ' C (height) by G
+        ApplyEdgeHighlight ws.Cells(i, dc + 6), ws.Cells(i, dc + 6), color1, color2  ' G itself
+    Next i
+End Sub
+
+' Applies the 1/2/default/other coloring rule to targetCell, keyed off
+' refCell (same row, the edge-count cell). Replaces any conditional
+' formatting already on targetCell, so re-running SetupAll doesn't stack
+' duplicate rules.
+Private Sub ApplyEdgeHighlight(targetCell As Range, refCell As Range, color1 As Long, color2 As Long)
+    Dim refAddr As String: refAddr = refCell.Address(True, True) ' fully absolute, e.g. "$F$11"
+    Dim q As String: q = Chr(34) ' a literal " inside the Excel formula text below
+
+    ' Compare as text so a cell typed/pasted in as text still matches (a text "1" <> number 1).
+    Dim asText As String: asText = "(" & refAddr & "&" & q & q & ")"
+
+    targetCell.FormatConditions.Delete
+
+    With targetCell.FormatConditions.Add(Type:=xlExpression, Formula1:="=" & asText & "=" & q & "1" & q)
+        .Interior.Color = color1
+    End With
+    With targetCell.FormatConditions.Add(Type:=xlExpression, Formula1:="=" & asText & "=" & q & "2" & q)
+        .Interior.Color = color2
+    End With
+    ' Product, not AND(...): its commas need the locale's list separator (";" on Russian Excel).
+    With targetCell.FormatConditions.Add(Type:=xlExpression, _
+            Formula1:="=(" & asText & "<>" & q & "0" & q & ")*(" & asText & "<>" & q & "1" & q & ")*(" _
+                     & asText & "<>" & q & "2" & q & ")*(" & asText & "<>" & q & q & ")")
+        .Interior.Color = EDGE_ERROR_COLOR
     End With
 End Sub
 
